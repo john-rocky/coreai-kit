@@ -1,0 +1,216 @@
+// ChatSession.swift — high-level streaming chat over a Core AI language bundle, on Apple's
+// official runtime (CoreAILM). Adapted from the CoreAIChatMac sample's ChatEngine.
+
+import CoreAILanguageModels
+import Foundation
+import Tokenizers
+
+/// Streaming multi-turn chat with live performance stats.
+///
+/// ```swift
+/// let chat = try await ChatSession(model: .qwen3_0_6B)
+/// for try await event in chat.streamResponse(to: "Hello!") {
+///     if case .response(let delta) = event { print(delta, terminator: "") }
+/// }
+/// ```
+///
+/// The session owns the conversation history and re-renders it through the bundle's chat
+/// template every turn (full-history prefill — the proven official-runtime path). Assistant
+/// turns feed back only the final answer; thinking output is surfaced as `.thinking` events
+/// and on `Message.thinking` but never re-prompted. One generation at a time per session.
+public actor ChatSession {
+    public struct Configuration: Sendable {
+        /// Sampling temperature; nil = greedy decoding.
+        public var temperature: Double? = 0.7
+        public var maxResponseTokens: Int = 2048
+        public var systemPrompt: String? = nil
+
+        public init() {}
+    }
+
+    public enum Event: Sendable, Equatable {
+        /// Answer text delta.
+        case response(String)
+        /// Chain-of-thought delta (only on models that emit reasoning markup).
+        case thinking(String)
+        /// Throttled live stats (TTFT, rolling tok/s, token counts).
+        case stats(GenerationStats)
+        /// The fully assembled assistant message, after it was appended to `history`.
+        case complete(Message)
+    }
+
+    private let runtime: ModelRuntime
+    private let configuration: Configuration
+    public private(set) var history: [Message] = []
+    public private(set) var stats = GenerationStats()
+    private var generationTask: Task<Void, Never>?
+    private var isGenerating = false
+
+    /// Display name from the bundle metadata.
+    public var modelName: String { runtime.modelName }
+
+    /// Downloads the model if needed (cached afterwards), then loads it.
+    public init(
+        model: ModelID,
+        store: ModelStore = .default,
+        configuration: Configuration = Configuration(),
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let url = try await store.download(model, progress: downloadProgress)
+        try await self.init(bundleAt: url, configuration: configuration)
+    }
+
+    /// Loads a local bundle directory (metadata.json + *.aimodel/ + tokenizer/).
+    public init(bundleAt url: URL, configuration: Configuration = Configuration()) async throws {
+        self.runtime = try await ModelRuntime(bundleAt: url)
+        self.configuration = configuration
+        var stats = GenerationStats()
+        stats.loadSeconds = runtime.loadSeconds
+        stats.footprintBytes = ProcessStats.physFootprint()
+        self.stats = stats
+    }
+
+    // MARK: - Generation
+
+    public func streamResponse(to prompt: String) -> AsyncThrowingStream<Event, Error> {
+        let (stream, continuation) = AsyncThrowingStream<Event, Error>.makeStream()
+        guard !isGenerating else {
+            continuation.finish(throwing: ChatSessionError.generationInProgress)
+            return stream
+        }
+        isGenerating = true
+        let task = Task { await self.generate(prompt: prompt, into: continuation) }
+        generationTask = task
+        continuation.onTermination = { reason in
+            if case .cancelled = reason { task.cancel() }
+        }
+        return stream
+    }
+
+    /// Convenience: streams internally and returns the collected answer text.
+    public func respond(to prompt: String) async throws -> String {
+        var text = ""
+        for try await event in streamResponse(to: prompt) {
+            if case .response(let delta) = event { text += delta }
+        }
+        return text
+    }
+
+    /// Stops the running generation; the stream completes with the partial message.
+    public func cancelGeneration() {
+        generationTask?.cancel()
+    }
+
+    /// Starts a fresh conversation on the loaded model (clears history, keeps the engine).
+    public func reset() {
+        generationTask?.cancel()
+        history = []
+        stats.promptTokens = 0
+        stats.ttftSeconds = nil
+        stats.generatedTokens = 0
+        stats.tokensPerSecond = nil
+    }
+
+    private func generate(
+        prompt: String, into continuation: AsyncThrowingStream<Event, Error>.Continuation
+    ) async {
+        defer { isGenerating = false }
+
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            continuation.finish()
+            return
+        }
+
+        let historyMark = history.count
+        history.append(Message(role: .user, content: trimmed))
+
+        var rendered: [[String: any Sendable]] = []
+        if let system = configuration.systemPrompt {
+            rendered.append(["role": "system", "content": system])
+        }
+        rendered += history.map { ["role": $0.role.rawValue, "content": $0.content] }
+
+        stats.ttftSeconds = nil
+        stats.generatedTokens = 0
+        stats.tokensPerSecond = nil
+
+        do {
+            let promptTokens = try runtime.tokenizer.applyChatTemplate(messages: rendered)
+            stats.promptTokens = promptTokens.count
+
+            try await runtime.engine.reset()
+            let sampling =
+                configuration.temperature.map { SamplingConfiguration(temperature: $0) }
+                ?? SamplingConfiguration.greedy
+            let stream = DecodingStrategyFactory.create(type: .vanilla).decode(
+                from: .tokens(promptTokens),
+                tokenizer: runtime.tokenizer,
+                inferenceEngine: runtime.engine,
+                samplingConfiguration: sampling,
+                options: InferenceOptions(
+                    maxTokens: configuration.maxResponseTokens, includeLogits: false),
+                stopSequences: StopSequences(for: runtime.tokenizer)
+            )
+
+            let requestStart = SuspendingClock.now
+            var parser = StreamingTagParser(profile: runtime.outputProfile)
+            var content = ""
+            var thinking = ""
+            var window: [SuspendingClock.Instant] = []
+            let windowSize = 32
+
+            func handle(_ events: [StreamingTagParser.Event]) {
+                for event in events {
+                    switch event {
+                    case .response(let delta):
+                        content += delta
+                        continuation.yield(.response(delta))
+                    case .thinking(let delta):
+                        thinking += delta
+                        continuation.yield(.thinking(delta))
+                    case .toolCallPayload:
+                        // ChatSession does not execute tools; use KitLanguageModel with a
+                        // LanguageModelSession for tool calling.
+                        break
+                    }
+                }
+            }
+
+            do {
+                for try await chunk in stream {
+                    if Task.isCancelled { break }
+                    let now = SuspendingClock.now
+                    if stats.ttftSeconds == nil {
+                        stats.ttftSeconds = ProcessStats.seconds(from: requestStart, to: now)
+                    }
+                    stats.generatedTokens += 1
+                    window.append(now)
+                    if window.count > windowSize { window.removeFirst() }
+                    if window.count > 8 {
+                        let span = ProcessStats.seconds(from: window[0], to: now)
+                        if span > 0 {
+                            stats.tokensPerSecond = Double(window.count - 1) / span
+                        }
+                    }
+                    handle(parser.consume(chunk.text))
+                    continuation.yield(.stats(stats))
+                }
+            } catch is CancellationError {
+                // Treated like a stop button: keep the partial reply.
+            }
+            handle(parser.flush())
+
+            stats.footprintBytes = ProcessStats.physFootprint()
+            let reply = Message(role: .assistant, content: content, thinking: thinking)
+            history.append(reply)
+            continuation.yield(.stats(stats))
+            continuation.yield(.complete(reply))
+            continuation.finish()
+        } catch {
+            // Roll back the user turn so a retry re-sends cleanly.
+            history.removeSubrange(historyMark...)
+            continuation.finish(throwing: error)
+        }
+    }
+}

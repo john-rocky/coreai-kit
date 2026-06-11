@@ -1,0 +1,42 @@
+# CoreAIKit
+
+Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 beta) in a few lines of Swift.
+
+> Community package — not affiliated with Apple. Status: **under construction**.
+
+```swift
+import CoreAIKit
+
+let chat = try await ChatSession(model: .qwen3_0_6B)
+for try await event in chat.streamResponse(to: "Hello!") {
+    if case .response(let delta) = event { print(delta, terminator: "") }
+}
+```
+
+Models download automatically from the Hugging Face Hub on first use — no Python required.
+
+## What's inside
+
+| Product | What it gives you |
+|---|---|
+| `CoreAIKit` | `ModelStore` (download/cache), `ChatSession` (streaming chat + live stats), `KitLanguageModel` (FoundationModels provider with tool calling) |
+| `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP embeddings), image preprocessing |
+
+## Examples
+
+- `Examples/ChatDemo` — multiplatform chat app (~150 lines)
+- `Examples/PhotoSearch` — semantic photo search with CLIP (iOS)
+- `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
+
+See `docs/GETTING_STARTED.md`.
+
+## Requirements
+
+- macOS 27 beta / iOS 27 beta, Xcode 27 beta
+- Models run fully on device
+
+## License
+
+BSD-3-Clause. See `LICENSE` and `NOTICE.txt` (portions adapted from
+[apple/coreai-models](https://github.com/apple/coreai-models) and
+[john-rocky/coreai-model-zoo](https://github.com/john-rocky/coreai-model-zoo)).

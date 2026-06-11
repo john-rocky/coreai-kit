@@ -1,0 +1,15 @@
+CoreAIKit
+Copyright (c) 2026 Daisuke Majima
+
+This product includes code adapted from:
+
+- apple/coreai-models (BSD-3-Clause, Copyright 2026 Apple Inc.)
+  https://github.com/apple/coreai-models
+  Adapted: CLIP BPE tokenizer (Sources/CoreAIKitVision/CLIPTokenizer.swift),
+  language-bundle decode flow patterns (Sources/CoreAIKit/ChatSession.swift).
+
+- john-rocky/coreai-model-zoo (BSD-3-Clause, Copyright (c) 2026 Daisuke Majima)
+  https://github.com/john-rocky/coreai-model-zoo
+  Adapted: Hugging Face bundle downloader (Sources/CoreAIKitCore/ModelStore.swift),
+  streaming tag parser and FoundationModels executor
+  (Sources/CoreAIKit/Output, Sources/CoreAIKit/FM).
