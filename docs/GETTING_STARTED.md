@@ -5,7 +5,8 @@ model conversion — starter models are hosted on the Hugging Face Hub and downl
 
 ## Requirements
 
-- macOS 27 beta or iOS 27 beta, Xcode 27 beta
+- macOS 27 beta or iOS 27 beta (real device — the CoreAI framework is not in the iOS
+  Simulator SDK), Xcode 27 beta
 - ~1–5 GB of disk per model (cached after first download)
 
 ## 1. Add the package
@@ -95,6 +96,30 @@ The bundle directory holds `metadata.json`, a `*.aimodel/`, and a `tokenizer/`.
 cd Examples/ChatDemo
 xcodegen generate
 open ChatDemo.xcodeproj
+```
+
+## Computer vision: CLIP in five lines
+
+`CoreAIKitVision` is a separate product — CV apps don't link any LLM runtime.
+
+```swift
+import CoreAIKitVision
+
+let encoder = try await ImageTextEncoder()   // downloads CLIP ViT-B/32 (~290 MB) on first use
+let imageVec = try await encoder.encode(image: cgImage)        // preprocessing included
+let textVec  = try await encoder.encode(text: "red bike at the beach")
+let score = ImageTextEncoder.cosineSimilarity(imageVec, textVec)
+```
+
+Embeddings are L2-normalized 512-d vectors; ranking a photo library is one dot product per
+photo (see `Examples/PhotoSearch`).
+
+Any other stateless `.aimodel` graph runs through the generic `GraphModel`:
+
+```swift
+let model = try await GraphModel(contentsOf: aimodelURL, computeUnits: .neuralEngine)
+let out = try await model.run(["pixel_values": .float32(pixels, shape: [1, 3, 224, 224])])
+let depth = out["depth"]!.floats()
 ```
 
 ## Performance notes

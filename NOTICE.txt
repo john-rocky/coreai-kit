@@ -6,6 +6,8 @@ This product includes code adapted from:
 - apple/coreai-models (BSD-3-Clause, Copyright 2026 Apple Inc.)
   https://github.com/apple/coreai-models
   Adapted: CLIP BPE tokenizer (Sources/CoreAIKitVision/CLIPTokenizer.swift),
+  image preprocessing (Sources/CoreAIKitVision/ImagePreprocessor.swift),
+  NDArray bridge patterns (Sources/CoreAIKitVision/TensorValue.swift),
   language-bundle decode flow patterns (Sources/CoreAIKit/ChatSession.swift).
 
 - john-rocky/coreai-model-zoo (BSD-3-Clause, Copyright (c) 2026 Daisuke Majima)
