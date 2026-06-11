@@ -2,7 +2,8 @@
 
 Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 beta) in a few lines of Swift.
 
-> Community package — not affiliated with Apple. Status: **under construction**.
+> Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta
+> (real device; the CoreAI framework is not in the iOS Simulator SDK).
 
 ```swift
 import CoreAIKit

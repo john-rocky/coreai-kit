@@ -122,6 +122,62 @@ let out = try await model.run(["pixel_values": .float32(pixels, shape: [1, 3, 22
 let depth = out["depth"]!.floats()
 ```
 
+## Tool calling with LanguageModelSession
+
+`KitLanguageModel` puts a Core AI bundle behind Apple's FoundationModels session API —
+including tool calling, which Apple's own `CoreAILanguageModel` adapter does not
+implement.
+
+```swift
+import CoreAIKit
+import FoundationModels
+
+struct WeatherTool: Tool {
+    let name = "get_weather"
+    let description = "Get the current weather for a city."
+
+    @Generable
+    struct Arguments {
+        @Guide(description: "Name of the city, in English")
+        var city: String
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        "Sunny, 24 degrees Celsius in \(arguments.city)."
+    }
+}
+
+let model = try await KitLanguageModel(model: .qwen3_0_6B)
+let session = LanguageModelSession(model: model, tools: [WeatherTool()])
+let answer = try await session.respond(to: "What's the weather in Sapporo right now?")
+```
+
+The framework owns the conversation transcript (persist `session.transcript` and restore
+it to continue a conversation later), executes tool calls, and replays results into the
+next model turn. Retrieval-augmented flows are "define a retrieval tool" — the model
+decides when to search.
+
+### Support matrix
+
+| Model | ChatSession | thinking | FM chat | FM tools |
+|---|---|---|---|---|
+| Qwen3 0.6B / 4B | ✓ | `<think>` | ✓ | ✓ (Hermes ChatML) |
+| Mistral 7B v0.3 | ✓ | – | ✓ | not yet (dialect) |
+| Gemma 3 4B | ✓ | – | ✓ | not yet (dialect) |
+| gpt-oss (local bundle) | ✓ (harmony parsed) | analysis channel | – | not yet |
+
+### Known beta caveats
+
+- The engine ignores a consumer break and keeps generating to
+  `maximumResponseTokens` in the background; EOS-ended turns therefore reset the KV
+  cache on the next turn (correctness first). Capped turns (no EOS) hit the append-only
+  KV fast path and report `cachedTokenCount` in usage. Set `COREAI_KIT_DEBUG=1` to watch
+  the decisions.
+- Guided generation (`@Generable` structured output) is not implemented yet — schema
+  requests throw `unsupportedCapability`.
+- Usage/metadata events are sent once at end of turn (an upfront usage event
+  materializes an empty transcript entry on tool turns in the current beta).
+
 ## Performance notes
 
 - **Benchmark in Release.** The engine's per-token host work is ~3x slower in Debug builds.
@@ -132,7 +188,8 @@ let depth = out["depth"]!.floats()
 - Each turn re-prefills the full history (the robust official-runtime path). Long
   conversations grow TTFT; `reset()` clears it.
 
-## Coming next
+## Roadmap
 
-- `CoreAIKitVision`: run CLIP and friends in a few lines (`Examples/PhotoSearch`)
-- `KitLanguageModel`: your models behind Apple's `LanguageModelSession`, with tool calling
+- Tool dialects for more families (gpt-oss harmony, gemma, mistral)
+- Guided generation (constrained decoding on engines that expose logits)
+- More typed CV pipelines (depth, detection) over `GraphModel`
