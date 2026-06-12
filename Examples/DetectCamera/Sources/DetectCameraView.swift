@@ -9,6 +9,12 @@ enum DetectVariant: String, CaseIterable, Identifiable {
     var bundledName: String { "rfdetr-\(rawValue)_float32" }
 }
 
+enum DetectUnit: String, CaseIterable, Identifiable {
+    case gpu, ane
+    var id: String { rawValue }
+    var computeUnits: GraphModel.ComputeUnits { self == .gpu ? .gpu : .neuralEngine }
+}
+
 @MainActor
 @Observable
 final class DetectCameraModel {
@@ -24,6 +30,9 @@ final class DetectCameraModel {
     var variant: DetectVariant = .nano {
         didSet { if oldValue != variant { restart() } }
     }
+    var unit: DetectUnit = .gpu {
+        didSet { if oldValue != unit { restart() } }
+    }
 
     private var feed: CameraFeed?
     private var runTask: Task<Void, Never>?
@@ -37,6 +46,11 @@ final class DetectCameraModel {
             let v = DetectVariant(rawValue: raw)
         {
             variant = v
+        }
+        if let raw = ProcessInfo.processInfo.environment["DETECT_UNIT"],
+            let u = DetectUnit(rawValue: raw)
+        {
+            unit = u
         }
     }
 
@@ -84,7 +98,7 @@ final class DetectCameraModel {
             self.feed = feed
             let frames = try await feed.startPixelBuffers()
             session = feed.captureSession
-            status = "Live · \(variant.rawValue)"
+            status = "Live · \(variant.rawValue) · \(unit.rawValue)"
 
             // Two-stage pipeline OFF the main actor: stage 1 preprocesses frames on
             // the CPU while stage 2 runs the previous frame on the GPU; UI updates
@@ -111,7 +125,7 @@ final class DetectCameraModel {
                 preparedCont.finish()
             }
 
-            let variantName = variant.rawValue
+            let variantName = "\(variant.rawValue)/\(unit.rawValue)"
             inferTask = Task.detached { [weak self] in
                 var inferWindow: [Double] = []
                 var windowStart = SuspendingClock.now
@@ -179,12 +193,28 @@ final class DetectCameraModel {
     private func loadDetector() async throws -> ObjectDetector {
         let sideloaded = URL.documentsDirectory
             .appending(path: "Models/\(variant.bundledName).aimodel")
-        if FileManager.default.fileExists(atPath: sideloaded.path) {
-            NSLog("MODEL sideloaded %@", variant.bundledName)
-            return try await ObjectDetector(bundleAt: sideloaded)
+        if unit == .ane {
+            // ANE value needs the split deployment: a monolithic graph keeps the
+            // whole model on the GPU delegate (the deformable head is not
+            // ANE-lowerable). Backbone -> .neuralEngine, head -> .gpu.
+            let bb = URL.documentsDirectory
+                .appending(path: "Models/rfdetr-\(variant.rawValue)_backbone.aimodel")
+            let head = URL.documentsDirectory
+                .appending(path: "Models/rfdetr-\(variant.rawValue)_head.aimodel")
+            if FileManager.default.fileExists(atPath: bb.path),
+                FileManager.default.fileExists(atPath: head.path)
+            {
+                NSLog("MODEL split sideloaded %@ backbone=ane head=gpu", variant.rawValue)
+                return try await ObjectDetector(backboneAt: bb, headAt: head)
+            }
+            NSLog("MODEL split bundles missing; falling back to monolith ane-pref")
         }
-        NSLog("MODEL downloading %@", variant.bundledName)
-        return try await ObjectDetector(model: variant.modelID) { progress in
+        if FileManager.default.fileExists(atPath: sideloaded.path) {
+            NSLog("MODEL sideloaded %@ unit=%@", variant.bundledName, unit.rawValue)
+            return try await ObjectDetector(bundleAt: sideloaded, computeUnits: unit.computeUnits)
+        }
+        NSLog("MODEL downloading %@ unit=%@", variant.bundledName, unit.rawValue)
+        return try await ObjectDetector(model: variant.modelID, computeUnits: unit.computeUnits) { progress in
             Task { @MainActor in
                 self.status = "Downloading… \(Int(progress.fraction * 100))%"
             }
@@ -215,7 +245,9 @@ final class DetectCameraModel {
                 d.classID, d.label, d.score,
                 d.box.origin.x, d.box.origin.y, d.box.width, d.box.height)
         }
-        NSLog("GATE done variant=%@ n=%d time=%.1fms", variant.rawValue, dets.count, ms)
+        NSLog(
+            "GATE done variant=%@ unit=%@ n=%d time=%.1fms",
+            variant.rawValue, unit.rawValue, dets.count, ms)
     }
 
     /// Debug: write the raw delivered buffer to Documents for host-side inspection.
@@ -262,12 +294,21 @@ struct DetectCameraView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .padding(.horizontal, 8)
 
-            Picker("Model", selection: $model.variant) {
-                ForEach(DetectVariant.allCases) { v in
-                    Text(v.rawValue.capitalized).tag(v)
+            HStack(spacing: 8) {
+                Picker("Model", selection: $model.variant) {
+                    ForEach(DetectVariant.allCases) { v in
+                        Text(v.rawValue.capitalized).tag(v)
+                    }
                 }
+                .pickerStyle(.segmented)
+                Picker("Unit", selection: $model.unit) {
+                    ForEach(DetectUnit.allCases) { u in
+                        Text(u.rawValue.uppercased()).tag(u)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 140)
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, 12)
 
             HStack {

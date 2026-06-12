@@ -35,6 +35,12 @@ public struct Detection: Sendable, Identifiable {
 
 public final class ObjectDetector: @unchecked Sendable {
     private let graph: GraphModel
+    /// Optional first stage (split deployment): image -> features, e.g. the ViT
+    /// backbone on the Neural Engine while the deformable head stays on the GPU.
+    private let backbone: GraphModel?
+    private let backboneInput: String
+    private let backboneOutput: String
+    private let headInput: String
     private let preprocessor: ImagePreprocessor
     private let imageInput: String
     private let imageShape: [Int]
@@ -62,6 +68,10 @@ public final class ObjectDetector: @unchecked Sendable {
         }
         let graph = try await GraphModel(contentsOf: modelURL, computeUnits: computeUnits)
         self.graph = graph
+        self.backbone = nil
+        self.backboneInput = ""
+        self.backboneOutput = ""
+        self.headInput = ""
 
         guard
             let imageInput = graph.inputNames.first(where: {
@@ -93,6 +103,47 @@ public final class ObjectDetector: @unchecked Sendable {
         // The export folds ImageNet mean/std into the graph: feed plain pixel/255.
         self.preprocessor = ImagePreprocessor(
             size: inputSize, mean: SIMD3(0, 0, 0), std: SIMD3(1, 1, 1))
+    }
+
+    /// Split deployment: a separate backbone graph (image -> features) chained into
+    /// a head graph (features -> dets/labels), each with its own compute-unit
+    /// preference — e.g. the ANE-friendly ViT backbone on .neuralEngine while the
+    /// gather-heavy deformable head stays on .gpu.
+    public init(
+        backboneAt backboneURL: URL, headAt headURL: URL,
+        backboneUnits: GraphModel.ComputeUnits = .neuralEngine,
+        headUnits: GraphModel.ComputeUnits = .gpu
+    ) async throws {
+        let bb = try await GraphModel(contentsOf: backboneURL, computeUnits: backboneUnits)
+        let head = try await GraphModel(contentsOf: headURL, computeUnits: headUnits)
+        guard
+            let bbInput = bb.inputNames.first(where: { (bb.shape(ofInput: $0)?.count ?? 0) == 4 }),
+            let bbShape = bb.shape(ofInput: bbInput),
+            let bbOutput = bb.outputNames.first,
+            let headIn = head.inputNames.first(where: { (head.shape(ofInput: $0)?.count ?? 0) == 4 })
+        else {
+            throw VisionError.bundleLayout("unexpected split-graph I/O")
+        }
+        guard
+            let dets = head.outputNames.first(where: { head.shape(ofOutput: $0)?.last == 4 }),
+            let labels = head.outputNames.first(where: {
+                ($0 != dets) && (head.shape(ofOutput: $0)?.count == 3)
+            })
+        else {
+            throw VisionError.bundleLayout("could not identify dets/labels among \(head.outputNames)")
+        }
+        self.graph = head
+        self.backbone = bb
+        self.backboneInput = bbInput
+        self.backboneOutput = bbOutput
+        self.headInput = headIn
+        self.imageInput = bbInput
+        self.imageShape = bbShape
+        self.inputSize = bbShape[bbShape.count - 1]
+        self.detsOutput = dets
+        self.labelsOutput = labels
+        self.preprocessor = ImagePreprocessor(
+            size: bbShape[bbShape.count - 1], mean: SIMD3(0, 0, 0), std: SIMD3(1, 1, 1))
     }
 
     /// Downloads the bundle from the Hugging Face Hub if needed, then loads it.
@@ -152,8 +203,18 @@ public final class ObjectDetector: @unchecked Sendable {
     private func detect(
         pixels: [Float], scoreThreshold: Float, maxDetections: Int
     ) async throws -> [Detection] {
-        let outputs = try await graph.run(
-            [imageInput: .float32(pixels, shape: imageShape)])
+        let outputs: [String: TensorValue]
+        if let backbone {
+            let feats = try await backbone.run(
+                [backboneInput: .float32(pixels, shape: imageShape)])
+            guard let features = feats[backboneOutput] else {
+                throw VisionError.missingOutput(backboneOutput)
+            }
+            outputs = try await graph.run([headInput: features])
+        } else {
+            outputs = try await graph.run(
+                [imageInput: .float32(pixels, shape: imageShape)])
+        }
         guard let dets = outputs[detsOutput], let labels = outputs[labelsOutput] else {
             throw VisionError.missingOutput("\(detsOutput)/\(labelsOutput)")
         }

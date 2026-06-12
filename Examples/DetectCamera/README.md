@@ -64,6 +64,25 @@ temperature; compare runs back-to-back with cooldowns. Bench/debug hooks
 validate overlay mapping via screenshot), `DETECT_DUMP=1` (write the first
 delivered buffer to Documents/framedump.bin for host-side inspection).
 
+### ANE mode (experimental, measured honestly)
+
+The UNIT picker can request the Neural Engine. Today, on iOS 27 beta, it buys
+nothing: a monolithic graph under `.neuralEngine` preference falls back to the
+GPU delegate entirely (the gather-heavy deformable head is not ANE-lowerable),
+and even a **split deployment** — separate `rfdetr-<v>_backbone.aimodel`
+(pure ViT) on `.neuralEngine` chained into `rfdetr-<v>_head.aimodel` on
+`.gpu` — still executes the backbone on the GPU (fingerprint: detections
+identical to the GPU run to 3 decimals, no ANE-compile pause on first load,
+and timing equal to GPU at the same thermal state, +~5 ms two-graph handoff).
+Same-thermal comparison (nano, thermal=fair): GPU monolith 24.7–25.6 ms /
+33–40 FPS vs split-"ANE" 29.5–30.6 ms / 24–30 FPS.
+
+The split infrastructure (`ObjectDetector(backboneAt:headAt:)`) stays — it is
+the right shape for when the runtime starts honoring ANE placement for these
+graphs (or for an AOT `coreai-build compile --unit neural-engine` backbone).
+ANE would matter for thermals: the GPU at `thermalState=serious` throttles
+nano 25 → 75–103 ms.
+
 ### Sideloading models during development
 
 `.aimodel` directories cannot ship inside the app bundle (the installer mistakes
