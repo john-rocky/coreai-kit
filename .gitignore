@@ -4,3 +4,4 @@ DerivedData/
 *.xcodeproj
 .DS_Store
 Examples/**/build/
+Examples/**/Models/

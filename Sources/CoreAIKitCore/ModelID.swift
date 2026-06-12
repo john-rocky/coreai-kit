@@ -55,4 +55,16 @@ extension ModelID {
     /// EmbeddingGemma 300m text embeddings (fp16, 768-d). Same bundle on both platforms.
     public static let embeddingGemma300m = ModelID(
         "mlboydaisuke/embeddinggemma-300m-CoreAI", path: "model")
+    /// RF-DETR object detection, nano 384px (Apache-2.0, fp32, no NMS). Same bundle on both platforms.
+    public static let rfdetrNano = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-nano_float32.aimodel")
+    /// RF-DETR object detection, small 512px (Apache-2.0, fp32, no NMS).
+    public static let rfdetrSmall = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-small_float32.aimodel")
+    /// RF-DETR object detection, medium 576px (Apache-2.0, fp32, no NMS).
+    public static let rfdetrMedium = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-medium_float32.aimodel")
+    /// RF-DETR object detection, large 704px (Apache-2.0, fp32, no NMS).
+    public static let rfdetrLarge = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-large_float32.aimodel")
 }

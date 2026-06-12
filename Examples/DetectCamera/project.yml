@@ -1,0 +1,41 @@
+name: DetectCamera
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+schemes:
+  DetectCamera:
+    build:
+      targets:
+        DetectCamera: all
+    run:
+      config: Release
+
+targets:
+  DetectCamera:
+    type: application
+    platform: iOS
+    deploymentTarget: "27.0"
+    sources:
+      - path: Sources
+      - path: Resources/gate_image.jpg
+        buildPhase: resources
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKitVision
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.detectcamera
+        DEVELOPMENT_TEAM: MFN25KNUGJ
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_NSCameraUsageDescription: "DetectCamera finds objects in the live camera feed, fully on-device."
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
