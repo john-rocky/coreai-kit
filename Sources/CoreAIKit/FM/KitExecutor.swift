@@ -39,6 +39,7 @@ public struct KitExecutor: LanguageModelExecutor {
         let modelID: String
         let profile: OutputProfile
         let speaksChatML: Bool
+        let vocabSize: Int?
 
         public static func == (lhs: Configuration, rhs: Configuration) -> Bool {
             lhs.modelID == rhs.modelID
@@ -53,6 +54,7 @@ public struct KitExecutor: LanguageModelExecutor {
     private let modelID: String
     private let profile: OutputProfile
     private let speaksChatML: Bool
+    private let vocabSize: Int?
     private let state = TurnState()
 
     public init(configuration: Configuration) throws {
@@ -61,6 +63,7 @@ public struct KitExecutor: LanguageModelExecutor {
         self.modelID = configuration.modelID
         self.profile = configuration.profile
         self.speaksChatML = configuration.speaksChatML
+        self.vocabSize = configuration.vocabSize
     }
 
     // MARK: - Prewarm
@@ -113,14 +116,20 @@ public struct KitExecutor: LanguageModelExecutor {
         model: KitLanguageModel,
         streamingInto channel: LanguageModelExecutorGenerationChannel
     ) async throws {
-        // Constrained decoding is not implemented for this provider yet.
-        // Approximate-or-throw rule: there is no honest approximation of a schema.
-        if request.schema != nil {
-            throw LanguageModelError.unsupportedCapability(
-                .init(
-                    capability: .guidedGeneration,
-                    debugDescription:
-                        "KitLanguageModel does not implement guided generation yet."))
+        // Constrained decoding needs per-step logits; the pipelined engine samples
+        // on-GPU. Approximate-or-throw rule: there is no honest approximation of a
+        // schema, so anything else throws.
+        if let schema = request.schema {
+            guard engine.supportsLogits else {
+                throw LanguageModelError.unsupportedCapability(
+                    .init(
+                        capability: .guidedGeneration,
+                        debugDescription:
+                            "This engine cannot expose per-step logits. Load the model "
+                            + "with engineVariant: .sequential for guided generation."))
+            }
+            try await respondConstrained(schema: schema, request: request, channel: channel)
+            return
         }
 
         // 1) Settle the previous turn: await its background drain and learn exactly
@@ -179,13 +188,19 @@ public struct KitExecutor: LanguageModelExecutor {
                 SamplingConfiguration(temperature: $0)
             } ?? .greedy
 
+        // Engine input contracts differ: the pipelined engine consumes its input as NEW
+        // tokens (feed only the suffix), while logits-capable engines (sequential,
+        // static-shape) take the cumulative token list and skip the already-processed
+        // prefix internally. TurnState bookkeeping uses `fed` (the suffix) either way.
+        let engineInput = engine.supportsLogits ? promptTokens : fed
+
         let (relay, relayContinuation) = AsyncThrowingStream<Int32, any Error>.makeStream()
         let engine = self.engine
         let pump = Task {
             var ids: [Int32] = []
             do {
                 let stream = try engine.generate(
-                    with: fed,
+                    with: engineInput,
                     samplingConfiguration: sampling,
                     inferenceOptions: InferenceOptions(maxTokens: maxTokens))
                 for try await output in stream {
@@ -306,6 +321,144 @@ public struct KitExecutor: LanguageModelExecutor {
         }
 
         await Task.yield()
+    }
+
+    // MARK: - Constrained respond (guided generation)
+
+    /// Schema-constrained turn: per-step logits are masked through the schema's grammar
+    /// (xgrammar bitmask) before sampling, so the streamed text is valid JSON for
+    /// `request.schema` by construction. One engine step per token
+    /// (`maxTokens: 1, includeLogits: true`) — there is no over-generation pump because
+    /// each call stops after its single step.
+    private func respondConstrained(
+        schema: GenerationSchema,
+        request: LanguageModelExecutorGenerationRequest,
+        channel: LanguageModelExecutorGenerationChannel
+    ) async throws {
+        // 1) Settle the previous turn, learning what the KV cache holds (nil = reset).
+        let kvTokens = await state.settle()
+
+        // 2) Render the transcript EXACTLY like a vanilla turn (same tools block), so
+        //    guided and plain turns stay prefix-compatible for KV reuse.
+        let mode = request.generationOptions.toolCallingMode?.kind ?? .allowed
+        let tools = mode == .disallowed ? [] : request.enabledToolDefinitions
+        let rendered = try TranscriptRenderer.render(
+            transcript: request.transcript,
+            tools: tools,
+            requireToolCall: mode == .required,
+            tokenizer: tokenizer,
+            speaksChatML: speaksChatML)
+        let promptTokens = rendered.tokens
+
+        // 3) KV reuse. Logits-capable engines take the cumulative token list and skip
+        //    the processed prefix internally, so reuse just means skipping the reset.
+        let kvBase: [Int32]
+        if let kv = kvTokens, promptTokens.count > kv.count, promptTokens.starts(with: kv) {
+            kvBase = kv
+            kitFMDebug("guided KV fast path: reusing \(kv.count) tokens")
+        } else {
+            try await engine.reset()
+            kvBase = []
+        }
+        let fed = Array(promptTokens[kvBase.count...])
+
+        // 4) A `GenerationSchema` JSON-encodes to the JSON schema the grammar compiler
+        //    expects (same conversion as Apple's CoreAIExecutor).
+        let schemaData = try JSONEncoder().encode(schema)
+        guard let jsonSchema = String(data: schemaData, encoding: .utf8) else {
+            preconditionFailure("GenerationSchema JSON encoding produced invalid UTF-8")
+        }
+
+        // 5) Step loop (shared ConstrainedLoop): logits -> grammar mask -> sample ->
+        //    accept -> stream delta.
+        let sampling =
+            request.generationOptions.temperature.map {
+                SamplingConfiguration(temperature: $0)
+            } ?? .greedy
+        let maxTokens = request.generationOptions.maximumResponseTokens ?? 512
+
+        var generated: [Int32] = []
+        do {
+            let stream = ConstrainedLoop.stream(
+                jsonSchema: jsonSchema,
+                promptTokens: promptTokens,
+                engine: engine,
+                tokenizer: tokenizer,
+                vocabSize: try resolveVocabSize(),
+                sampling: sampling,
+                maxTokens: maxTokens)
+            for try await result in stream {
+                generated.append(result.tokenId)
+                if !result.text.isEmpty {
+                    await channel.send(
+                        .response(action: .appendText(result.text, tokenCount: 1)))
+                }
+            }
+        } catch {
+            // The engine state is mid-step unknown; a throwing pump makes the next
+            // respond settle to nil and reset.
+            state.beginTurn(
+                base: [], fed: [],
+                pump: Task<[Int32], any Error> { throw error })
+            if case InferenceRuntimeError.contextLengthExceeded(let position, let maxContext) =
+                error
+            {
+                throw LanguageModelError.contextSizeExceeded(
+                    .init(
+                        contextSize: maxContext,
+                        tokenCount: position,
+                        debugDescription: "Transcript no longer fits the model context."))
+            }
+            throw error
+        }
+
+        // 6) Record the turn for KV bookkeeping. Every generated token except the last
+        //    was fed back into the engine, so settle's `base + fed + ids.dropLast()`
+        //    is exactly the cache contents — a pre-completed pump carries the ids.
+        let ids = generated
+        state.beginTurn(
+            base: kvBase, fed: fed,
+            pump: Task<[Int32], any Error> { ids })
+
+        // 7) Metadata + usage, end of turn (see the vanilla path note). A guided turn
+        //    always produces response text, so both attach to `.response`.
+        let metadata: [String: any Sendable & Codable & Equatable] = [
+            "modelID": modelID,
+            "requestID": request.id.uuidString,
+        ]
+        await channel.send(.response(action: .updateMetadata(metadata)))
+        await channel.send(
+            .response(
+                action: .updateUsage(
+                    input: .init(
+                        totalTokenCount: promptTokens.count, cachedTokenCount: kvBase.count),
+                    output: .init(
+                        totalTokenCount: generated.count, reasoningTokenCount: 0))))
+
+        await Task.yield()
+    }
+
+    /// Bundle-metadata vocab size when available, else derived from the tokenizer by
+    /// binary-searching the last valid token id (the grammar bitmask must cover the
+    /// model's full output row, not the tokenizer's dense entries).
+    private func resolveVocabSize() throws -> Int {
+        if let vocabSize { return vocabSize }
+        var low = 0
+        var high = 524_288
+        while low < high {
+            let mid = (low + high) / 2
+            if tokenizer.convertIdToToken(mid) != nil {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        guard low > 0 else {
+            throw ConstrainedGenerationError.generationFailed(
+                "Cannot determine vocabulary size from the tokenizer; "
+                    + "construct KitLanguageModel with an explicit vocabSize.")
+        }
+        return low
     }
 
     // MARK: - Tool call parsing

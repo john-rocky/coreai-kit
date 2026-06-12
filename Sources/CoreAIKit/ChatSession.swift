@@ -24,6 +24,9 @@ public actor ChatSession {
         public var temperature: Double? = 0.7
         public var maxResponseTokens: Int = 2048
         public var systemPrompt: String? = nil
+        /// Engine to load the bundle with. The default `.auto` picks the fastest engine
+        /// (GPU-pipelined for dynamic models); guided generation needs `.sequential`.
+        public var engineVariant: EngineVariant = .auto
 
         public init() {}
     }
@@ -62,7 +65,8 @@ public actor ChatSession {
 
     /// Loads a local bundle directory (metadata.json + *.aimodel/ + tokenizer/).
     public init(bundleAt url: URL, configuration: Configuration = Configuration()) async throws {
-        self.runtime = try await ModelRuntime(bundleAt: url)
+        self.runtime = try await ModelRuntime(
+            bundleAt: url, engineVariant: configuration.engineVariant)
         self.configuration = configuration
         var stats = GenerationStats()
         stats.loadSeconds = runtime.loadSeconds
@@ -79,7 +83,7 @@ public actor ChatSession {
             return stream
         }
         isGenerating = true
-        let task = Task { await self.generate(prompt: prompt, into: continuation) }
+        let task = Task { await self.generate(prompt: prompt, schema: nil, into: continuation) }
         generationTask = task
         continuation.onTermination = { reason in
             if case .cancelled = reason { task.cancel() }
@@ -94,6 +98,69 @@ public actor ChatSession {
             if case .response(let delta) = event { text += delta }
         }
         return text
+    }
+
+    // MARK: - Guided generation
+
+    /// Streams a response constrained to a JSON schema (xgrammar bitmask enforcement):
+    /// every decoded token is grammar-checked, so the collected text is guaranteed to
+    /// parse as JSON conforming to `schema`.
+    ///
+    /// Requires a logits-capable engine — load the session with
+    /// `configuration.engineVariant = .sequential`. The default pipelined engine samples
+    /// on-GPU and cannot expose the per-step logits the grammar mask is applied to.
+    /// Constrained turns produce no `.thinking` events (the grammar starts at the JSON).
+    public func streamGuidedResponse(
+        to prompt: String, schema: String
+    ) -> AsyncThrowingStream<Event, Error> {
+        let (stream, continuation) = AsyncThrowingStream<Event, Error>.makeStream()
+        guard runtime.engine.supportsLogits else {
+            continuation.finish(throwing: ChatSessionError.guidedGenerationUnsupported)
+            return stream
+        }
+        guard !isGenerating else {
+            continuation.finish(throwing: ChatSessionError.generationInProgress)
+            return stream
+        }
+        isGenerating = true
+        let task = Task {
+            await self.generate(prompt: prompt, schema: schema, into: continuation)
+        }
+        generationTask = task
+        continuation.onTermination = { reason in
+            if case .cancelled = reason { task.cancel() }
+        }
+        return stream
+    }
+
+    /// Convenience: schema-constrained generation, returning the JSON text.
+    public func respondJSON(to prompt: String, schema: String) async throws -> String {
+        var text = ""
+        for try await event in streamGuidedResponse(to: prompt, schema: schema) {
+            if case .response(let delta) = event { text += delta }
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Convenience: schema-constrained generation decoded into a `Decodable` value.
+    ///
+    /// ```swift
+    /// struct City: Codable { let name: String; let country: String }
+    /// let city = try await chat.respond(
+    ///     to: "Name one big city.", generating: City.self, schema: citySchema)
+    /// ```
+    public func respond<Value: Decodable>(
+        to prompt: String, generating type: Value.Type, schema: String
+    ) async throws -> Value {
+        let json = try await respondJSON(to: prompt, schema: schema)
+        guard let data = json.data(using: .utf8) else {
+            throw ChatSessionError.malformedGuidedOutput(json)
+        }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw ChatSessionError.malformedGuidedOutput(json)
+        }
     }
 
     /// Compiles the sampler graph and touches the weights (one 1-token generate +
@@ -126,7 +193,8 @@ public actor ChatSession {
     }
 
     private func generate(
-        prompt: String, into continuation: AsyncThrowingStream<Event, Error>.Continuation
+        prompt: String, schema: String?,
+        into continuation: AsyncThrowingStream<Event, Error>.Continuation
     ) async {
         defer { isGenerating = false }
 
@@ -157,15 +225,30 @@ public actor ChatSession {
             let sampling =
                 configuration.temperature.map { SamplingConfiguration(temperature: $0) }
                 ?? SamplingConfiguration.greedy
-            let stream = DecodingStrategyFactory.create(type: .vanilla).decode(
-                from: .tokens(promptTokens),
-                tokenizer: runtime.tokenizer,
-                inferenceEngine: runtime.engine,
-                samplingConfiguration: sampling,
-                options: InferenceOptions(
-                    maxTokens: configuration.maxResponseTokens, includeLogits: false),
-                stopSequences: StopSequences(for: runtime.tokenizer)
-            )
+            // Constrained turns swap the decode loop: per-step logits are masked
+            // through the schema's grammar before sampling, so output is valid JSON
+            // by construction. Both loops share the same streaming result shape.
+            let stream: AsyncThrowingStream<GenerationResult, Error>
+            if let schema {
+                stream = ConstrainedLoop.stream(
+                    jsonSchema: schema,
+                    promptTokens: promptTokens.map(Int32.init),
+                    engine: runtime.engine,
+                    tokenizer: runtime.tokenizer,
+                    vocabSize: runtime.vocabSize,
+                    sampling: sampling,
+                    maxTokens: configuration.maxResponseTokens)
+            } else {
+                stream = DecodingStrategyFactory.create(type: .vanilla).decode(
+                    from: .tokens(promptTokens),
+                    tokenizer: runtime.tokenizer,
+                    inferenceEngine: runtime.engine,
+                    samplingConfiguration: sampling,
+                    options: InferenceOptions(
+                        maxTokens: configuration.maxResponseTokens, includeLogits: false),
+                    stopSequences: StopSequences(for: runtime.tokenizer)
+                )
+            }
 
             let requestStart = SuspendingClock.now
             var parser = StreamingTagParser(profile: runtime.outputProfile)

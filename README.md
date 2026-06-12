@@ -20,7 +20,7 @@ Models download automatically from the Hugging Face Hub on first use — no Pyth
 
 | Product | What it gives you |
 |---|---|
-| `CoreAIKit` | `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats), `KitLanguageModel` (FoundationModels provider with tool calling) |
+| `CoreAIKit` | `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats + guided generation), `KitLanguageModel` (FoundationModels provider with tool calling + guided generation) |
 | `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, image preprocessing |
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
@@ -31,6 +31,7 @@ Models download automatically from the Hugging Face Hub on first use — no Pyth
 - `Examples/PhotoSearch` — semantic photo search with CLIP (iOS)
 - `Examples/DepthCamera` — live camera depth with Depth Anything 3 (iOS)
 - `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
+- `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
 - `Examples/DocChat` — on-device RAG over your notes: embeddings + retrieval tool + local LLM (`swift run`)
 
 See `docs/GETTING_STARTED.md`.

@@ -235,10 +235,48 @@ decides when to search.
   cache on the next turn (correctness first). Capped turns (no EOS) hit the append-only
   KV fast path and report `cachedTokenCount` in usage. Set `COREAI_KIT_DEBUG=1` to watch
   the decisions.
-- Guided generation (`@Generable` structured output) is not implemented yet — schema
-  requests throw `unsupportedCapability`.
+- Guided generation needs the sequential engine (per-step logits); on the default
+  pipelined engine schema requests throw `unsupportedCapability`.
 - Usage/metadata events are sent once at end of turn (an upfront usage event
   materializes an empty transcript entry on tool turns in the current beta).
+
+## Guided generation (schema-valid JSON by construction)
+
+Constrained decoding masks the model's per-step logits through a JSON schema's grammar
+(xgrammar bitmask) before sampling — the output **cannot** violate the schema, so there
+are no parse retries. It needs per-step logits, which the default GPU-pipelined engine
+does not expose: load with `engineVariant: .sequential` (slower decode; fine for short
+structured output). Constrained turns can't think — the grammar starts at the JSON.
+
+With `ChatSession` (JSON schema string in, `Codable` out):
+
+```swift
+struct CityFacts: Codable { let name: String; let country: String }
+
+var config = ChatSession.Configuration()
+config.engineVariant = .sequential
+let chat = try await ChatSession(model: .qwen3_0_6B, configuration: config)
+
+let facts = try await chat.respond(
+    to: "Give facts about the capital of Japan.",
+    generating: CityFacts.self,
+    schema: """
+        {"type": "object",
+         "properties": {"name": {"type": "string"}, "country": {"type": "string"}},
+         "required": ["name", "country"]}
+        """)
+```
+
+`respondJSON(to:schema:)` returns the raw JSON text, and `streamGuidedResponse` streams
+it token by token. With FoundationModels, `@Generable` types work end to end:
+
+```swift
+let model = try await KitLanguageModel(model: .qwen3_0_6B, engineVariant: .sequential)
+let session = LanguageModelSession(model: model)
+let plan = try await session.respond(to: "Plan a trip.", generating: TravelPlan.self)
+```
+
+See `Examples/GuidedDemo` for both paths runnable from the command line.
 
 ## Performance notes
 
@@ -253,5 +291,5 @@ decides when to search.
 ## Roadmap
 
 - Tool dialects for more families (gpt-oss harmony, gemma, mistral)
-- Guided generation (constrained decoding on engines that expose logits)
+- Guided generation on the pipelined engine (needs an engine logits path)
 - More typed CV pipelines (depth, detection) over `GraphModel`
