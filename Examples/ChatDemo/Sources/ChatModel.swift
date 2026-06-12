@@ -1,26 +1,6 @@
-import CoreAIKit
+import CoreAIKitUI
 import Foundation
 import Observation
-
-struct Starter: Identifiable, Hashable {
-    let name: String
-    let model: ModelID
-    let sizeMB: Int?
-    var id: String { model.repo }
-
-    var label: String {
-        sizeMB.map { "\(name) (\($0) MB)" } ?? name
-    }
-}
-
-struct Bubble: Identifiable, Equatable {
-    enum Role { case user, assistant }
-    let id = UUID()
-    let role: Role
-    var thinking = ""
-    var content = ""
-    var isStreaming = false
-}
 
 @MainActor
 @Observable
@@ -48,10 +28,10 @@ final class ChatModel {
     }
 
     var status: Status = .idle
-    var bubbles: [Bubble] = []
+    var bubbles: [ChatBubble] = []
     var stats = GenerationStats()
-    var starters: [Starter] = []
-    var selectedStarter: Starter?
+    var entries: [CatalogEntry] = []
+    var selectedEntry: CatalogEntry?
 
     private var session: ChatSession?
 
@@ -62,26 +42,26 @@ final class ChatModel {
         }
     }
 
+    var downloadFraction: Double? {
+        if case .downloading(let f) = status { return f }
+        return nil
+    }
+
     /// Live catalog with the built-in snapshot as offline fallback.
     func loadCatalog() async {
-        guard starters.isEmpty else { return }
-        let catalog = await ModelCatalog.load()
-        starters = catalog.available(.chat).compactMap { entry in
-            entry.modelID.map {
-                Starter(name: entry.name, model: $0, sizeMB: entry.variant?.sizeMB)
-            }
-        }
-        if selectedStarter == nil { selectedStarter = starters.first }
+        guard entries.isEmpty else { return }
+        entries = await ModelCatalog.load().available(.chat)
+        if selectedEntry == nil { selectedEntry = entries.first }
     }
 
     func load() {
-        guard !isBusy, let starter = selectedStarter else { return }
+        guard !isBusy, let model = selectedEntry?.modelID else { return }
         status = .loading
         bubbles = []
         session = nil
         Task {
             do {
-                let session = try await ChatSession(model: starter.model) { progress in
+                let session = try await ChatSession(model: model) { progress in
                     Task { @MainActor in
                         self.status = progress.fraction < 1
                             ? .downloading(progress.fraction) : .loading
@@ -103,10 +83,8 @@ final class ChatModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        bubbles.append(Bubble(role: .user, content: trimmed))
-        var reply = Bubble(role: .assistant)
-        reply.isStreaming = true
-        bubbles.append(reply)
+        bubbles.append(ChatBubble(role: .user, content: trimmed))
+        bubbles.append(ChatBubble(role: .assistant, isStreaming: true))
         status = .generating
 
         Task {

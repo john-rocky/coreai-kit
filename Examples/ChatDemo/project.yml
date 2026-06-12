@@ -28,6 +28,8 @@ targets:
     dependencies:
       - package: coreai-kit
         product: CoreAIKit
+      - package: coreai-kit
+        product: CoreAIKitUI
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.chatdemo

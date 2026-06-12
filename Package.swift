@@ -12,6 +12,8 @@ let package = Package(
         .library(name: "CoreAIKitVision", targets: ["CoreAIKitVision"]),
         // Text embeddings for on-device retrieval/RAG (EmbeddingGemma).
         .library(name: "CoreAIKitEmbeddings", targets: ["CoreAIKitEmbeddings"]),
+        // SwiftUI components: model picker, chat transcript, stats bar.
+        .library(name: "CoreAIKitUI", targets: ["CoreAIKitUI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/coreai-models", from: "0.1.0"),
@@ -40,6 +42,10 @@ let package = Package(
                 "CoreAIKitVision",
                 .product(name: "Transformers", package: "swift-transformers"),
             ]
+        ),
+        .target(
+            name: "CoreAIKitUI",
+            dependencies: ["CoreAIKit"]
         ),
         .testTarget(
             name: "CoreAIKitTests",

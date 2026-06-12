@@ -153,6 +153,14 @@ let out = try await model.run(["pixel_values": .float32(pixels, shape: [1, 3, 22
 let depth = out["depth"]!.floats()
 ```
 
+## SwiftUI components
+
+`CoreAIKitUI` ships the pieces every model app rebuilds — a catalog-driven
+`ModelPickerBar` (selection + load button + status + download progress), a
+`ChatTranscriptView` (bubbles, thinking disclosure, auto-scroll), and a `StatsBar`
+(load / TTFT / tok/s / memory). `Examples/ChatDemo` is built from them; its whole UI
+fits in ~60 lines.
+
 ## Text embeddings and local RAG
 
 `CoreAIKitEmbeddings` gives you on-device text embeddings (EmbeddingGemma, normalized
