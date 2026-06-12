@@ -146,6 +146,22 @@ public final class ObjectDetector: @unchecked Sendable {
             size: bbShape[bbShape.count - 1], mean: SIMD3(0, 0, 0), std: SIMD3(1, 1, 1))
     }
 
+    /// Downloads a split deployment (backbone + head) from the Hub, then loads it
+    /// with per-stage compute-unit preferences.
+    public convenience init(
+        backboneModel: ModelID, headModel: ModelID,
+        store: ModelStore = .default,
+        backboneUnits: GraphModel.ComputeUnits = .neuralEngine,
+        headUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let backboneURL = try await store.download(backboneModel, progress: downloadProgress)
+        let headURL = try await store.download(headModel, progress: downloadProgress)
+        try await self.init(
+            backboneAt: backboneURL, headAt: headURL,
+            backboneUnits: backboneUnits, headUnits: headUnits)
+    }
+
     /// Downloads the bundle from the Hugging Face Hub if needed, then loads it.
     public convenience init(
         model: ModelID = .rfdetrMedium,

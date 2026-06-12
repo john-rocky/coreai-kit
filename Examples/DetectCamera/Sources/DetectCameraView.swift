@@ -6,6 +6,8 @@ enum DetectVariant: String, CaseIterable, Identifiable {
     case nano, medium
     var id: String { rawValue }
     var modelID: ModelID { self == .nano ? .rfdetrNano : .rfdetrMedium }
+    var backboneID: ModelID { self == .nano ? .rfdetrNanoBackbone : .rfdetrMediumBackbone }
+    var headID: ModelID { self == .nano ? .rfdetrNanoHead : .rfdetrMediumHead }
     var bundledName: String { "rfdetr-\(rawValue)_float32" }
 }
 
@@ -207,7 +209,14 @@ final class DetectCameraModel {
                 NSLog("MODEL split sideloaded %@ backbone=ane head=gpu", variant.rawValue)
                 return try await ObjectDetector(backboneAt: bb, headAt: head)
             }
-            NSLog("MODEL split bundles missing; falling back to monolith ane-pref")
+            NSLog("MODEL split downloading %@ backbone=ane head=gpu", variant.rawValue)
+            return try await ObjectDetector(
+                backboneModel: variant.backboneID, headModel: variant.headID
+            ) { progress in
+                Task { @MainActor in
+                    self.status = "Downloading… \(Int(progress.fraction * 100))%"
+                }
+            }
         }
         if FileManager.default.fileExists(atPath: sideloaded.path) {
             NSLog("MODEL sideloaded %@ unit=%@", variant.bundledName, unit.rawValue)

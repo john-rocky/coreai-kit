@@ -67,4 +67,16 @@ extension ModelID {
     /// RF-DETR object detection, large 704px (Apache-2.0, fp32, no NMS).
     public static let rfdetrLarge = ModelID(
         "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-large_float32.aimodel")
+    /// RF-DETR nano split deployment: ViT backbone (pair with `rfdetrNanoHead`).
+    public static let rfdetrNanoBackbone = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-nano_backbone.aimodel")
+    /// RF-DETR nano split deployment: deformable head.
+    public static let rfdetrNanoHead = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-nano_head.aimodel")
+    /// RF-DETR medium split deployment: ViT backbone (pair with `rfdetrMediumHead`).
+    public static let rfdetrMediumBackbone = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-medium_backbone.aimodel")
+    /// RF-DETR medium split deployment: deformable head.
+    public static let rfdetrMediumHead = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-medium_head.aimodel")
 }
