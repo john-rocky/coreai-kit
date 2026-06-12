@@ -23,6 +23,12 @@ public struct ImagePreprocessor: Sendable {
         mean: SIMD3(0.48145466, 0.4578275, 0.40821073),
         std: SIMD3(0.26862954, 0.26130258, 0.27577711))
 
+    /// ImageNet normalization at 224×224 (Depth Anything, DINOv2-family encoders).
+    public static let imagenet224 = ImagePreprocessor(
+        size: 224,
+        mean: SIMD3(0.485, 0.456, 0.406),
+        std: SIMD3(0.229, 0.224, 0.225))
+
     /// Draws into an sRGB RGBA8 context at size×size (high interpolation, close to PIL
     /// BICUBIC), then computes `(pixel/255 - mean) / std` per channel into planar
     /// `[3, size, size]` Float32.

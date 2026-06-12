@@ -96,6 +96,20 @@ public actor ChatSession {
         return text
     }
 
+    /// Compiles the sampler graph and touches the weights (one 1-token generate +
+    /// reset), so the first real turn doesn't pay the warm-up. Optional but recommended
+    /// right after init, while the UI still shows a loading state.
+    public func prewarm() async throws {
+        guard !isGenerating else { return }
+        let seed = runtime.tokenizer.encode(text: "Hi").first.map(Int32.init) ?? 1
+        let stream = try runtime.engine.generate(
+            with: [seed],
+            samplingConfiguration: .greedy,
+            inferenceOptions: InferenceOptions(maxTokens: 1))
+        for try await _ in stream {}
+        try await runtime.engine.reset()
+    }
+
     /// Stops the running generation; the stream completes with the partial message.
     public func cancelGeneration() {
         generationTask?.cancel()

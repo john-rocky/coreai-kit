@@ -15,6 +15,8 @@ public enum VisionError: Error, LocalizedError, Sendable {
     case missingOutput(String)
     case bundleLayout(String)
     case imageRenderFailed
+    case cameraAccessDenied
+    case cameraUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -36,6 +38,10 @@ public enum VisionError: Error, LocalizedError, Sendable {
             return message
         case .imageRenderFailed:
             return "Failed to render the preprocessed image"
+        case .cameraAccessDenied:
+            return "Camera access was denied"
+        case .cameraUnavailable:
+            return "No usable camera was found"
         }
     }
 }

@@ -5,18 +5,11 @@ import Observation
 struct Starter: Identifiable, Hashable {
     let name: String
     let model: ModelID
+    let sizeMB: Int?
     var id: String { model.repo }
 
-    static var all: [Starter] {
-        var list = [
-            Starter(name: "Qwen3 0.6B", model: .qwen3_0_6B),
-            Starter(name: "Qwen3 4B", model: .qwen3_4B),
-        ]
-        #if os(macOS)
-        list.append(Starter(name: "Mistral 7B v0.3", model: .mistral_7B))
-        list.append(Starter(name: "Gemma 3 4B", model: .gemma3_4B))
-        #endif
-        return list
+    var label: String {
+        sizeMB.map { "\(name) (\($0) MB)" } ?? name
     }
 }
 
@@ -36,6 +29,7 @@ final class ChatModel {
         case idle
         case downloading(Double)
         case loading
+        case warming
         case ready
         case generating
         case error(String)
@@ -45,6 +39,7 @@ final class ChatModel {
             case .idle: return "Pick a model"
             case .downloading(let f): return "Downloading… \(Int(f * 100))%"
             case .loading: return "Loading…"
+            case .warming: return "Warming up…"
             case .ready: return "Ready"
             case .generating: return "Generating…"
             case .error(let message): return "Error: \(message)"
@@ -55,20 +50,32 @@ final class ChatModel {
     var status: Status = .idle
     var bubbles: [Bubble] = []
     var stats = GenerationStats()
-    var selectedStarter: Starter = Starter.all[0]
+    var starters: [Starter] = []
+    var selectedStarter: Starter?
 
     private var session: ChatSession?
 
     var isBusy: Bool {
         switch status {
-        case .downloading, .loading, .generating: return true
+        case .downloading, .loading, .warming, .generating: return true
         default: return false
         }
     }
 
+    /// Live catalog with the built-in snapshot as offline fallback.
+    func loadCatalog() async {
+        guard starters.isEmpty else { return }
+        let catalog = await ModelCatalog.load()
+        starters = catalog.available(.chat).compactMap { entry in
+            entry.modelID.map {
+                Starter(name: entry.name, model: $0, sizeMB: entry.variant?.sizeMB)
+            }
+        }
+        if selectedStarter == nil { selectedStarter = starters.first }
+    }
+
     func load() {
-        guard !isBusy else { return }
-        let starter = selectedStarter
+        guard !isBusy, let starter = selectedStarter else { return }
         status = .loading
         bubbles = []
         session = nil
@@ -80,6 +87,8 @@ final class ChatModel {
                             ? .downloading(progress.fraction) : .loading
                     }
                 }
+                self.status = .warming
+                try await session.prewarm()
                 self.session = session
                 self.stats = await session.stats
                 self.status = .ready

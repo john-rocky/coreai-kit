@@ -20,13 +20,14 @@ Models download automatically from the Hugging Face Hub on first use — no Pyth
 
 | Product | What it gives you |
 |---|---|
-| `CoreAIKit` | `ModelStore` (download/cache), `ChatSession` (streaming chat + live stats), `KitLanguageModel` (FoundationModels provider with tool calling) |
-| `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP embeddings), image preprocessing |
+| `CoreAIKit` | `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats), `KitLanguageModel` (FoundationModels provider with tool calling) |
+| `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, image preprocessing |
 
 ## Examples
 
 - `Examples/ChatDemo` — multiplatform chat app (~150 lines)
 - `Examples/PhotoSearch` — semantic photo search with CLIP (iOS)
+- `Examples/DepthCamera` — live camera depth with Depth Anything 3 (iOS)
 - `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
 
 See `docs/GETTING_STARTED.md`.

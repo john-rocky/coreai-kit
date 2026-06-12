@@ -16,6 +16,7 @@ final class ChatSessionSmokeTests: XCTestCase {
         config.maxResponseTokens = 512
         let session = try await ChatSession(
             bundleAt: URL(fileURLWithPath: path), configuration: config)
+        try await session.prewarm()
 
         var sawThinking = false
         var answer = ""

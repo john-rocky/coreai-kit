@@ -80,6 +80,19 @@ Models cache under `Application Support/CoreAIKit/Models`. Manage them with `Mod
 Any other Hugging Face repo with the same bundle layout works:
 `ModelID("org/name", path: "macos")`.
 
+The live list (with download sizes) is also available as a remote catalog — new models
+reach your picker without a package update:
+
+```swift
+let catalog = await ModelCatalog.load()        // falls back to a built-in snapshot offline
+for entry in catalog.available(.chat) {
+    print(entry.name, entry.variant?.sizeMB ?? 0, "MB")   // entry.modelID feeds ChatSession
+}
+```
+
+Tip: call `try await chat.prewarm()` right after init (while your UI still shows a
+loading state) — it compiles the sampler graph so the first turn starts instantly.
+
 ## 4. Use a local bundle
 
 Already have a bundle exported with Apple's recipes (`coreai.llm.export`)?
@@ -113,6 +126,24 @@ let score = ImageTextEncoder.cosineSimilarity(imageVec, textVec)
 
 Embeddings are L2-normalized 512-d vectors; ranking a photo library is one dot product per
 photo (see `Examples/PhotoSearch`).
+
+Monocular depth is two lines (`Examples/DepthCamera` runs it live):
+
+```swift
+let depth = try await DepthEstimator()       // downloads Depth Anything 3 small (~100 MB)
+let map = try await depth.estimateDepth(for: cgImage)
+imageView.image = map.cgImage()              // min-max-normalized grayscale
+```
+
+Live camera pipelines are a for-await loop:
+
+```swift
+for await frame in try await CameraFeed(framesPerSecond: 5).start() {
+    let map = try await depth.estimateDepth(for: frame)
+}
+// The app needs NSCameraUsageDescription; only the newest frame is buffered, so slow
+// consumers skip frames instead of lagging.
+```
 
 Any other stateless `.aimodel` graph runs through the generic `GraphModel`:
 

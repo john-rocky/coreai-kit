@@ -49,4 +49,7 @@ extension ModelID {
     /// CLIP ViT-B/32 joint image+text encoder (fp16). Same bundle on both platforms.
     public static let clipViTB32 = ModelID(
         "mlboydaisuke/clip-vit-base-patch32-CoreAI-official", path: "model")
+    /// Depth Anything 3 (small, fp32). Same bundle on both platforms.
+    public static let depthAnything3Small = ModelID(
+        "mlboydaisuke/depth-anything-3-small-CoreAI-official", path: "model")
 }

@@ -14,6 +14,7 @@ struct ChatView: View {
             statsBar
             inputBar
         }
+        .task { await model.loadCatalog() }
         #if os(macOS)
         .frame(minWidth: 480, minHeight: 560)
         #endif
@@ -22,8 +23,8 @@ struct ChatView: View {
     private var header: some View {
         HStack {
             Picker("Model", selection: $model.selectedStarter) {
-                ForEach(Starter.all) { starter in
-                    Text(starter.name).tag(starter)
+                ForEach(model.starters) { starter in
+                    Text(starter.label).tag(Optional(starter))
                 }
             }
             .fixedSize()
