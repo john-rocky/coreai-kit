@@ -143,6 +143,7 @@ final class DetectCameraModel {
             }
 
             let variantName = "\(variant.rawValue)/\(unit.rawValue)"
+            let maskRenderer = MaskRenderer()
             inferTask = Task.detached { [weak self] in
                 var inferWindow: [Double] = []
                 var windowStart = SuspendingClock.now
@@ -164,7 +165,7 @@ final class DetectCameraModel {
                         }
                         let c = (SuspendingClock.now - start).components
                         let ms = Double(c.seconds) * 1000 + Double(c.attoseconds) / 1e15
-                        let maskImage = Self.compositeMasks(dets)
+                        let maskImage = maskRenderer.composite(dets)
                         Task { @MainActor [weak self] in
                             self?.detections = dets
                             self?.maskImage = maskImage
@@ -268,7 +269,7 @@ final class DetectCameraModel {
         let dets = try await detector.detect(in: image, scoreThreshold: 0.3)
         let ms = millis(since: start)
         for d in dets {
-            let maskPx = d.mask.map { m in m.probabilities.count(where: { $0 > 0.5 }) } ?? -1
+            let maskPx = d.mask.map(\.foregroundCount) ?? -1
             NSLog(
                 "GATE det id=%d %@ score=%.3f box=[%.3f,%.3f,%.3f,%.3f] maskpx=%d",
                 d.classID, d.label, d.score,
@@ -277,42 +278,6 @@ final class DetectCameraModel {
         NSLog(
             "GATE done variant=%@ unit=%@ n=%d time=%.1fms",
             variant.rawValue, unit.rawValue, dets.count, ms)
-    }
-
-    /// Paint all instance masks into one premultiplied-RGBA image (full-frame,
-    /// model mask stride). Ascending score order so the top instance wins overlaps.
-    nonisolated static func compositeMasks(_ dets: [Detection]) -> CGImage? {
-        guard let first = dets.first(where: { $0.mask != nil })?.mask else { return nil }
-        let w = first.width
-        let h = first.height
-        var rgba = [UInt8](repeating: 0, count: w * h * 4)
-        let palette: [(UInt8, UInt8, UInt8)] = [
-            (255, 59, 48), (52, 199, 89), (0, 122, 255), (255, 149, 0),
-            (175, 82, 222), (50, 200, 250), (255, 204, 0), (0, 199, 190), (255, 45, 85),
-        ]
-        let alpha: UInt8 = 110
-        for det in dets.sorted(by: { $0.score < $1.score }) {
-            guard let mask = det.mask, mask.width == w, mask.height == h else { continue }
-            let (r, g, b) = palette[det.classID % palette.count]
-            // premultiplied components for the chosen alpha
-            let pr = UInt8(Int(r) * Int(alpha) / 255)
-            let pg = UInt8(Int(g) * Int(alpha) / 255)
-            let pb = UInt8(Int(b) * Int(alpha) / 255)
-            for i in 0..<(w * h) where mask.probabilities[i] > 0.5 {
-                rgba[i * 4] = pr
-                rgba[i * 4 + 1] = pg
-                rgba[i * 4 + 2] = pb
-                rgba[i * 4 + 3] = alpha
-            }
-        }
-        let data = Data(rgba)
-        guard let provider = CGDataProvider(data: data as CFData) else { return nil }
-        return CGImage(
-            width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-            provider: provider, decode: nil, shouldInterpolate: true,
-            intent: .defaultIntent)
     }
 
     /// Debug: write the raw delivered buffer to Documents for host-side inspection.

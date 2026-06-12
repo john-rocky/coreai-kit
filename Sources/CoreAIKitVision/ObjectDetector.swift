@@ -14,12 +14,37 @@ import CoreVideo
 import Foundation
 
 /// A per-instance segmentation mask covering the FULL frame at the model's mask
-/// stride (RF-DETR-Seg: input/4). Values are sigmoid probabilities in [0, 1];
-/// threshold at 0.5. Same normalized space as `Detection.box`.
+/// stride (RF-DETR-Seg: input/4). Stored as raw logits — foreground is simply
+/// `logit > 0` (≡ sigmoid > 0.5), so binarization needs no transcendental math.
+/// Same normalized space as `Detection.box`.
 public struct InstanceMask: Sendable {
     public let width: Int
     public let height: Int
-    public let probabilities: [Float]
+    /// Raw mask logits, row-major.
+    public let logits: [Float]
+
+    public init(width: Int, height: Int, logits: [Float]) {
+        self.width = width
+        self.height = height
+        self.logits = logits
+    }
+
+    /// Number of foreground pixels (logit > 0 ⇔ sigmoid > 0.5).
+    public var foregroundCount: Int {
+        logits.count(where: { $0 > 0 })
+    }
+
+    /// Sigmoid probabilities, computed vectorized on demand (display/IoU use
+    /// the logits directly; only soft-probability consumers need this).
+    public var probabilities: [Float] {
+        var negated = [Float](repeating: 0, count: logits.count)
+        vDSP.negative(logits, result: &negated)
+        var exps = [Float](repeating: 0, count: logits.count)
+        vvexpf(&exps, negated, [Int32(logits.count)])
+        vDSP.add(1, exps, result: &exps)
+        vDSP.divide(1, exps, result: &exps)
+        return exps
+    }
 }
 
 /// One detected object, in normalized image coordinates (origin top-left).
@@ -278,11 +303,9 @@ public final class ObjectDetector: @unchecked Sendable {
             var mask: InstanceMask?
             if let maskFloats, maskH > 0 {
                 let plane = maskH * maskW
-                var probs = [Float](repeating: 0, count: plane)
-                for i in 0..<plane {
-                    probs[i] = 1 / (1 + exp(-maskFloats[q * plane + i]))
-                }
-                mask = InstanceMask(width: maskW, height: maskH, probabilities: probs)
+                mask = InstanceMask(
+                    width: maskW, height: maskH,
+                    logits: Array(maskFloats[q * plane..<(q + 1) * plane]))
             }
             found.append(
                 Detection(

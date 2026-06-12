@@ -46,6 +46,17 @@ logs every confident detection (`GATE det …`) plus live timing windows (`STATS
 median inference ms and end-to-end wall FPS) — watch them with
 `devicectl device process launch --console`.
 
+### Mask rendering (vectorized)
+
+Masks follow the yolo-ios-app rendering recipe: `InstanceMask` stores raw
+logits (foreground ⇔ logit > 0 ≡ sigmoid > 0.5, so binarization needs no
+transcendental math at all), and `MaskRenderer` composites every instance into
+one premultiplied-RGBA bitmap with vDSP — binarize via `vDSP_vlim`, blend
+`plane + m·(color − plane)` per channel, one strided float→u8 pass at the end.
+No per-pixel Swift loops; scratch buffers are reused across frames, so the
+cost stays sub-millisecond from seg-nano's 78² grid up to seg-2xlarge's 192².
+Device-verified: identical gate mask pixel counts before/after vectorization.
+
 ### Capture-rate tuning (measured)
 
 Capture rate trades against inference latency — the ISP and preview compete with the
