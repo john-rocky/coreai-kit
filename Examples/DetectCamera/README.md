@@ -49,12 +49,16 @@ median inference ms and end-to-end wall FPS) — watch them with
 ### Capture-rate tuning (measured)
 
 Capture rate trades against inference latency — the ISP and preview compete with the
-GPU. On iPhone 17 Pro with nano: 30 fps capture phase-locks the loop to ~30 FPS;
-**60 fps capture + hardware-scaled data buffers is the sweet spot (33–39 FPS)**; 60 fps
-*without* `dataOutputSize` slows inference 25→39 ms and LOWERS throughput. Two traps
-worth knowing: a `sessionPreset` commit resets custom frame durations (configure the
-device *after* `commitConfiguration`), and the preset's default 720p format may top out
-at 30 fps (switch `activeFormat` to the 60 fps sibling). Bench/debug hooks
+GPU. On iPhone 17 Pro with nano, **true 60 fps capture + the two-task pipeline is the
+sweet spot (33–39 FPS)**; 30 fps capture phase-locks the loop (a ~27 ms model rides the
+33 ms frame grid and can drop to every other frame). Three traps worth knowing: a
+`sessionPreset` commit resets custom frame durations (configure the device *after*
+`commitConfiguration`); the preset's default 720p format tops out at 30 fps, so
+`CameraFeed` switches `activeFormat` to the 60 fps sibling; and the
+kCVPixelBufferWidth/Height data-output scaling request (`dataOutputSize`) is silently
+ignored on iOS 27 beta — buffers arrive at full session resolution (verified by
+dumping a frame), so don't attribute wins to it. Throughput numbers move with chassis
+temperature; compare runs back-to-back with cooldowns. Bench/debug hooks
 (launch environment): `DETECT_VARIANT=nano|medium`, `DETECT_FPS=<n>`,
 `DETECT_TESTBOX=1` (replace detections with corner/center reference boxes to
 validate overlay mapping via screenshot), `DETECT_DUMP=1` (write the first
