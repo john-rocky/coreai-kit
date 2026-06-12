@@ -89,6 +89,7 @@ final class DetectCameraModel {
             // are fire-and-forget hops so they never sit on the inference path.
             let (prepared, preparedCont) = AsyncStream<ObjectDetector.PreparedInput>
                 .makeStream(bufferingPolicy: .bufferingNewest(1))
+            let dumpFrame = ProcessInfo.processInfo.environment["DETECT_DUMP"] == "1"
             prepTask = Task.detached { [weak self] in
                 var first = true
                 for await frame in frames {
@@ -99,6 +100,7 @@ final class DetectCameraModel {
                             width: CVPixelBufferGetWidth(frame.pixelBuffer),
                             height: CVPixelBufferGetHeight(frame.pixelBuffer))
                         Task { @MainActor [weak self] in self?.frameSize = size }
+                        if dumpFrame { Self.dump(frame.pixelBuffer) }
                     }
                     if let input = try? detector.prepare(frame.pixelBuffer) {
                         preparedCont.yield(input)
@@ -115,7 +117,18 @@ final class DetectCameraModel {
                     for await input in prepared {
                         if Task.isCancelled { break }
                         let start = SuspendingClock.now
-                        let dets = try await detector.detect(input, scoreThreshold: 0.5)
+                        var dets = try await detector.detect(input, scoreThreshold: 0.5)
+                        if ProcessInfo.processInfo.environment["DETECT_TESTBOX"] == "1" {
+                            // debug: known normalized positions to validate overlay mapping
+                            dets = [
+                                (0.05, 0.05, "TL"), (0.75, 0.05, "TR"), (0.4, 0.4, "C"),
+                                (0.05, 0.75, "BL"), (0.75, 0.75, "BR"),
+                            ].enumerated().map { i, p in
+                                Detection(
+                                    classID: i + 1, label: p.2, score: 0.99,
+                                    box: CGRect(x: p.0, y: p.1, width: 0.2, height: 0.2))
+                            }
+                        }
                         let c = (SuspendingClock.now - start).components
                         let ms = Double(c.seconds) * 1000 + Double(c.attoseconds) / 1e15
                         Task { @MainActor [weak self] in self?.detections = dets }
@@ -195,6 +208,23 @@ final class DetectCameraModel {
                 d.box.origin.x, d.box.origin.y, d.box.width, d.box.height)
         }
         NSLog("GATE done variant=%@ n=%d time=%.1fms", variant.rawValue, dets.count, ms)
+    }
+
+    /// Debug: write the raw delivered buffer to Documents for host-side inspection.
+    nonisolated static func dump(_ buffer: CVPixelBuffer) {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer) else { return }
+        let w = CVPixelBufferGetWidth(buffer)
+        let h = CVPixelBufferGetHeight(buffer)
+        let stride = CVPixelBufferGetBytesPerRow(buffer)
+        var data = Data()
+        var header = [Int32(w), Int32(h), Int32(stride)]
+        data.append(Data(bytes: &header, count: 12))
+        data.append(Data(bytes: base, count: stride * h))
+        let url = URL.documentsDirectory.appending(path: "framedump.bin")
+        try? data.write(to: url)
+        NSLog("DUMP wrote %dx%d stride=%d to %@", w, h, stride, url.path)
     }
 
     private func millis(since start: SuspendingClock.Instant) -> Double {
@@ -293,27 +323,33 @@ struct DetectionOverlay: View {
                 geo.size.width / frameSize.width, geo.size.height / frameSize.height)
             let offsetX = (geo.size.width - frameSize.width * scale) / 2
             let offsetY = (geo.size.height - frameSize.height * scale) / 2
-            ForEach(detections) { det in
-                let rect = CGRect(
-                    x: det.box.origin.x * frameSize.width * scale + offsetX,
-                    y: det.box.origin.y * frameSize.height * scale + offsetY,
-                    width: det.box.width * frameSize.width * scale,
-                    height: det.box.height * frameSize.height * scale)
-                let color = Self.palette[det.classID % Self.palette.count]
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(color, lineWidth: 3)
-                    Text("\(det.label) \(String(format: "%.2f", det.score))")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(color, in: RoundedRectangle(cornerRadius: 3))
-                        .offset(y: -16)
+            // One top-leading ZStack with offset children; clip ONCE at the overlay
+            // bounds. (.clipped() per ForEach child clips at the child's pre-offset
+            // layout rect — every box away from the origin vanishes.)
+            ZStack(alignment: .topLeading) {
+                ForEach(detections) { det in
+                    let rect = CGRect(
+                        x: det.box.origin.x * frameSize.width * scale + offsetX,
+                        y: det.box.origin.y * frameSize.height * scale + offsetY,
+                        width: det.box.width * frameSize.width * scale,
+                        height: det.box.height * frameSize.height * scale)
+                    let color = Self.palette[det.classID % Self.palette.count]
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(color, lineWidth: 3)
+                        Text("\(det.label) \(String(format: "%.2f", det.score))")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(color, in: RoundedRectangle(cornerRadius: 3))
+                            .offset(y: -16)
+                    }
+                    .frame(width: rect.width, height: rect.height)
+                    .offset(x: rect.origin.x, y: rect.origin.y)
                 }
-                .frame(width: rect.width, height: rect.height)
-                .offset(x: rect.origin.x, y: rect.origin.y)
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .clipped()
         }
     }

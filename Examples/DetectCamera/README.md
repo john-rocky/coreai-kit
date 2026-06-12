@@ -54,8 +54,11 @@ GPU. On iPhone 17 Pro with nano: 30 fps capture phase-locks the loop to ~30 FPS;
 *without* `dataOutputSize` slows inference 25→39 ms and LOWERS throughput. Two traps
 worth knowing: a `sessionPreset` commit resets custom frame durations (configure the
 device *after* `commitConfiguration`), and the preset's default 720p format may top out
-at 30 fps (switch `activeFormat` to the 60 fps sibling). Bench hooks:
-`DETECT_VARIANT=nano|medium`, `DETECT_FPS=<n>` in the launch environment.
+at 30 fps (switch `activeFormat` to the 60 fps sibling). Bench/debug hooks
+(launch environment): `DETECT_VARIANT=nano|medium`, `DETECT_FPS=<n>`,
+`DETECT_TESTBOX=1` (replace detections with corner/center reference boxes to
+validate overlay mapping via screenshot), `DETECT_DUMP=1` (write the first
+delivered buffer to Documents/framedump.bin for host-side inspection).
 
 ### Sideloading models during development
 

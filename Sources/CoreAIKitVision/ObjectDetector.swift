@@ -24,6 +24,13 @@ public struct Detection: Sendable, Identifiable {
     public let score: Float
     /// Normalized bounding box, origin top-left, all components in [0, 1].
     public let box: CGRect
+
+    public init(classID: Int, label: String, score: Float, box: CGRect) {
+        self.classID = classID
+        self.label = label
+        self.score = score
+        self.box = box
+    }
 }
 
 public final class ObjectDetector: @unchecked Sendable {
