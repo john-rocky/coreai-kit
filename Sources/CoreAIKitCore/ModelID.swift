@@ -79,4 +79,10 @@ extension ModelID {
     /// RF-DETR medium split deployment: deformable head.
     public static let rfdetrMediumHead = ModelID(
         "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-medium_head.aimodel")
+    /// RF-DETR-Seg nano 312px instance segmentation (Apache-2.0, fp32, no NMS).
+    public static let rfdetrSegNano = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-nano_float32.aimodel")
+    /// RF-DETR-Seg medium 432px instance segmentation (Apache-2.0, fp32, no NMS).
+    public static let rfdetrSegMedium = ModelID(
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-medium_float32.aimodel")
 }

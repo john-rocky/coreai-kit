@@ -4,10 +4,24 @@ import SwiftUI
 
 enum DetectVariant: String, CaseIterable, Identifiable {
     case nano, medium
+    case segNano = "seg-nano"
     var id: String { rawValue }
-    var modelID: ModelID { self == .nano ? .rfdetrNano : .rfdetrMedium }
-    var backboneID: ModelID { self == .nano ? .rfdetrNanoBackbone : .rfdetrMediumBackbone }
-    var headID: ModelID { self == .nano ? .rfdetrNanoHead : .rfdetrMediumHead }
+    var title: String { self == .segNano ? "Seg" : rawValue.capitalized }
+    var modelID: ModelID {
+        switch self {
+        case .nano: .rfdetrNano
+        case .medium: .rfdetrMedium
+        case .segNano: .rfdetrSegNano
+        }
+    }
+    /// Split (backbone/head) bundles exist for the detection variants only.
+    var splitIDs: (backbone: ModelID, head: ModelID)? {
+        switch self {
+        case .nano: (.rfdetrNanoBackbone, .rfdetrNanoHead)
+        case .medium: (.rfdetrMediumBackbone, .rfdetrMediumHead)
+        case .segNano: nil
+        }
+    }
     var bundledName: String { "rfdetr-\(rawValue)_float32" }
 }
 
@@ -21,6 +35,7 @@ enum DetectUnit: String, CaseIterable, Identifiable {
 @Observable
 final class DetectCameraModel {
     var detections: [Detection] = []
+    var maskImage: CGImage?
     /// Capture frame size (post-rotation, portrait) — the space detections live in.
     var frameSize = CGSize(width: 720, height: 1280)
     var session: AVCaptureSession?
@@ -149,7 +164,11 @@ final class DetectCameraModel {
                         }
                         let c = (SuspendingClock.now - start).components
                         let ms = Double(c.seconds) * 1000 + Double(c.attoseconds) / 1e15
-                        Task { @MainActor [weak self] in self?.detections = dets }
+                        let maskImage = Self.compositeMasks(dets)
+                        Task { @MainActor [weak self] in
+                            self?.detections = dets
+                            self?.maskImage = maskImage
+                        }
                         inferWindow.append(ms)
                         if inferWindow.count == 30 {
                             let w = (SuspendingClock.now - windowStart).components
@@ -195,7 +214,7 @@ final class DetectCameraModel {
     private func loadDetector() async throws -> ObjectDetector {
         let sideloaded = URL.documentsDirectory
             .appending(path: "Models/\(variant.bundledName).aimodel")
-        if unit == .ane {
+        if unit == .ane, let split = variant.splitIDs {
             // ANE value needs the split deployment: a monolithic graph keeps the
             // whole model on the GPU delegate (the deformable head is not
             // ANE-lowerable). Backbone -> .neuralEngine, head -> .gpu.
@@ -211,7 +230,7 @@ final class DetectCameraModel {
             }
             NSLog("MODEL split downloading %@ backbone=ane head=gpu", variant.rawValue)
             return try await ObjectDetector(
-                backboneModel: variant.backboneID, headModel: variant.headID
+                backboneModel: split.backbone, headModel: split.head
             ) { progress in
                 Task { @MainActor in
                     self.status = "Downloading… \(Int(progress.fraction * 100))%"
@@ -249,14 +268,51 @@ final class DetectCameraModel {
         let dets = try await detector.detect(in: image, scoreThreshold: 0.3)
         let ms = millis(since: start)
         for d in dets {
+            let maskPx = d.mask.map { m in m.probabilities.count(where: { $0 > 0.5 }) } ?? -1
             NSLog(
-                "GATE det id=%d %@ score=%.3f box=[%.3f,%.3f,%.3f,%.3f]",
+                "GATE det id=%d %@ score=%.3f box=[%.3f,%.3f,%.3f,%.3f] maskpx=%d",
                 d.classID, d.label, d.score,
-                d.box.origin.x, d.box.origin.y, d.box.width, d.box.height)
+                d.box.origin.x, d.box.origin.y, d.box.width, d.box.height, maskPx)
         }
         NSLog(
             "GATE done variant=%@ unit=%@ n=%d time=%.1fms",
             variant.rawValue, unit.rawValue, dets.count, ms)
+    }
+
+    /// Paint all instance masks into one premultiplied-RGBA image (full-frame,
+    /// model mask stride). Ascending score order so the top instance wins overlaps.
+    nonisolated static func compositeMasks(_ dets: [Detection]) -> CGImage? {
+        guard let first = dets.first(where: { $0.mask != nil })?.mask else { return nil }
+        let w = first.width
+        let h = first.height
+        var rgba = [UInt8](repeating: 0, count: w * h * 4)
+        let palette: [(UInt8, UInt8, UInt8)] = [
+            (255, 59, 48), (52, 199, 89), (0, 122, 255), (255, 149, 0),
+            (175, 82, 222), (50, 200, 250), (255, 204, 0), (0, 199, 190), (255, 45, 85),
+        ]
+        let alpha: UInt8 = 110
+        for det in dets.sorted(by: { $0.score < $1.score }) {
+            guard let mask = det.mask, mask.width == w, mask.height == h else { continue }
+            let (r, g, b) = palette[det.classID % palette.count]
+            // premultiplied components for the chosen alpha
+            let pr = UInt8(Int(r) * Int(alpha) / 255)
+            let pg = UInt8(Int(g) * Int(alpha) / 255)
+            let pb = UInt8(Int(b) * Int(alpha) / 255)
+            for i in 0..<(w * h) where mask.probabilities[i] > 0.5 {
+                rgba[i * 4] = pr
+                rgba[i * 4 + 1] = pg
+                rgba[i * 4 + 2] = pb
+                rgba[i * 4 + 3] = alpha
+            }
+        }
+        let data = Data(rgba)
+        guard let provider = CGDataProvider(data: data as CFData) else { return nil }
+        return CGImage(
+            width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: true,
+            intent: .defaultIntent)
     }
 
     /// Debug: write the raw delivered buffer to Documents for host-side inspection.
@@ -292,7 +348,8 @@ struct DetectCameraView: View {
                     CameraPreviewView(session: session)
                         .overlay {
                             DetectionOverlay(
-                                detections: model.detections, frameSize: model.frameSize)
+                                detections: model.detections, frameSize: model.frameSize,
+                                maskImage: model.maskImage)
                         }
                 } else {
                     Rectangle()
@@ -306,7 +363,7 @@ struct DetectCameraView: View {
             HStack(spacing: 8) {
                 Picker("Model", selection: $model.variant) {
                     ForEach(DetectVariant.allCases) { v in
-                        Text(v.rawValue.capitalized).tag(v)
+                        Text(v.title).tag(v)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -371,6 +428,7 @@ struct DetectionOverlay: View {
     let detections: [Detection]
     /// Size of the capture frame the normalized boxes refer to.
     let frameSize: CGSize
+    var maskImage: CGImage?
 
     private static let palette: [Color] = [
         .red, .green, .blue, .orange, .purple, .cyan, .yellow, .mint, .pink,
@@ -388,6 +446,13 @@ struct DetectionOverlay: View {
             // bounds. (.clipped() per ForEach child clips at the child's pre-offset
             // layout rect — every box away from the origin vanishes.)
             ZStack(alignment: .topLeading) {
+                if let maskImage {
+                    Image(decorative: maskImage, scale: 1)
+                        .resizable()
+                        .frame(
+                            width: frameSize.width * scale, height: frameSize.height * scale)
+                        .offset(x: offsetX, y: offsetY)
+                }
                 ForEach(detections) { det in
                     let rect = CGRect(
                         x: det.box.origin.x * frameSize.width * scale + offsetX,

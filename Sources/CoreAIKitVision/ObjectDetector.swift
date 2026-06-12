@@ -13,6 +13,15 @@ import CoreGraphics
 import CoreVideo
 import Foundation
 
+/// A per-instance segmentation mask covering the FULL frame at the model's mask
+/// stride (RF-DETR-Seg: input/4). Values are sigmoid probabilities in [0, 1];
+/// threshold at 0.5. Same normalized space as `Detection.box`.
+public struct InstanceMask: Sendable {
+    public let width: Int
+    public let height: Int
+    public let probabilities: [Float]
+}
+
 /// One detected object, in normalized image coordinates (origin top-left).
 public struct Detection: Sendable, Identifiable {
     public let id = UUID()
@@ -24,12 +33,17 @@ public struct Detection: Sendable, Identifiable {
     public let score: Float
     /// Normalized bounding box, origin top-left, all components in [0, 1].
     public let box: CGRect
+    /// Instance mask (segmentation models only).
+    public let mask: InstanceMask?
 
-    public init(classID: Int, label: String, score: Float, box: CGRect) {
+    public init(
+        classID: Int, label: String, score: Float, box: CGRect, mask: InstanceMask? = nil
+    ) {
         self.classID = classID
         self.label = label
         self.score = score
         self.box = box
+        self.mask = mask
     }
 }
 
@@ -219,7 +233,7 @@ public final class ObjectDetector: @unchecked Sendable {
     private func detect(
         pixels: [Float], scoreThreshold: Float, maxDetections: Int
     ) async throws -> [Detection] {
-        let outputs: [String: TensorValue]
+        var outputs: [String: TensorValue]
         if let backbone {
             let feats = try await backbone.run(
                 [backboneInput: .float32(pixels, shape: imageShape)])
@@ -238,6 +252,11 @@ public final class ObjectDetector: @unchecked Sendable {
         let logits = labels.floats()
         let queries = dets.shape[1]
         let classes = labels.shape[2]
+        // segmentation models add masks [1, Q, H/4, W/4]
+        let maskTensor = outputs["masks"]
+        let maskFloats = maskTensor?.floats()
+        let maskH = maskTensor?.shape[2] ?? 0
+        let maskW = maskTensor?.shape[3] ?? 0
 
         var found: [Detection] = []
         for q in 0..<queries {
@@ -256,10 +275,20 @@ public final class ObjectDetector: @unchecked Sendable {
             let cy = CGFloat(boxes[q * 4 + 1])
             let w = CGFloat(boxes[q * 4 + 2])
             let h = CGFloat(boxes[q * 4 + 3])
+            var mask: InstanceMask?
+            if let maskFloats, maskH > 0 {
+                let plane = maskH * maskW
+                var probs = [Float](repeating: 0, count: plane)
+                for i in 0..<plane {
+                    probs[i] = 1 / (1 + exp(-maskFloats[q * plane + i]))
+                }
+                mask = InstanceMask(width: maskW, height: maskH, probabilities: probs)
+            }
             found.append(
                 Detection(
                     classID: bestClass, label: label, score: score,
-                    box: CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h)))
+                    box: CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h),
+                    mask: mask))
         }
         found.sort { $0.score > $1.score }
         if found.count > maxDetections { found.removeLast(found.count - maxDetections) }
