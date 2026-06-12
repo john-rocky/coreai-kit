@@ -9,6 +9,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case chat
         case imageText
         case depth
+        case textEmbedding
     }
 
     public struct Variant: Sendable, Codable, Hashable {
@@ -133,6 +134,13 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "model", sizeMB: 101),
                     "ios": .init(path: "model", sizeMB: 101),
+                ]),
+            CatalogEntry(
+                id: "embeddinggemma-300m", name: "EmbeddingGemma 300m",
+                repo: "mlboydaisuke/embeddinggemma-300m-CoreAI", kind: .textEmbedding,
+                variants: [
+                    "macos": .init(path: "model", sizeMB: 1230),
+                    "ios": .init(path: "model", sizeMB: 1230),
                 ]),
         ])
 }

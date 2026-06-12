@@ -7,9 +7,11 @@ let package = Package(
     products: [
         // LLM: ModelStore + ChatSession + FoundationModels provider (tool calling).
         .library(name: "CoreAIKit", targets: ["CoreAIKit"]),
-        // CV: generic graph runner + typed pipelines (CLIP). Links only the system
-        // CoreAI framework — no LLM runtime is pulled in.
+        // CV: generic graph runner + typed pipelines (CLIP, depth, camera). Links only
+        // the system CoreAI framework — no LLM runtime is pulled in.
         .library(name: "CoreAIKitVision", targets: ["CoreAIKitVision"]),
+        // Text embeddings for on-device retrieval/RAG (EmbeddingGemma).
+        .library(name: "CoreAIKitEmbeddings", targets: ["CoreAIKitEmbeddings"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/coreai-models", from: "0.1.0"),
@@ -31,9 +33,17 @@ let package = Package(
             dependencies: ["CoreAIKitCore"],
             linkerSettings: [.linkedFramework("CoreAI")]
         ),
+        .target(
+            name: "CoreAIKitEmbeddings",
+            dependencies: [
+                "CoreAIKitCore",
+                "CoreAIKitVision",
+                .product(name: "Transformers", package: "swift-transformers"),
+            ]
+        ),
         .testTarget(
             name: "CoreAIKitTests",
-            dependencies: ["CoreAIKit", "CoreAIKitVision"]
+            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings"]
         ),
     ]
 )

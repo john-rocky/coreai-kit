@@ -153,6 +153,29 @@ let out = try await model.run(["pixel_values": .float32(pixels, shape: [1, 3, 22
 let depth = out["depth"]!.floats()
 ```
 
+## Text embeddings and local RAG
+
+`CoreAIKitEmbeddings` gives you on-device text embeddings (EmbeddingGemma, normalized
+768-d, multilingual):
+
+```swift
+import CoreAIKitEmbeddings
+
+let embedder = try await TextEmbedder()        // downloads EmbeddingGemma (~590 MB)
+let doc = try await embedder.embed(document: "Tokyo is the capital of Japan.")
+let query = try await embedder.embed(query: "what is the capital of Japan")
+let score = TextEmbedder.cosineSimilarity(doc, query)
+```
+
+The asymmetric retrieval prompts (query vs document) are applied automatically. Combine
+with `KitLanguageModel` and a retrieval `Tool` for complete on-device RAG — the model
+decides when to search, the framework executes it, and the answer is grounded on your
+documents. `Examples/DocChat` is the whole loop in ~150 lines:
+
+```bash
+swift run -c release DocChat ~/notes "What do my notes say about the bike trip?"
+```
+
 ## Tool calling with LanguageModelSession
 
 `KitLanguageModel` puts a Core AI bundle behind Apple's FoundationModels session API —

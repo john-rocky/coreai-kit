@@ -60,6 +60,16 @@
         "macos": { "path": "model", "sizeMB": 101 },
         "ios": { "path": "model", "sizeMB": 101 }
       }
+    },
+    {
+      "id": "embeddinggemma-300m",
+      "name": "EmbeddingGemma 300m",
+      "repo": "mlboydaisuke/embeddinggemma-300m-CoreAI",
+      "kind": "textEmbedding",
+      "variants": {
+        "macos": { "path": "model", "sizeMB": 1230 },
+        "ios": { "path": "model", "sizeMB": 1230 }
+      }
     }
   ]
 }

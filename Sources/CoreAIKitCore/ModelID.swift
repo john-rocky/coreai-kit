@@ -52,4 +52,7 @@ extension ModelID {
     /// Depth Anything 3 (small, fp32). Same bundle on both platforms.
     public static let depthAnything3Small = ModelID(
         "mlboydaisuke/depth-anything-3-small-CoreAI-official", path: "model")
+    /// EmbeddingGemma 300m text embeddings (fp16, 768-d). Same bundle on both platforms.
+    public static let embeddingGemma300m = ModelID(
+        "mlboydaisuke/embeddinggemma-300m-CoreAI", path: "model")
 }
