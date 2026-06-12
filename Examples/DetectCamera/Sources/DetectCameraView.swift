@@ -19,6 +19,8 @@ final class DetectCameraModel {
     var status = "Loading model…"
     var inferenceMS: Double?
     var wallFPS: Double?
+    /// Non-nil when the system reports thermal pressure (the GPU is throttled).
+    var thermal: String?
     var variant: DetectVariant = .nano {
         didSet { if oldValue != variant { restart() } }
     }
@@ -138,13 +140,19 @@ final class DetectCameraModel {
                             let wall = Double(w.seconds) * 1000 + Double(w.attoseconds) / 1e15
                             let sorted = inferWindow.sorted()
                             let fps = 30_000 / wall
+                            let proc = ProcessInfo.processInfo
+                            let thermal = ["nominal", "fair", "serious", "critical"][
+                                min(proc.thermalState.rawValue, 3)]
+                            let lpm = proc.isLowPowerModeEnabled
                             NSLog(
-                                "STATS variant=%@ median=%.1fms mean=%.1fms wallFPS=%.1f",
+                                "STATS variant=%@ median=%.1fms mean=%.1fms wallFPS=%.1f thermal=%@%@",
                                 variantName, sorted[15],
-                                inferWindow.reduce(0, +) / 30, fps)
+                                inferWindow.reduce(0, +) / 30, fps, thermal,
+                                lpm ? " lowPower=1" : "")
                             Task { @MainActor [weak self] in
                                 self?.inferenceMS = sorted[15]
                                 self?.wallFPS = fps
+                                self?.thermal = proc.thermalState == .nominal ? nil : thermal
                             }
                             inferWindow.removeAll()
                             windowStart = SuspendingClock.now
@@ -264,6 +272,9 @@ struct DetectCameraView: View {
 
             HStack {
                 Text(model.status)
+                if let thermal = model.thermal {
+                    Text("🌡️ \(thermal)").foregroundStyle(.orange)
+                }
                 Spacer()
                 if let ms = model.inferenceMS {
                     Text(String(format: "%.0f ms", ms))
