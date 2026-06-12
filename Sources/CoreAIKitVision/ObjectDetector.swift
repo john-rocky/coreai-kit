@@ -3,8 +3,14 @@
 // (ImageNet normalization folded in-graph) -> dets [1, Q, 4] cxcywh normalized +
 // labels [1, Q, C] raw logits where the column index is the ORIGINAL COCO id.
 // DETR-family models need no NMS: decode is sigmoid + threshold.
+//
+// Two input paths: CGImage (simple) and CVPixelBuffer (real-time fast path —
+// vImage scale + vDSP channel split straight from the capture buffer, no
+// CGImage/CIContext round-trip, reused scratch buffers).
 
+import Accelerate
 import CoreGraphics
+import CoreVideo
 import Foundation
 
 /// One detected object, in normalized image coordinates (origin top-left).
@@ -101,6 +107,44 @@ public final class ObjectDetector: @unchecked Sendable {
         maxDetections: Int = 50
     ) async throws -> [Detection] {
         let pixels = try preprocessor.chw(from: image)
+        return try await detect(pixels: pixels, scoreThreshold: scoreThreshold, maxDetections: maxDetections)
+    }
+
+    /// Real-time fast path: detects objects in a 32BGRA capture buffer. vImage scales
+    /// the frame to the model input and vDSP splits channels into planar [0,1] RGB —
+    /// no CGImage/CIContext round-trip, scratch buffers reused across calls.
+    public func detect(
+        in pixelBuffer: CVPixelBuffer,
+        scoreThreshold: Float = 0.5,
+        maxDetections: Int = 50
+    ) async throws -> [Detection] {
+        let pixels = try chwFloats(from: pixelBuffer)
+        return try await detect(pixels: pixels, scoreThreshold: scoreThreshold, maxDetections: maxDetections)
+    }
+
+    /// A preprocessed frame, ready for `detect(_:)`. Lets a pipeline overlap CPU
+    /// preprocessing of frame N+1 with GPU inference of frame N.
+    public struct PreparedInput: Sendable {
+        let pixels: [Float]
+    }
+
+    /// CPU half of the fast path (vImage scale + channel split). Thread-safe.
+    public func prepare(_ pixelBuffer: CVPixelBuffer) throws -> PreparedInput {
+        PreparedInput(pixels: try chwFloats(from: pixelBuffer))
+    }
+
+    /// GPU half of the fast path.
+    public func detect(
+        _ input: PreparedInput,
+        scoreThreshold: Float = 0.5,
+        maxDetections: Int = 50
+    ) async throws -> [Detection] {
+        try await detect(pixels: input.pixels, scoreThreshold: scoreThreshold, maxDetections: maxDetections)
+    }
+
+    private func detect(
+        pixels: [Float], scoreThreshold: Float, maxDetections: Int
+    ) async throws -> [Detection] {
         let outputs = try await graph.run(
             [imageInput: .float32(pixels, shape: imageShape)])
         guard let dets = outputs[detsOutput], let labels = outputs[labelsOutput] else {
@@ -136,6 +180,66 @@ public final class ObjectDetector: @unchecked Sendable {
         found.sort { $0.score > $1.score }
         if found.count > maxDetections { found.removeLast(found.count - maxDetections) }
         return found
+    }
+
+    // MARK: - CVPixelBuffer preprocessing (reused scratch, no CGImage)
+
+    private let prepLock = NSLock()
+    private var scaledBGRA: [UInt8] = []
+    private var channelScratch: [Float] = []
+
+    private func chwFloats(from pixelBuffer: CVPixelBuffer) throws -> [Float] {
+        guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA
+        else {
+            throw VisionError.bundleLayout("detect(in:) expects a 32BGRA pixel buffer")
+        }
+        let side = inputSize
+        let pixelCount = side * side
+
+        prepLock.lock()
+        defer { prepLock.unlock() }
+        if scaledBGRA.count != pixelCount * 4 {
+            scaledBGRA = [UInt8](repeating: 0, count: pixelCount * 4)
+            channelScratch = [Float](repeating: 0, count: pixelCount)
+        }
+
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            throw VisionError.imageRenderFailed
+        }
+        var src = vImage_Buffer(
+            data: base,
+            height: vImagePixelCount(CVPixelBufferGetHeight(pixelBuffer)),
+            width: vImagePixelCount(CVPixelBufferGetWidth(pixelBuffer)),
+            rowBytes: CVPixelBufferGetBytesPerRow(pixelBuffer))
+
+        var chw = [Float](repeating: 0, count: 3 * pixelCount)
+        let err = scaledBGRA.withUnsafeMutableBytes { dst -> vImage_Error in
+            var dstBuf = vImage_Buffer(
+                data: dst.baseAddress, height: vImagePixelCount(side),
+                width: vImagePixelCount(side), rowBytes: side * 4)
+            return vImageScale_ARGB8888(&src, &dstBuf, nil, vImage_Flags(kvImageNoFlags))
+        }
+        guard err == kvImageNoError else {
+            throw VisionError.imageRenderFailed
+        }
+
+        // BGRA byte order: B=0, G=1, R=2 -> planar R, G, B in [0, 1]
+        var a = Float(1.0 / 255.0)
+        var b = Float(0)
+        let n = vDSP_Length(pixelCount)
+        scaledBGRA.withUnsafeBufferPointer { raw in
+            chw.withUnsafeMutableBufferPointer { out in
+                for (plane, offset) in [(0, 2), (1, 1), (2, 0)] {
+                    vDSP_vfltu8(raw.baseAddress! + offset, 4, &channelScratch, 1, n)
+                    vDSP_vsmsa(
+                        channelScratch, 1, &a, &b,
+                        out.baseAddress! + plane * pixelCount, 1, n)
+                }
+            }
+        }
+        return chw
     }
 
     /// Original COCO category ids (with the official gaps) to names.

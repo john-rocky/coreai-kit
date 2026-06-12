@@ -1,20 +1,34 @@
 # DetectCamera
 
-Real-time object detection from the live camera, fully on-device: `CameraFeed` streams
-frames, `ObjectDetector` (RF-DETR, fp32, **no NMS**) turns each one into labeled boxes.
+Real-time object detection from the live camera, fully on-device: RF-DETR (fp32, **no
+NMS**) over the zero-copy capture path. Architecture follows the fastest known iOS
+detection-app pattern:
 
-Measured on iPhone 17 Pro (Release, GPU): **nano 384² ≈ 27 ms / 36 FPS**,
-**medium 576² ≈ 56 ms / 17 FPS**. First launch of a model pays a one-time on-device
-specialization (~5 s nano), cached afterwards.
+- **`AVCaptureVideoPreviewLayer` renders the camera directly** — the compositor shows
+  the full-rate feed; the app never converts a frame for display.
+- **`CameraFeed.startPixelBuffers()`** hands the model raw 32BGRA buffers
+  (hardware-scaled to ~model size via `dataOutputSize`), and
+  **`ObjectDetector.prepare`/`detect`** split CPU preprocessing (vImage scale + vDSP
+  channel split — no CGImage/CIContext anywhere) from GPU inference so frame N+1
+  preprocesses while frame N runs.
+- `bufferingNewest(1)` streams drop stale frames instead of queueing; UI updates are
+  fire-and-forget hops off the inference path.
 
-The whole ML surface is two calls:
+Measured on iPhone 17 Pro (Release, GPU, 60 fps capture): **nano 384² ≈ 25 ms /
+33–39 FPS end-to-end**, medium 576² ≈ 63 ms / ~15 FPS. Sustained max-load throughput
+drops on a hot chassis (thermal); the first launch of a model pays a one-time
+on-device specialization (~5 s), cached afterwards.
+
+The whole ML surface:
 
 ```swift
 let detector = try await ObjectDetector(model: .rfdetrNano)
-for await frame in try await CameraFeed(framesPerSecond: 60).start() {
-    detections = try await detector.detect(in: frame, scoreThreshold: 0.5)
+for await frame in try await feed.startPixelBuffers() {
+    detections = try await detector.detect(in: frame.pixelBuffer, scoreThreshold: 0.5)
 }
 ```
+
+(the example splits `prepare`/`detect` across two tasks for the extra few ms.)
 
 ## Run
 
@@ -28,8 +42,20 @@ Face Hub ([mlboydaisuke/RF-DETR-CoreAI](https://huggingface.co/mlboydaisuke/RF-D
 later launches load from cache. The segmented control switches Nano ↔ Medium.
 
 On launch the app also runs a small numerics gate against the bundled reference photo and
-logs every confident detection (`GATE det …`) plus live timing windows (`STATS …`) — watch
-them with `devicectl device process launch --console`.
+logs every confident detection (`GATE det …`) plus live timing windows (`STATS …` with
+median inference ms and end-to-end wall FPS) — watch them with
+`devicectl device process launch --console`.
+
+### Capture-rate tuning (measured)
+
+Capture rate trades against inference latency — the ISP and preview compete with the
+GPU. On iPhone 17 Pro with nano: 30 fps capture phase-locks the loop to ~30 FPS;
+**60 fps capture + hardware-scaled data buffers is the sweet spot (33–39 FPS)**; 60 fps
+*without* `dataOutputSize` slows inference 25→39 ms and LOWERS throughput. Two traps
+worth knowing: a `sessionPreset` commit resets custom frame durations (configure the
+device *after* `commitConfiguration`), and the preset's default 720p format may top out
+at 30 fps (switch `activeFormat` to the 60 fps sibling). Bench hooks:
+`DETECT_VARIANT=nano|medium`, `DETECT_FPS=<n>` in the launch environment.
 
 ### Sideloading models during development
 
@@ -45,5 +71,4 @@ xcrun devicectl device copy to --device <UDID> \
   --domain-identifier com.coreaikit.detectcamera
 ```
 
-The app prefers `Documents/Models/` over the Hub download. A bench hook
-(`DETECT_VARIANT=nano|medium` in the launch environment) selects the initial model.
+The app prefers `Documents/Models/` over the Hub download.

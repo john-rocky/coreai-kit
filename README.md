@@ -30,7 +30,7 @@ Models download automatically from the Hugging Face Hub on first use — no Pyth
 - `Examples/ChatDemo` — multiplatform chat app (~150 lines)
 - `Examples/PhotoSearch` — semantic photo search with CLIP (iOS)
 - `Examples/DepthCamera` — live camera depth with Depth Anything 3 (iOS)
-- `Examples/DetectCamera` — real-time object detection with RF-DETR, no NMS (iOS; nano 36 FPS / medium 17 FPS on iPhone 17 Pro)
+- `Examples/DetectCamera` — real-time object detection with RF-DETR, no NMS (iOS; nano 33–39 FPS end-to-end on iPhone 17 Pro via the zero-copy capture pipeline)
 - `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
 - `Examples/DocChat` — on-device RAG over your notes: embeddings + retrieval tool + local LLM (`swift run`)
