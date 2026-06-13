@@ -1,0 +1,49 @@
+name: SpotlightApp
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+# Run config Release: the engine's per-token host work is ~3x slower unoptimized.
+schemes:
+  SpotlightApp:
+    build:
+      targets:
+        SpotlightApp: all
+    run:
+      config: Release
+
+targets:
+  SpotlightApp:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKit
+      - package: coreai-kit
+        product: CoreAIKitUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.spotlightapp
+        DEVELOPMENT_TEAM: MFN25KNUGJ
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_CFBundleDisplayName: "Notes Ask"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        # The model store writes to ~/Library/Application Support and the catalog/model
+        # download needs the network; sandbox off keeps the example self-contained (same
+        # as ChatDemo). A shipping app would scope entitlements instead.
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
