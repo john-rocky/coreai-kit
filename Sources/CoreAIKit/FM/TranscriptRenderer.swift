@@ -26,7 +26,7 @@ enum TranscriptRenderer {
         tools: [Transcript.ToolDefinition],
         requireToolCall: Bool,
         tokenizer: any Tokenizer,
-        speaksChatML: Bool
+        supportsHermesTools: Bool
     ) throws -> Rendered {
         let hasToolHistory = transcript.contains { entry in
             switch entry {
@@ -41,13 +41,14 @@ enum TranscriptRenderer {
             return Rendered(tokens: tokens, usedToolDialect: false)
         }
 
-        guard speaksChatML else {
+        guard supportsHermesTools else {
             throw LanguageModelError.unsupportedCapability(
                 .init(
                     capability: .toolCalling,
                     debugDescription:
-                        "Tool calling currently requires a ChatML-speaking model "
-                        + "(qwen3 family); this bundle's tokenizer has no <|im_start|>."))
+                        "Tool calling uses the Hermes ChatML dialect, which needs a ChatML "
+                        + "model that is not LFM-family (LFM bundles emit a pythonic call "
+                        + "syntax this path does not parse). This bundle does not qualify."))
         }
 
         let text = renderHermesChatML(
@@ -103,7 +104,7 @@ enum TranscriptRenderer {
                 append(role: "assistant", segmentsText(response.segments))
             case .toolCalls(let calls):
                 let rendered = calls.map { call in
-                    "<tool_call>\n{\"name\": \"\(call.toolName)\", "
+                    "<tool_call>\n{\"name\": \"\(jsonEscaped(call.toolName))\", "
                         + "\"arguments\": \(call.arguments.jsonString)}\n</tool_call>"
                 }.joined(separator: "\n")
                 append(role: "assistant", rendered)
@@ -142,7 +143,7 @@ enum TranscriptRenderer {
                 schemaJSON = "{}"
             }
             lines.append(
-                #"{"type": "function", "function": {"name": "\#(tool.name)", "description": "\#(tool.description)", "parameters": \#(schemaJSON)}}"#
+                #"{"type": "function", "function": {"name": "\#(jsonEscaped(tool.name))", "description": "\#(jsonEscaped(tool.description))", "parameters": \#(schemaJSON)}}"#
             )
         }
         let requirement =
@@ -177,5 +178,30 @@ enum TranscriptRenderer {
             default: return nil
             }
         }.joined(separator: "\n")
+    }
+
+    /// Escapes a string for embedding inside a JSON string literal. Tool names and
+    /// (natural-language) descriptions are interpolated into the `<tools>` JSON and the
+    /// replayed `<tool_call>` JSON, so a `"` or newline must be escaped or the block
+    /// becomes invalid JSON.
+    private static func jsonEscaped(_ s: String) -> String {
+        var out = ""
+        out.reserveCapacity(s.count)
+        for scalar in s.unicodeScalars {
+            switch scalar {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            default:
+                if scalar.value < 0x20 {
+                    out += String(format: "\\u%04x", scalar.value)
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return out
     }
 }

@@ -38,7 +38,7 @@ public struct KitExecutor: LanguageModelExecutor {
         let tokenizer: any Tokenizer
         let modelID: String
         let profile: OutputProfile
-        let speaksChatML: Bool
+        let supportsHermesTools: Bool
         let vocabSize: Int?
 
         public static func == (lhs: Configuration, rhs: Configuration) -> Bool {
@@ -53,7 +53,7 @@ public struct KitExecutor: LanguageModelExecutor {
     private let tokenizer: any Tokenizer
     private let modelID: String
     private let profile: OutputProfile
-    private let speaksChatML: Bool
+    private let supportsHermesTools: Bool
     private let vocabSize: Int?
     private let state = TurnState()
 
@@ -62,7 +62,7 @@ public struct KitExecutor: LanguageModelExecutor {
         self.tokenizer = configuration.tokenizer
         self.modelID = configuration.modelID
         self.profile = configuration.profile
-        self.speaksChatML = configuration.speaksChatML
+        self.supportsHermesTools = configuration.supportsHermesTools
         self.vocabSize = configuration.vocabSize
     }
 
@@ -146,7 +146,7 @@ public struct KitExecutor: LanguageModelExecutor {
             tools: tools,
             requireToolCall: mode == .required,
             tokenizer: tokenizer,
-            speaksChatML: speaksChatML)
+            supportsHermesTools: supportsHermesTools)
         let promptTokens = rendered.tokens
 
         // 3) Append-only KV fast path: skip reset and feed only the suffix when the
@@ -245,8 +245,10 @@ public struct KitExecutor: LanguageModelExecutor {
 
         do {
             for try await tokenId in relay {
-                generatedCount += 1
                 if let eos = eosTokenId, Int(tokenId) == eos { break }
+                // Count AFTER the EOS check so the never-emitted EOS sentinel is
+                // not folded into Usage.Output (matches Apple's reference adapter).
+                generatedCount += 1
 
                 pendingTokens.append(Int(tokenId))
                 let decodedText = tokenizer.decode(tokens: pendingTokens)
@@ -283,7 +285,7 @@ public struct KitExecutor: LanguageModelExecutor {
         //    consecutive .toolCalls events form one transcript entry, so a multi-call
         //    turn lands as a single ToolCalls entry.
         if !toolPayloads.isEmpty {
-            let calls = try toolPayloads.map(Self.parseToolCall)
+            let calls = try toolPayloads.flatMap(Self.parseToolCalls)
             for call in calls {
                 await channel.send(
                     .toolCalls(
@@ -347,7 +349,7 @@ public struct KitExecutor: LanguageModelExecutor {
             tools: tools,
             requireToolCall: mode == .required,
             tokenizer: tokenizer,
-            speaksChatML: speaksChatML)
+            supportsHermesTools: supportsHermesTools)
         let promptTokens = rendered.tokens
 
         // 3) KV reuse. Logits-capable engines take the cumulative token list and skip
@@ -468,26 +470,39 @@ public struct KitExecutor: LanguageModelExecutor {
         let argumentsJSON: String
     }
 
-    /// `{"name": "...", "arguments": {...}}` — anything else throws.
-    static func parseToolCall(_ payload: String) throws -> ParsedToolCall {
+    /// `{"name": "...", "arguments": {...}}` per block, or a top-level JSON ARRAY of such
+    /// objects (some Hermes-tuned models emit a multi-call array in one block — matches
+    /// `HermesDialect.parseToolCalls` in the zoo provider). Anything else throws.
+    static func parseToolCalls(_ payload: String) throws -> [ParsedToolCall] {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             let data = trimmed.data(using: .utf8),
-            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-            let name = object["name"] as? String,
-            !name.isEmpty
+            let root = try? JSONSerialization.jsonObject(with: data)
         else {
             throw KitFMError.malformedToolCall(payload: trimmed)
         }
-        let arguments = object["arguments"] ?? [String: Any]()
-        guard
-            let argumentsData = try? JSONSerialization.data(
-                withJSONObject: arguments, options: [.fragmentsAllowed, .sortedKeys]),
-            let argumentsJSON = String(data: argumentsData, encoding: .utf8)
-        else {
+        let objects: [[String: Any]]
+        if let object = root as? [String: Any] {
+            objects = [object]
+        } else if let array = root as? [[String: Any]], !array.isEmpty {
+            objects = array
+        } else {
             throw KitFMError.malformedToolCall(payload: trimmed)
         }
-        return ParsedToolCall(name: name, argumentsJSON: argumentsJSON)
+        return try objects.map { object in
+            guard let name = object["name"] as? String, !name.isEmpty else {
+                throw KitFMError.malformedToolCall(payload: trimmed)
+            }
+            let arguments = object["arguments"] ?? [String: Any]()
+            guard
+                let argumentsData = try? JSONSerialization.data(
+                    withJSONObject: arguments, options: [.fragmentsAllowed, .sortedKeys]),
+                let argumentsJSON = String(data: argumentsData, encoding: .utf8)
+            else {
+                throw KitFMError.malformedToolCall(payload: trimmed)
+            }
+            return ParsedToolCall(name: name, argumentsJSON: argumentsJSON)
+        }
     }
 }
 
