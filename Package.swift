@@ -16,7 +16,10 @@ let package = Package(
         .library(name: "CoreAIKitUI", targets: ["CoreAIKitUI"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/coreai-models", from: "0.1.0"),
+        // Patched community fork of apple/coreai-models — adds hybrid/SSM bundle support to
+        // the pipelined engine so flagship hybrid models (Qwen3.5/3.6, LFM2.5, Granite 4)
+        // load. See https://github.com/john-rocky/coreai-models (tag v0.1.0-zoo).
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.1.0-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [

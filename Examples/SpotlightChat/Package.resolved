@@ -1,5 +1,5 @@
 {
-  "originHash" : "d09b8b132209943ad3076e2ca71a886f44d0ae8943073b3053fcca059e71aa62",
+  "originHash" : "e731762d52696b96c4bbe3f4b65842da46a5f61afb64880584294a5d7d26ddfb",
   "pins" : [
     {
       "identity" : "coreai-models",
@@ -87,8 +87,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system.git",
       "state" : {
-        "revision" : "e402d5fa38d1524896e7d913ce1320384e0bedf7",
-        "version" : "1.7.0"
+        "revision" : "7502b711c92a17741fa625d722b0ccbd595d8ed1",
+        "version" : "1.7.2"
       }
     },
     {
