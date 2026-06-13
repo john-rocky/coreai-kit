@@ -16,6 +16,9 @@ struct SpotlightAppApp: App {
 @main
 struct AppEntry {
     static func main() {
+        if ProcessInfo.processInfo.environment["SPOTLIGHT_INDEXPROBE"] != nil {
+            SelfTest.probeBlocking()  // does not return — index-settle diagnostic, no model
+        }
         if ProcessInfo.processInfo.environment["SPOTLIGHT_SELFTEST"] != nil {
             SelfTest.runBlocking()  // does not return
         }

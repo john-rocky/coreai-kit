@@ -39,7 +39,7 @@ targets:
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: "YES"
-        INFOPLIST_KEY_CFBundleDisplayName: "Notes Ask"
+        INFOPLIST_KEY_CFBundleDisplayName: "Ask Files"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
         SWIFT_APPROACHABLE_CONCURRENCY: "YES"
         # The model store writes to ~/Library/Application Support and the catalog/model
