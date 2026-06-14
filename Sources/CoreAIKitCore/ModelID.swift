@@ -55,6 +55,14 @@ extension ModelID {
     /// EmbeddingGemma 300m text embeddings (fp16, 768-d). Same bundle on both platforms.
     public static let embeddingGemma300m = ModelID(
         "mlboydaisuke/embeddinggemma-300m-CoreAI", path: "model")
+    /// Qwen3-Embedding 0.6B multilingual text embeddings (Apache-2.0, fp16, 1024-d, MRL).
+    /// Flat repo (bundle at root). Same bundle on both platforms.
+    public static let qwen3Embedding0_6B = ModelID(
+        "mlboydaisuke/Qwen3-Embedding-0.6B-CoreAI", path: "")
+    /// Qwen3-Reranker 0.6B cross-encoder reranker (Apache-2.0, fp16; yes/no logit score).
+    /// Flat repo (bundle at root). Same bundle on both platforms.
+    public static let qwen3Reranker0_6B = ModelID(
+        "mlboydaisuke/Qwen3-Reranker-0.6B-CoreAI", path: "")
     /// RF-DETR object detection, nano 384px (Apache-2.0, fp32, no NMS). Same bundle on both platforms.
     public static let rfdetrNano = ModelID(
         "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-nano_float32.aimodel")

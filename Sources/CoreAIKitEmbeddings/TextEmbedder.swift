@@ -24,6 +24,14 @@ public final class TextEmbedder: @unchecked Sendable {
         public static let embeddingGemma = Prompts(
             query: "task: search result | query: ",
             document: "title: none | text: ")
+
+        /// Qwen3-Embedding's retrieval prompts: queries get an instruction prefix, documents
+        /// none (the asymmetric recipe from its sentence-transformers config). Pair with
+        /// `ModelID.qwen3Embedding0_6B`.
+        public static let qwen3Embedding = Prompts(
+            query: "Instruct: Given a web search query, retrieve relevant passages that "
+                + "answer the query\nQuery:",
+            document: "")
     }
 
     private let graph: GraphModel
@@ -72,15 +80,17 @@ public final class TextEmbedder: @unchecked Sendable {
         self.dimension = outputShape[outputShape.count - 1]
     }
 
-    /// Downloads the bundle from the Hugging Face Hub if needed, then loads it.
+    /// Downloads the bundle from the Hugging Face Hub if needed, then loads it. Pass the
+    /// `prompts` that match the model (e.g. `.qwen3Embedding` with `.qwen3Embedding0_6B`).
     public convenience init(
         model: ModelID = .embeddingGemma300m,
         store: ModelStore = .default,
         computeUnits: GraphModel.ComputeUnits = .gpu,
+        prompts: Prompts = .embeddingGemma,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
         let url = try await store.download(model, progress: downloadProgress)
-        try await self.init(bundleAt: url, computeUnits: computeUnits)
+        try await self.init(bundleAt: url, computeUnits: computeUnits, prompts: prompts)
     }
 
     // MARK: - Embedding

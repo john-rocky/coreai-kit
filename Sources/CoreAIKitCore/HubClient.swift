@@ -25,8 +25,10 @@ struct HubClient: Sendable {
 
     /// Enumerates the files under `path` in the repo at the given revision.
     func listFiles(repo: String, revision: String, path: String) async throws -> [PlannedFile] {
+        // Empty path = repo root (flat bundle layout): no trailing slash, or the API 404s.
+        let treePath = path.isEmpty ? "" : "/\(path)"
         guard let api = URL(string:
-            "https://huggingface.co/api/models/\(repo)/tree/\(revision)/\(path)?recursive=true")
+            "https://huggingface.co/api/models/\(repo)/tree/\(revision)\(treePath)?recursive=true")
         else {
             throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
         }
@@ -43,9 +45,9 @@ struct HubClient: Sendable {
             struct LFS: Decodable { let size: Int64? }
         }
         let entries = try JSONDecoder().decode([TreeEntry].self, from: data)
-        let prefix = path.hasSuffix("/") ? path : path + "/"
+        let prefix = path.isEmpty ? "" : (path.hasSuffix("/") ? path : path + "/")
         return try entries.filter { $0.type == "file" }.map { e in
-            let rel = e.path == path
+            let rel = (!path.isEmpty && e.path == path)
                 ? (e.path as NSString).lastPathComponent
                 : String(e.path.dropFirst(prefix.count))
             guard let url = URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(e.path)")
