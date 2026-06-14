@@ -7,7 +7,8 @@
 // so the engine rejects the bundle. Here we create the engine through
 // `EngineFactory.createEngine(…, options:)` with those two bound as `StaticInputBuffer`s. Unlike
 // the VL path's image buffers (rewritten per attached image), these are CONSTANT for the whole
-// model: each table file is read once into an owned `MTLBuffer` and bound unchanged on every
+// model: each table file is mapped copy-on-write into a `bytesNoCopy` `MTLBuffer` (clean, evictable
+// pages — so a backgrounded process isn't jetsam-killed) and bound unchanged on every
 // encode. The decoder graph does the PLE gather in-graph (gather row `input_ids` from the table,
 // scale, reshape), and the head + final softcap are fused into the same graph — so the engine
 // returns sampled tokens directly, exactly like a plain text bundle. Adapted from the
@@ -47,8 +48,8 @@ public final class GemmaRuntime: @unchecked Sendable {
     let maxContextLength: Int
     let vocabSize: Int
 
-    /// Owned static-input buffers (the PLE tables), kept alive for the engine's lifetime.
-    /// Bound unchanged on every encode — never rewritten after load.
+    /// File-mapped (copy-on-write) static-input buffers (the PLE tables), kept alive for the
+    /// engine's lifetime. Bound unchanged on every encode — never rewritten after load.
     private let tableBuffers: [String: StaticInputBuffer]
 
     /// Loads a Gemma 4 `…_tbl` decode bundle and binds its two PLE tables from `tablesURL`
@@ -71,16 +72,18 @@ public final class GemmaRuntime: @unchecked Sendable {
             throw KitGemmaError.noMetalDevice
         }
 
-        // Read each PLE table file once into an owned storageModeShared buffer. Owned beats a
-        // file-backed no-copy mapping here: a read-only mapping pays a large per-encode
-        // residency tax, and the buffers are bound on every step. ~2.35 GB for E2B.
+        // Map each PLE table file copy-on-write (no owned copy) and wrap it as a bytesNoCopy
+        // buffer. The pages stay CLEAN (the tables are read-only), so the kernel can evict them
+        // under memory pressure instead of counting the full ~2.35 GB (E2B) against the process's
+        // jetsam footprint — the difference between surviving and being killed in a low-memory
+        // context (a backgrounded / Siri-invoked App Intent). See `mappedBuffer`.
         var buffers: [String: StaticInputBuffer] = [:]
         for (input, file) in arch.staticInputFiles {
             let url = tablesURL.appendingPathComponent(file)
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw KitGemmaError.missingTableFile(file)
             }
-            buffers[input] = StaticInputBuffer(try Self.ownedBuffer(url: url, device: device))
+            buffers[input] = StaticInputBuffer(try Self.mappedBuffer(url: url, device: device))
         }
         self.tableBuffers = buffers
 
@@ -125,27 +128,45 @@ public final class GemmaRuntime: @unchecked Sendable {
 
     // MARK: - Table loading
 
-    /// Reads a whole file into an owned storageModeShared `MTLBuffer`. Chunked reads keep the
-    /// multi-GB PLE table within a single `read(2)` size limit.
-    private static func ownedBuffer(url: URL, device: any MTLDevice) throws -> any MTLBuffer {
+    /// Maps a PLE table file copy-on-write (`MAP_PRIVATE`), file-backed, and wraps it as a
+    /// `bytesNoCopy` `MTLBuffer` — no owned copy, no upfront read. The tables are read-only
+    /// (gathered, never written), so the COW pages stay CLEAN and the kernel can evict them under
+    /// pressure rather than counting the full ~2.35 GB against the process's jetsam footprint. This
+    /// lets Gemma 4 E2B survive the LOWER memory limit a backgrounded process gets (e.g. a
+    /// Siri-invoked App Intent), where an owned, dirty `storageModeShared` copy (peak ~4.4 GB) is
+    /// killed — while still running in the foreground (6.44 GB entitled). It also makes the cold
+    /// load faster (pages fault in lazily on the gather, not a 2.35 GB upfront read), which helps
+    /// Siri's tight intent budget.
+    ///
+    /// Trade-off (measured, `ondevice/_gemma4_ple_RESULTS.md` "G-TBL"): on iPhone COW-mmap costs
+    /// ~+21 ms/encode (decode ~18 vs ~30 tok/s owned); on Mac it is free. `PROT_WRITE` is set
+    /// (with `MAP_PRIVATE`) deliberately: a pure `PROT_READ` mapping pays a ~208 ms/encode
+    /// residency tax on the GPU delegate; the COW mapping does not (and we never actually write, so
+    /// the pages stay clean/evictable).
+    private static func mappedBuffer(url: URL, device: any MTLDevice) throws -> any MTLBuffer {
         let fd = open(url.path, O_RDONLY)
         guard fd >= 0 else {
             throw KitGemmaError.missingTableFile(url.lastPathComponent)
         }
-        defer { close(fd) }
+        defer { close(fd) }  // the mapping outlives the descriptor
         let size = Int(lseek(fd, 0, SEEK_END))
-        _ = lseek(fd, 0, SEEK_SET)
-        guard size > 0, let buffer = device.makeBuffer(length: size, options: .storageModeShared)
-        else {
+        guard size > 0 else {
             throw KitGemmaError.bufferAllocationFailed(url.lastPathComponent)
         }
-        var done = 0
-        while done < size {
-            let n = read(fd, buffer.contents() + done, min(1 << 27, size - done))
-            guard n > 0 else {
-                throw KitGemmaError.bufferAllocationFailed(url.lastPathComponent)
-            }
-            done += n
+        // `bytesNoCopy` needs a page-aligned pointer AND length. mmap returns a page-aligned
+        // pointer; round the length up to a whole page (the kernel zero-pads the EOF page, valid).
+        let pageSize = Int(getpagesize())
+        let mapLen = (size + pageSize - 1) & ~(pageSize - 1)
+        let mapped = mmap(nil, mapLen, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0)
+        guard let mapped, mapped != MAP_FAILED else {
+            throw KitGemmaError.bufferAllocationFailed(url.lastPathComponent)
+        }
+        guard let buffer = device.makeBuffer(
+            bytesNoCopy: mapped, length: mapLen, options: .storageModeShared,
+            deallocator: { pointer, length in _ = munmap(pointer, length) })
+        else {
+            munmap(mapped, mapLen)
+            throw KitGemmaError.bufferAllocationFailed(url.lastPathComponent)
         }
         return buffer
     }
