@@ -1,0 +1,53 @@
+name: VisualIntel
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+# Release: the per-frame model work (RF-DETR / CLIP) is meaningfully faster optimized,
+# and the Visual Intelligence query is launched by the system — it should be quick.
+schemes:
+  VisualIntel:
+    build:
+      targets:
+        VisualIntel: all
+    run:
+      config: Release
+
+targets:
+  VisualIntel:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKitVision
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.visualintel
+        DEVELOPMENT_TEAM: MFN25KNUGJ
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        # User-facing app name = the label of our tab in the system Visual Intelligence UI
+        # (and "More results from <name>"). Name it after the model that's actually running so
+        # the demo reads "an open detector, on-device, next to Google".
+        INFOPLIST_KEY_CFBundleDisplayName: "RF-DETR"
+        # The VI tab can read CFBundleName (short name) rather than the display name; set both.
+        INFOPLIST_KEY_CFBundleName: "RF-DETR"
+        # The CLIP photo-match surface indexes the local library on-device.
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "VisualIntel indexes your photos on-device with your own CLIP model so Visual Intelligence can find matches. Nothing leaves your device."
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        # macOS: the system CoreAI framework + on-device model cache need file access.
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
