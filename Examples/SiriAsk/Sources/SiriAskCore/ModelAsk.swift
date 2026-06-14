@@ -52,6 +52,23 @@ public enum GemmaSource {
         return gemma4E2B(for: .macOS)
         #endif
     }
+
+    /// A SIDE-LOADED Gemma 4 model bundled inside the app under `Model/` (a `gemma_decoder` bundle
+    /// dir + a `gemma_tables` dir with `embed_per_layer.{i8,scale.f32}`), so the app loads it from
+    /// its own bundle instead of downloading ~4.4 GB on the device. Returns nil when not bundled
+    /// (then the model downloads from the Hub). The bundled decoder is the iPhone h18p AOT artifact,
+    /// so this is only used on iOS.
+    public static func bundledModel(in bundle: Bundle = .main) -> (decoder: URL, tables: URL)? {
+        let root = (bundle.resourceURL ?? bundle.bundleURL)
+            .appendingPathComponent("Model", isDirectory: true)
+        let decoder = root.appendingPathComponent("gemma_decoder", isDirectory: true)
+        let tables = root.appendingPathComponent("gemma_tables", isDirectory: true)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: decoder.appendingPathComponent("metadata.json").path),
+              fm.fileExists(atPath: tables.appendingPathComponent("embed_per_layer.i8").path)
+        else { return nil }
+        return (decoder, tables)
+    }
 }
 
 /// Loads + warms a `KitGemmaModel` and answers free-text questions. An `actor` because the
@@ -62,7 +79,17 @@ public actor ModelHost {
     /// The app's shared, warm-kept instance. Model = Gemma 4 E2B (Google's official QAT int4): a
     /// compact on-device model that runs on both iPhone 17 Pro (AOT) and Mac (JIT), behind the
     /// FoundationModels `LanguageModel` protocol via GEMMA-KIT's `KitGemmaModel`.
-    public static let shared = ModelHost(model: GemmaSource.gemma4E2B)
+    public static let shared: ModelHost = {
+        // Prefer a side-loaded model bundled in the app (zero device download). iOS only — the
+        // bundled decoder is the h18p AOT artifact, which loads only on the iPhone GPU; macOS uses
+        // the downloadable plain bundle.
+        #if os(iOS)
+        if let local = GemmaSource.bundledModel() {
+            return ModelHost(localDecoderAt: local.decoder, tablesAt: local.tables)
+        }
+        #endif
+        return ModelHost(model: GemmaSource.gemma4E2B)
+    }()
 
     /// A light system instruction. Gemma 4 answers directly (thinking is off by default in the
     /// renderer); this just steers it toward concise, useful answers for the voice/read-aloud demo.

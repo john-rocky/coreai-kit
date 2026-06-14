@@ -28,6 +28,14 @@ targets:
       # Shared, testable core (the Gemma model host) — compiled into the app and also built
       # standalone by ../Package.swift for `swift run SiriAskGate` / `swift test`.
       - path: ../Sources/SiriAskCore
+      # Side-loaded Gemma 4 model: the AOT decoder bundle (gemma_decoder/) + PLE tables
+      # (gemma_tables/) bundled into the .app as a folder reference, so the device never downloads
+      # ~4.4 GB. Gitignored (Examples/SiriAsk/.gitignore) — drop the model under App/Model to bundle
+      # it; remove this entry (or the folder) to fall back to on-device download. ModelHost prefers
+      # the bundle when present (GemmaSource.bundledModel).
+      - path: Model
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: coreai-kit
         product: CoreAIKit

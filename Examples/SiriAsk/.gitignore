@@ -1,0 +1,8 @@
+# Side-loaded Gemma 4 model bundled into the app (~4.2 GB) — never committed. Drop the model under
+# App/Model/{gemma_decoder,gemma_tables} to bundle it into the .app (see App/project.yml).
+App/Model/
+
+# Build artifacts.
+.build/
+App/build/
+App/*.xcodeproj/
