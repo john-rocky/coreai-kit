@@ -85,7 +85,7 @@ public actor ModelHost {
         // the downloadable plain bundle.
         #if os(iOS)
         if let local = GemmaSource.bundledModel() {
-            return ModelHost(localDecoderAt: local.decoder, tablesAt: local.tables)
+            return ModelHost(sideloadedDecoder: local.decoder, tables: local.tables)
         }
         #endif
         return ModelHost(model: GemmaSource.gemma4E2B)
@@ -105,6 +105,9 @@ public actor ModelHost {
     private enum Source: Sendable {
         case hub(GemmaModelID)
         case localBundle(decoder: URL, tables: URL)
+        /// A model bundled in the app's read-only signed container; staged to a writable cache
+        /// before load (the runtime mmaps the tables copy-on-write, which needs a writable file).
+        case sideloaded(bundledDecoder: URL, bundledTables: URL)
     }
 
     private let source: Source
@@ -120,6 +123,12 @@ public actor ModelHost {
     /// `--decoder/--tables` flags — point at freshly exported dirs to skip the multi-GB download).
     public init(localDecoderAt decoder: URL, tablesAt tables: URL) {
         self.source = .localBundle(decoder: decoder, tables: tables)
+    }
+
+    /// Load a model bundled inside the app: it is staged out of the read-only signed bundle into a
+    /// writable cache on first load (so the runtime can mmap the tables), then loaded from there.
+    public init(sideloadedDecoder decoder: URL, tables: URL) {
+        self.source = .sideloaded(bundledDecoder: decoder, bundledTables: tables)
     }
 
     public var isReady: Bool { model != nil }
@@ -147,6 +156,11 @@ public actor ModelHost {
                 return try await KitGemmaModel(model: id, downloadProgress: progress)
             case .localBundle(let decoder, let tables):
                 return try await KitGemmaModel(decoderBundleAt: decoder, tablesAt: tables)
+            case .sideloaded(let bundledDecoder, let bundledTables):
+                let staged = try Self.stageBundledModel(
+                    decoder: bundledDecoder, tables: bundledTables)
+                return try await KitGemmaModel(
+                    decoderBundleAt: staged.decoder, tablesAt: staged.tables)
             }
         }
         loadTask = task
@@ -160,6 +174,44 @@ public actor ModelHost {
             loadTask = nil
             throw error
         }
+    }
+
+    /// Copy a side-loaded model out of the read-only signed app bundle into a writable cache once,
+    /// then return the writable dirs. The runtime mmaps the PLE tables copy-on-write, which needs a
+    /// writable file — mmap-COW of a file inside the signed .app regressed on device. Copying once
+    /// (~4.4 GB, local, no network) reproduces the proven "model in a writable location" state.
+    /// Idempotent: a complete prior copy (key file present) is reused, so only the first launch pays.
+    private static func stageBundledModel(decoder bundledDecoder: URL, tables bundledTables: URL)
+        throws -> (decoder: URL, tables: URL)
+    {
+        let fm = FileManager.default
+        var base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("CoreAIKit/SideloadedGemma", isDirectory: true)
+        try fm.createDirectory(at: base, withIntermediateDirectories: true)
+        var noBackup = URLResourceValues()
+        noBackup.isExcludedFromBackup = true
+        try? base.setResourceValues(noBackup)
+
+        let decoder = base.appendingPathComponent("gemma_decoder", isDirectory: true)
+        let tables = base.appendingPathComponent("gemma_tables", isDirectory: true)
+        // Presence of the key file == a complete copy (each copies via temp + rename).
+        if !fm.fileExists(atPath: decoder.appendingPathComponent("metadata.json").path) {
+            try copyReplacing(from: bundledDecoder, to: decoder, stagingIn: base, fm: fm)
+        }
+        if !fm.fileExists(atPath: tables.appendingPathComponent("embed_per_layer.i8").path) {
+            try copyReplacing(from: bundledTables, to: tables, stagingIn: base, fm: fm)
+        }
+        return (decoder, tables)
+    }
+
+    private static func copyReplacing(
+        from src: URL, to dst: URL, stagingIn base: URL, fm: FileManager
+    ) throws {
+        let tmp = base.appendingPathComponent(".staging-\(dst.lastPathComponent)", isDirectory: true)
+        try? fm.removeItem(at: tmp)
+        try fm.copyItem(at: src, to: tmp)   // ~minutes for the multi-GB decoder on first launch
+        try? fm.removeItem(at: dst)
+        try fm.moveItem(at: tmp, to: dst)
     }
 
     /// Compile the sampler graph and touch the weights so the first real ask doesn't pay warm-up
