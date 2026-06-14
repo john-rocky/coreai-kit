@@ -55,7 +55,10 @@ struct VisualSearchValueQuery: IntentValueQuery {
                     "vi-vlm SURVIVED latency=\(vlm.milliseconds, format: .fixed(precision: 0))ms answer=\(vlm.text, privacy: .public)"
                 )
                 results.append(
-                    .answer(VisualAnswerEntity(id: "vlm-answer", answer: vlm.text, thumbnail: nil)))
+                    .answer(
+                        VisualAnswerEntity(
+                            id: "vlm-answer", answer: vlm.text,
+                            thumbnail: VisualIntelEngine.previewJPEG(cgImage))))
             } else {
                 MemoryProbe.log.log(
                     "vi-vlm NO-ANSWER (threw or process killed) — Visual Intelligence falls back to RF-DETR/CLIP"
