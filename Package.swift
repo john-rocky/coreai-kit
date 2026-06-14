@@ -29,6 +29,10 @@ let package = Package(
             name: "CoreAIKit",
             dependencies: [
                 "CoreAIKitCore",
+                // The VL executor runs the paired vision tower through CoreAIKitVision's
+                // GraphModel (stateless .aimodel runner); it also brings the CoreAI framework
+                // link the vision path needs.
+                "CoreAIKitVision",
                 .product(name: "CoreAILM", package: "coreai-models"),
                 .product(name: "Transformers", package: "swift-transformers"),
             ]
