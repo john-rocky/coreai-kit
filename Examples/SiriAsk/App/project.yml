@@ -1,0 +1,54 @@
+name: SiriAsk
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../../..
+
+# Release run config: the engine's per-token host work is ~3x slower unoptimized.
+schemes:
+  SiriAsk:
+    build:
+      targets:
+        SiriAsk: all
+    run:
+      config: Release
+
+targets:
+  SiriAsk:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+      # Shared, testable core (the Gemma model host) — compiled into the app and also built
+      # standalone by ../Package.swift for `swift run SiriAskGate` / `swift test`.
+      - path: ../Sources/SiriAskCore
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.siriask
+        # The app is "Gemma" everywhere: home screen, and \(.applicationName) in the Siri phrase
+        # ("Ask Gemma"). PRODUCT_NAME drives CFBundleName; the key below drives CFBundleDisplayName.
+        PRODUCT_NAME: Gemma
+        INFOPLIST_KEY_CFBundleDisplayName: Gemma
+        DEVELOPMENT_TEAM: MFN25KNUGJ
+        CODE_SIGN_STYLE: Automatic
+        # Gemma 4 E2B keeps ~4.4 GB resident (decode bundle + PLE tables) for warm Siri answers; the
+        # default jetsam limit SIGKILLs that. The increased-memory entitlement raises it (~6.44 GB
+        # on iPhone 17 Pro). Team MFN25KNUGJ's profile carries the capability.
+        CODE_SIGN_ENTITLEMENTS: SiriAsk.entitlements
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
