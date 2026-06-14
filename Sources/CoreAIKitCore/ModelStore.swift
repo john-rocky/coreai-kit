@@ -94,7 +94,13 @@ public actor ModelStore {
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
 
         let delegate = DownloadDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        // Tolerate flaky networks and the app being briefly backgrounded: wait for connectivity and
+        // allow a long total transfer time. Interrupted transfers resume from the partial (see
+        // `downloadFile`) instead of restarting — critical for the multi-GB bundles.
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForResource = 7 * 24 * 60 * 60
+        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
         let gate = ProgressGate()
@@ -134,15 +140,40 @@ public actor ModelStore {
 
     // Single-file download; progress via delegate. The temp file is claimed synchronously
     // inside the delegate callback, then returned for the caller to move into staging.
+    //
+    // Retries with resume data so an interrupted transfer continues from the partial instead of
+    // restarting the whole file. The common interruption is iOS cancelling the task when the app is
+    // backgrounded: the cancellation is delivered when the app comes back to the foreground, and we
+    // resume from the bytes already written (HF's CDN supports range requests). Without this, any
+    // brief backgrounding restarted the multi-GB download from zero.
     private static func downloadFile(
         _ url: URL, via session: URLSession, delegate: DownloadDelegate,
         onBytes: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL {
-        try await withCheckedThrowingContinuation { cont in
-            delegate.onBytes = onBytes
-            delegate.onFinish = { cont.resume(with: $0) }
-            session.downloadTask(with: url).resume()
+        var resumeData: Data?
+        var lastError: Error?
+        for attempt in 0..<6 {
+            try Task.checkCancellation()
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                try Task.checkCancellation()
+            }
+            do {
+                return try await withCheckedThrowingContinuation { cont in
+                    delegate.onBytes = onBytes
+                    delegate.onFinish = { cont.resume(with: $0) }
+                    let task = resumeData.map { session.downloadTask(withResumeData: $0) }
+                        ?? session.downloadTask(with: url)
+                    task.resume()
+                }
+            } catch {
+                lastError = error
+                // Keep the partial if the system handed back resume data; otherwise restart clean.
+                resumeData = (error as NSError)
+                    .userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+            }
         }
+        throw lastError ?? CoreAIKitError.httpError(statusCode: -1, file: url.lastPathComponent)
     }
 
     private nonisolated static func directorySize(_ url: URL) -> Int64 {
