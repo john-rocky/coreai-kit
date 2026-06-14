@@ -388,26 +388,12 @@ struct ContentView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                Divider()
-
-                // The experimental measurement (G1): also run the VLM INSIDE the system Visual
-                // Intelligence query, which launches the app in the background on an undocumented
-                // memory budget. Default off so the shipped RF-DETR/CLIP demo never regresses.
-                Toggle(isOn: Binding(
-                    get: { model.runVLMInVI },
-                    set: { model.setRunVLMInVI($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Also answer inside Visual Intelligence")
-                            .font(.subheadline.weight(.medium))
-                        Text(
-                            "Experimental: runs the VLM in the background VI launch (tighter memory "
-                            + "budget). Ask once above first so the model is cached.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                Text(
+                    "This is an in-app demo. The VLM has its own Visual Intelligence tab — see the "
+                    + "Qwen3-VL (AskVLM) example.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

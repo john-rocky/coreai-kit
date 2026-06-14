@@ -38,33 +38,10 @@ struct VisualSearchValueQuery: IntentValueQuery {
         let analysis = try await engine.analyze(cgImage)
         MemoryProbe.mark("vi-after-rfdetr-clip")
 
+        // This tab is RF-DETR detections + CLIP photo matches only — fast, so the detection tab
+        // never waits on a model. The on-device VLM is its own Visual Intelligence tab (the AskVLM
+        // example / "Qwen3-VL"), so the slow VLM doesn't block this fast surface.
         var results: [VisualSearchResult] = []
-
-        // EXPERIMENTAL (G1 measurement; default OFF, toggled by the in-app switch). Also run the
-        // ~2 GB VLM here, INSIDE the background Visual Intelligence launch, to measure whether it
-        // survives the (undocumented) launch memory budget. `caption(instrumented:)` logs
-        // footprint + headroom around the load and inference, so a jetsam is pinned by the last
-        // breadcrumb in the unified log. `try?` so a throw/kill degrades to RF-DETR/CLIP, never a
-        // crash. The VLM must already be downloaded (no bandwidth in the background) — the in-app
-        // "Ask the VLM" button is the foreground step that caches it.
-        if VLMVISettings.runInVisualIntelligence {
-            if let vlm = try? await engine.caption(cgImage, instrumented: true),
-                !vlm.text.isEmpty
-            {
-                MemoryProbe.log.log(
-                    "vi-vlm SURVIVED latency=\(vlm.milliseconds, format: .fixed(precision: 0))ms answer=\(vlm.text, privacy: .public)"
-                )
-                results.append(
-                    .answer(
-                        VisualAnswerEntity(
-                            id: "vlm-answer", answer: vlm.text,
-                            thumbnail: VisualIntelEngine.previewJPEG(cgImage))))
-            } else {
-                MemoryProbe.log.log(
-                    "vi-vlm NO-ANSWER (threw or process killed) — Visual Intelligence falls back to RF-DETR/CLIP"
-                )
-            }
-        }
 
         // Unique id per detection (label + index) so multiple same-class objects (e.g. several
         // cups) each surface instead of collapsing on a shared id.
