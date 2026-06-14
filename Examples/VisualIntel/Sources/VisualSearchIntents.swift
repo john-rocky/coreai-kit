@@ -66,11 +66,13 @@ struct VisualSearchValueQuery: IntentValueQuery {
             }
         }
 
-        results += analysis.detections.map {
+        // Unique id per detection (label + index) so multiple same-class objects (e.g. several
+        // cups) each surface instead of collapsing on a shared id.
+        results += analysis.detections.enumerated().map { index, d in
             .detectedObject(
                 DetectedObjectEntity(
-                    id: $0.label, label: $0.label, score: Double($0.score),
-                    thumbnail: $0.thumbnailJPEG))
+                    id: "\(d.label)#\(index)", label: d.label, score: Double(d.score),
+                    thumbnail: d.thumbnailJPEG))
         }
         results += analysis.photos.map {
             .photo(

@@ -136,7 +136,7 @@ final class VisualIntelEngine: @unchecked Sendable {
     /// load and inference so a background-launch jetsam is pinned by the last breadcrumb (G1).
     func caption(
         _ cgImage: CGImage,
-        prompt: String = "What is in this image? Answer in one short sentence.",
+        prompt: String = "Briefly describe the whole scene in this image in one sentence.",
         maximumResponseTokens: Int = 96,
         instrumented: Bool = false
     ) async throws -> VLMAnswer {
@@ -169,8 +169,8 @@ final class VisualIntelEngine: @unchecked Sendable {
 
     // MARK: - Visual Intelligence query path
 
-    /// Runs the detector over a captured image and returns the best detection per class
-    /// (distinct object types read more cleanly in the Visual Intelligence result list).
+    /// Runs the detector over a captured image and returns the top detections by score (each
+    /// object kept separately — multiple same-class objects, e.g. several cups, all surface).
     func detections(
         in cgImage: CGImage, scoreThreshold: Float = 0.35, maxResults: Int = 8
     ) async throws -> [DetectionResult] {
@@ -178,13 +178,9 @@ final class VisualIntelEngine: @unchecked Sendable {
         let raw = try await detector.detect(
             in: cgImage, scoreThreshold: scoreThreshold, maxDetections: 50)
 
-        var bestPerClass: [Int: Detection] = [:]
-        for d in raw where (bestPerClass[d.classID]?.score ?? 0) < d.score {
-            bestPerClass[d.classID] = d
-        }
         let imageSize = CGSize(width: cgImage.width, height: cgImage.height)
         return
-            bestPerClass.values
+            raw
             .sorted { $0.score > $1.score }
             .prefix(maxResults)
             .map { d in
