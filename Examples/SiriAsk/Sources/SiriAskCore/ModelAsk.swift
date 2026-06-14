@@ -146,10 +146,22 @@ public actor ModelHost {
 
     /// Answer a free-text question with the on-device model. Tool-less, no retrieval — the model
     /// answers from its own knowledge.
+    ///
+    /// On failure (notably iOS rejecting GPU work while the app is backgrounded) the underlying
+    /// pipelined engine can be left wedged — its token Task doesn't release the engine, so the NEXT
+    /// turn's `reset()` spins and `fatalError`s, crashing the whole app. We defuse that by DROPPING
+    /// the runtime on any error: the next ask rebuilds a fresh engine instead of reusing the wedged
+    /// one, so a background-GPU rejection degrades to a recoverable thrown error, never a crash.
     public func ask(question: String) async throws -> String {
-        let model = try await loadedModel(progress: nil)
-        let session = LanguageModelSession(model: model, instructions: Self.askInstructions)
-        let response = try await session.respond(to: question)
-        return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let loaded = try await loadedModel(progress: nil)
+        do {
+            let session = LanguageModelSession(model: loaded, instructions: Self.askInstructions)
+            let response = try await session.respond(to: question)
+            return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            model = nil       // discard the (possibly wedged) runtime → next ask builds a fresh engine
+            loadTask = nil
+            throw error
+        }
     }
 }
