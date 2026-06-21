@@ -19,7 +19,10 @@ let package = Package(
         // Patched community fork of apple/coreai-models — adds hybrid/SSM bundle support to
         // the pipelined engine so flagship hybrid models (Qwen3.5/3.6, LFM2.5, Granite 4)
         // load. See https://github.com/john-rocky/coreai-models (tag v0.1.0-zoo).
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.1.0-zoo"),
+        // v0.1.1-zoo adds the D1 engine fix: a consumer that breaks the stream at EOS now stops the
+        // pipelined engine (instead of running to maxTokens), so a SECOND consecutive generation no
+        // longer collides with the still-running first one ("something went wrong" on turn 2).
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.1.1-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [
@@ -35,7 +38,10 @@ let package = Package(
                 "CoreAIKitVision",
                 .product(name: "CoreAILM", package: "coreai-models"),
                 .product(name: "Transformers", package: "swift-transformers"),
-            ]
+            ],
+            // Whisper-large-v3 mel filterbank ([201,128] fp32) for the audio frontend; bit-exact
+            // with the HF feature extractor (gated cos 1.0), so the mel never recomputes librosa.
+            resources: [.copy("Audio/Resources/mel_filters.f32")]
         ),
         .target(
             name: "CoreAIKitVision",

@@ -1,0 +1,49 @@
+name: AudioChat
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+# Release: the engine's per-token host work is ~3x slower unoptimized.
+schemes:
+  AudioChat:
+    build:
+      targets:
+        AudioChat: all
+    run:
+      config: Release
+
+targets:
+  AudioChat:
+    type: application
+    # macOS today; iOS is the new target — the 3.9 GB decoder needs the increased-memory-limit
+    # entitlement and likely AOT (.aimodelc) on iPhone (cold-spec spike), gated on device.
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKit
+      - package: coreai-kit
+        product: CoreAIKitUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.audiochat
+        DEVELOPMENT_TEAM: MFN25KNUGJ
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: AudioChat.entitlements
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "AudioChat sends audio you record or choose to a local audio-understanding model on this device. Nothing leaves your device."
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
