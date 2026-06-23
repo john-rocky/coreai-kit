@@ -93,4 +93,12 @@ extension ModelID {
     /// RF-DETR-Seg medium 432px instance segmentation (Apache-2.0, fp32, no NMS).
     public static let rfdetrSegMedium = ModelID(
         "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-medium_float32.aimodel")
+    /// AdcSR ×4 one-step diffusion-GAN super-resolution (CVPR 2025). Apache-2.0 code; weights
+    /// derived from Stable Diffusion 2.1 (CreativeML OpenRAIL++-M — commercial use OK, the same
+    /// license under which Apple ships SD CoreML). One 128→512 tile (`SuperResolver` tiles any-size
+    /// input); image→image, no noise/prompt, RAW output (SuperResolver applies the per-image
+    /// color-match host-side). fp32 (~1.7 GB) — the pruned SD-2.1 UNet's attention/group-norm
+    /// overflow in fp16 (NaN on smooth tiles), so fp32 ships.
+    public static let adcsrX4 = ModelID(
+        "mlboydaisuke/AdcSR-CoreAI", path: "adcsr_x4_float32.aimodel")
 }

@@ -10,6 +10,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case imageText
         case depth
         case textEmbedding
+        case superResolution
     }
 
     public struct Variant: Sendable, Codable, Hashable {
@@ -141,6 +142,13 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "model", sizeMB: 1230),
                     "ios": .init(path: "model", sizeMB: 1230),
+                ]),
+            CatalogEntry(
+                id: "adcsr-x4", name: "AdcSR ×4 Super-Resolution",
+                repo: "mlboydaisuke/AdcSR-CoreAI", kind: .superResolution,
+                variants: [
+                    "macos": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1740),
+                    "ios": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1740),
                 ]),
         ])
 }

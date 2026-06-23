@@ -130,6 +130,22 @@
      "sizeMB": 116
     }
    }
+  },
+  {
+   "id": "adcsr-x4",
+   "name": "AdcSR ×4 Super-Resolution",
+   "repo": "mlboydaisuke/AdcSR-CoreAI",
+   "kind": "superResolution",
+   "variants": {
+    "macos": {
+     "path": "adcsr_x4_float32.aimodel",
+     "sizeMB": 1740
+    },
+    "ios": {
+     "path": "adcsr_x4_float32.aimodel",
+     "sizeMB": 1740
+    }
+   }
   }
  ]
 }
