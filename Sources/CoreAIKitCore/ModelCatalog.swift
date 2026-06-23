@@ -131,10 +131,10 @@ public struct ModelCatalog: Sendable, Codable {
                 ]),
             CatalogEntry(
                 id: "depth-anything-3-small", name: "Depth Anything 3 Small",
-                repo: "mlboydaisuke/depth-anything-3-small-CoreAI-official", kind: .depth,
+                repo: "mlboydaisuke/Depth-Anything-3-CoreAI", kind: .depth,
                 variants: [
-                    "macos": .init(path: "model", sizeMB: 101),
-                    "ios": .init(path: "model", sizeMB: 101),
+                    "macos": .init(path: "small/da3-small_float16.aimodel", sizeMB: 54),
+                    "ios": .init(path: "small/da3-small_float16.aimodel", sizeMB: 54),
                 ]),
             CatalogEntry(
                 id: "embeddinggemma-300m", name: "EmbeddingGemma 300m",

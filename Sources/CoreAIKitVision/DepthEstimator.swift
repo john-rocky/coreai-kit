@@ -1,6 +1,8 @@
 // DepthEstimator.swift — typed monocular depth pipeline over GraphModel (Depth Anything
-// 3 export). The exported graph takes a multi-view image batch [1, N, 3, H, W]; a single
-// photo is replicated across the view slots and view 0's depth is returned.
+// 3 export). The shipped graph takes one square image [1, 3, R, R] as RAW [0, 1] RGB
+// (ImageNet normalization is folded in-graph) and returns a relative depth map. It also
+// accepts the legacy multi-view batch [1, N, 3, H, W], in which case a single photo is
+// replicated across the view slots and view 0's depth is returned.
 
 import CoreGraphics
 import Foundation
@@ -56,12 +58,11 @@ public final class DepthEstimator: @unchecked Sendable {
         }
         self.depthOutput = depthOutput
 
-        // ImageNet normalization at the graph's spatial size (DINOv2-family encoder).
+        // The shipped graph folds ImageNet normalization in-graph, so feed RAW [0, 1]
+        // (identity mean/std). Double-normalizing here would corrupt the depth.
         let side = imageShape[imageShape.count - 1]
         self.preprocessor = ImagePreprocessor(
-            size: side,
-            mean: ImagePreprocessor.imagenet224.mean,
-            std: ImagePreprocessor.imagenet224.std)
+            size: side, mean: SIMD3(0, 0, 0), std: SIMD3(1, 1, 1))
     }
 
     /// Downloads the bundle from the Hugging Face Hub if needed, then loads it.

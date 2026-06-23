@@ -78,16 +78,16 @@
   {
    "id": "depth-anything-3-small",
    "name": "Depth Anything 3 Small",
-   "repo": "mlboydaisuke/depth-anything-3-small-CoreAI-official",
+   "repo": "mlboydaisuke/Depth-Anything-3-CoreAI",
    "kind": "depth",
    "variants": {
     "macos": {
-     "path": "model",
-     "sizeMB": 101
+     "path": "small/da3-small_float16.aimodel",
+     "sizeMB": 54
     },
     "ios": {
-     "path": "model",
-     "sizeMB": 101
+     "path": "small/da3-small_float16.aimodel",
+     "sizeMB": 54
     }
    }
   },
