@@ -81,6 +81,13 @@ public final class StatefulGraphModel: @unchecked Sendable {
         zero(&valueCache)
     }
 
+    /// Seed this model's KV buffers from another model's (same shape) — e.g. continue a q=1 decode
+    /// from a q=T prefill bundle that shares the cache layout. One-time per utterance (cheap copy).
+    public func adoptState(from other: StatefulGraphModel) {
+        copyF16(other.keyCache, &keyCache)
+        copyF16(other.valueCache, &valueCache)
+    }
+
     /// Runs one step; the KV state carries over to the next call.
     public func step(_ inputs: [String: TensorValue]) async throws -> [String: TensorValue] {
         var nd: [String: NDArray] = [:]
@@ -100,6 +107,17 @@ public final class StatefulGraphModel: @unchecked Sendable {
             inputs: nd, states: consume states, outputViews: consume outputViews)
         return [outputName: try TensorValue(reading: outputArray)]
     }
+}
+
+// Direct fp16->fp16 copy (no Float32 round-trip): read src into a buffer, write into dst's view.
+private func copyF16(_ src: NDArray, _ dst: inout NDArray) {
+    let n = dst.shape.reduce(1, *)
+    var buf = [Float16](repeating: 0, count: n)
+    src.view(as: Float16.self).withUnsafePointer { ptr, _, _ in
+        buf.withUnsafeMutableBufferPointer { b in b.baseAddress!.update(from: ptr, count: n) }
+    }
+    var v = dst.mutableView(as: Float16.self)
+    v.copyElements(fromContentsOf: buf)
 }
 
 private func zero(_ array: inout NDArray) {
