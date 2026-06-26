@@ -38,6 +38,11 @@ public struct ModelID: Hashable, Sendable {
 // both "macos" (4-bit GPU, dynamic shapes) and "ios" (mixed 4/8-bit, static ANE) variants;
 // the larger models are macOS-only and fail with a clear error when requested on iOS.
 extension ModelID {
+    /// MiniCPM5-1B (OpenBMB, Apache-2.0). 1.08B on-device LLM, hybrid Think/No-Think, 128K.
+    /// Ship = weight-only int8 (lossless, iPhone 17 Pro 66.8 tok/s decode). Dynamic-shape
+    /// bundle on the pipelined engine; same bundle runs on macOS and iOS.
+    public static let miniCPM5_1B = ModelID(
+        "mlboydaisuke/MiniCPM5-1B-CoreAI", path: "int8")
     /// Qwen3 0.6B (Apache-2.0). Smallest starter; macOS + iOS variants.
     public static let qwen3_0_6B = ModelID("mlboydaisuke/qwen3-0.6b-CoreAI-official")
     /// Qwen3 4B (Apache-2.0). macOS + iOS variants.
