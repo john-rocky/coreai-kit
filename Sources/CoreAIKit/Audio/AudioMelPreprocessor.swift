@@ -75,6 +75,10 @@ public struct AudioMelPreprocessor: Sendable {
         return AudioMelPreprocessor(melFilters: filters)
     }
 
+    /// The Whisper-large-v3 extractor used by `WhisperRuntime`. Same filterbank as `qwen2_5Omni()`
+    /// — CoreAIKit's bundled `mel_filters.f32` is bit-exact with the HF `mel_filters_128.npy`.
+    public static func whisperLargeV3() throws -> AudioMelPreprocessor { try qwen2_5Omni() }
+
     /// Log-mel for a 16 kHz mono waveform. Returns `mel` row-major `[nMels, frames]` and `frames`
     /// (= `samples.count / hop`, matching torch.stft center=True then dropping the trailing frame).
     public func logMel(_ samples: [Float]) -> (mel: [Float], frames: Int) {

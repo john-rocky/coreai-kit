@@ -106,4 +106,18 @@ extension ModelID {
     /// overflow in fp16 (NaN on smooth tiles), so fp32 ships.
     public static let adcsrX4 = ModelID(
         "mlboydaisuke/AdcSR-CoreAI", path: "adcsr_x4_float32.aimodel")
+    /// Whisper large-v3-turbo (OpenAI, MIT) — the zoo's first official ASR. fp16 fixed-128-window
+    /// encoder-decoder transcription graph + HF tokenizer (`.aimodel` + `tokenizer/` at repo root,
+    /// same bundle on both platforms). Driven by `KitWhisperModel`. ≤30 s clips, 100 languages.
+    public static let whisperLargeV3Turbo = ModelID(
+        "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official", path: "")
+    /// ColModernVBERT visual document retriever (MIT) — query/text encoder (fp16, 298 MB).
+    /// The `query/` subtree holds the `.aimodel` + `tokenizer/`; pair with `colModernVBERTDoc`.
+    /// Drives `VisualDocumentRetriever` (late-interaction / MaxSim, OCR-free page retrieval).
+    public static let colModernVBERTQuery = ModelID(
+        "mlboydaisuke/ColModernVBERT-CoreAI", path: "query")
+    /// ColModernVBERT visual document retriever (MIT) — document/image encoder (fp16, 407 MB,
+    /// single 512px tile). The `doc/` subtree holds the `.aimodel`. Pair with `colModernVBERTQuery`.
+    public static let colModernVBERTDoc = ModelID(
+        "mlboydaisuke/ColModernVBERT-CoreAI", path: "doc")
 }
