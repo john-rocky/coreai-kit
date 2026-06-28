@@ -4,7 +4,7 @@ import SwiftUI
 struct DetectCameraApp: App {
     var body: some Scene {
         WindowGroup {
-            DetectCameraView()
+            RootView()
         }
     }
 }

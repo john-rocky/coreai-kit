@@ -48,6 +48,12 @@ others; it gates fp32-clean and runs **4.8 ms / 208 FPS on the M4 Max GPU** and
 **~22 ms / 35–40 FPS end-to-end on the iPhone 17 Pro** (device-verified live, GPU,
 Low Power Mode on; the static graph specializes on-device in ~2.6 s on first load).
 
+A **Camera / Video** switch at the top runs the same detectors on a video you pick from
+the library (PhotosPicker) instead of the live camera: AVPlayer plays the clip and each
+decoded frame (32BGRA, via `AVPlayerItemVideoOutput`) goes through the same `LiveDetector`
+on a main-actor async loop (detection self-throttles the pump — always the latest frame,
+the rest dropped), with the box overlay rotated to the video's display orientation.
+
 On launch the app also runs a small numerics gate against the bundled reference photo and
 logs every confident detection (`GATE det …`) plus live timing windows (`STATS …` with
 median inference ms and end-to-end wall FPS) — watch them with
