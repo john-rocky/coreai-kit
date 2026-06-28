@@ -1,8 +1,10 @@
 # DetectCamera
 
-Real-time object detection from the live camera, fully on-device: RF-DETR (fp32, **no
-NMS**) over the zero-copy capture path. Architecture follows the fastest known iOS
-detection-app pattern:
+Real-time object detection from the live camera, fully on-device, over the zero-copy
+capture path — two detector families behind one picker: **RF-DETR** (DETR, fp32, **no
+NMS**, `ObjectDetector`) and **YOLOX-S** (Megvii's dense anchor-free detector, fp32,
+**host NMS** + letterbox/BGR preprocessing, `YOLOXDetector`). Architecture follows the
+fastest known iOS detection-app pattern:
 
 - **`AVCaptureVideoPreviewLayer` renders the camera directly** — the compositor shows
   the full-rate feed; the app never converts a frame for display.
@@ -37,9 +39,13 @@ xcodegen generate
 open DetectCamera.xcodeproj
 ```
 
-Run on an iPhone (camera required). First launch downloads the model from the Hugging
-Face Hub ([mlboydaisuke/RF-DETR-CoreAI](https://huggingface.co/mlboydaisuke/RF-DETR-CoreAI));
-later launches load from cache. The segmented control switches Nano ↔ Medium.
+Run on an iPhone (camera required). First launch downloads the RF-DETR model from the
+Hugging Face Hub ([mlboydaisuke/RF-DETR-CoreAI](https://huggingface.co/mlboydaisuke/RF-DETR-CoreAI));
+later launches load from cache. The segmented control switches between the variants
+(Nano / Medium / Seg / **YOLOX**). YOLOX-S is not on the Hub yet, so sideload it (see
+below); it gates fp32-clean and runs **4.8 ms / 208 FPS on the M4 Max GPU** and
+**~22 ms / 35–40 FPS end-to-end on the iPhone 17 Pro** (device-verified live, GPU,
+Low Power Mode on; the static graph specializes on-device in ~2.6 s on first load).
 
 On launch the app also runs a small numerics gate against the bundled reference photo and
 logs every confident detection (`GATE det …`) plus live timing windows (`STATS …` with
@@ -109,3 +115,14 @@ xcrun devicectl device copy to --device <UDID> \
 ```
 
 The app prefers `Documents/Models/` over the Hub download.
+
+**YOLOX-S** is the only variant not yet on the Hub, so it must be sideloaded this way
+(the gated `yolox-s_float32.aimodel` is staged in `Models/`):
+
+```bash
+xcrun devicectl device copy to --device <UDID> \
+  --source Models/yolox-s_float32.aimodel \
+  --destination "Documents/Models/yolox-s_float32.aimodel" \
+  --user mobile --domain-type appDataContainer \
+  --domain-identifier com.coreaikit.detectcamera
+```

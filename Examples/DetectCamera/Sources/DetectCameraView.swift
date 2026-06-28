@@ -5,24 +5,91 @@ import SwiftUI
 enum DetectVariant: String, CaseIterable, Identifiable {
     case nano, medium
     case segNano = "seg-nano"
+    case yolox
     var id: String { rawValue }
-    var title: String { self == .segNano ? "Seg" : rawValue.capitalized }
+    var title: String {
+        switch self {
+        case .segNano: "Seg"
+        case .yolox: "YOLOX"
+        default: rawValue.capitalized
+        }
+    }
+    /// YOLOX is a dense detector (host NMS); the others are RF-DETR (DETR, no NMS).
+    var isYOLOX: Bool { self == .yolox }
     var modelID: ModelID {
         switch self {
         case .nano: .rfdetrNano
         case .medium: .rfdetrMedium
         case .segNano: .rfdetrSegNano
+        case .yolox: .yoloxS
         }
     }
-    /// Split (backbone/head) bundles exist for the detection variants only.
+    /// Split (backbone/head) bundles exist for the RF-DETR detection variants only.
     var splitIDs: (backbone: ModelID, head: ModelID)? {
         switch self {
         case .nano: (.rfdetrNanoBackbone, .rfdetrNanoHead)
         case .medium: (.rfdetrMediumBackbone, .rfdetrMediumHead)
-        case .segNano: nil
+        case .segNano, .yolox: nil
         }
     }
-    var bundledName: String { "rfdetr-\(rawValue)_float32" }
+    var bundledName: String {
+        switch self {
+        case .yolox: "yolox-s_float32"
+        default: "rfdetr-\(rawValue)_float32"
+        }
+    }
+    /// Camera data-output size feeding the model (portrait). YOLOX-S is 640², RF-DETR
+    /// nano/medium ~384–576; the detectors letterbox/scale internally, so deliver near
+    /// the model resolution.
+    var dataOutputSize: CGSize {
+        isYOLOX ? CGSize(width: 480, height: 640) : CGSize(width: 384, height: 512)
+    }
+}
+
+/// A frame preprocessed for whichever detector is live. RF-DETR (square-resize RGB,
+/// no NMS) and YOLOX (letterbox BGR, host NMS) have different graph contracts, so the
+/// pipeline carries the prepared input tagged by kind.
+enum PreparedFrame: Sendable {
+    case detr(ObjectDetector.PreparedInput)
+    case yolox(YOLOXDetector.PreparedInput)
+}
+
+/// The live detector, abstracting RF-DETR and YOLOX behind one prepare/detect surface.
+enum LiveDetector: Sendable {
+    case detr(ObjectDetector)
+    case yolox(YOLOXDetector)
+
+    var inputSize: Int {
+        switch self {
+        case .detr(let d): d.inputSize
+        case .yolox(let d): d.inputSize
+        }
+    }
+
+    func prepare(_ pixelBuffer: CVPixelBuffer) throws -> PreparedFrame {
+        switch self {
+        case .detr(let d): .detr(try d.prepare(pixelBuffer))
+        case .yolox(let d): .yolox(try d.prepare(pixelBuffer))
+        }
+    }
+
+    func detect(_ frame: PreparedFrame, scoreThreshold: Float) async throws -> [Detection] {
+        switch (self, frame) {
+        case let (.detr(d), .detr(input)):
+            try await d.detect(input, scoreThreshold: scoreThreshold)
+        case let (.yolox(d), .yolox(input)):
+            try await d.detect(input, scoreThreshold: scoreThreshold)
+        default:
+            []
+        }
+    }
+
+    func detect(in image: CGImage, scoreThreshold: Float) async throws -> [Detection] {
+        switch self {
+        case .detr(let d): try await d.detect(in: image, scoreThreshold: scoreThreshold)
+        case .yolox(let d): try await d.detect(in: image, scoreThreshold: scoreThreshold)
+        }
+    }
 }
 
 enum DetectUnit: String, CaseIterable, Identifiable {
@@ -111,7 +178,7 @@ final class DetectCameraModel {
             // layer still shows the full 720p feed at the capture rate.
             let feed = CameraFeed(
                 framesPerSecond: targetFPS, preset: .hd1280x720,
-                dataOutputSize: CGSize(width: 384, height: 512))
+                dataOutputSize: variant.dataOutputSize)
             self.feed = feed
             let frames = try await feed.startPixelBuffers()
             session = feed.captureSession
@@ -120,7 +187,7 @@ final class DetectCameraModel {
             // Two-stage pipeline OFF the main actor: stage 1 preprocesses frames on
             // the CPU while stage 2 runs the previous frame on the GPU; UI updates
             // are fire-and-forget hops so they never sit on the inference path.
-            let (prepared, preparedCont) = AsyncStream<ObjectDetector.PreparedInput>
+            let (prepared, preparedCont) = AsyncStream<PreparedFrame>
                 .makeStream(bufferingPolicy: .bufferingNewest(1))
             let dumpFrame = ProcessInfo.processInfo.environment["DETECT_DUMP"] == "1"
             prepTask = Task.detached { [weak self] in
@@ -212,9 +279,27 @@ final class DetectCameraModel {
     /// Hugging Face download. (.aimodel directories cannot ship inside the app
     /// bundle — the installer mistakes extension-suffixed root folders for
     /// nested bundles and rejects the app.)
-    private func loadDetector() async throws -> ObjectDetector {
+    private func loadDetector() async throws -> LiveDetector {
         let sideloaded = URL.documentsDirectory
             .appending(path: "Models/\(variant.bundledName).aimodel")
+
+        // YOLOX: dense detector, no split — load the monolith on the chosen unit.
+        if variant.isYOLOX {
+            if FileManager.default.fileExists(atPath: sideloaded.path) {
+                NSLog("MODEL sideloaded %@ unit=%@", variant.bundledName, unit.rawValue)
+                return .yolox(
+                    try await YOLOXDetector(bundleAt: sideloaded, computeUnits: unit.computeUnits))
+            }
+            NSLog("MODEL downloading %@ unit=%@", variant.bundledName, unit.rawValue)
+            return .yolox(
+                try await YOLOXDetector(model: variant.modelID, computeUnits: unit.computeUnits) {
+                    progress in
+                    Task { @MainActor in
+                        self.status = "Downloading… \(Int(progress.fraction * 100))%"
+                    }
+                })
+        }
+
         if unit == .ane, let split = variant.splitIDs {
             // ANE value needs the split deployment: a monolithic graph keeps the
             // whole model on the GPU delegate (the deformable head is not
@@ -227,32 +312,36 @@ final class DetectCameraModel {
                 FileManager.default.fileExists(atPath: head.path)
             {
                 NSLog("MODEL split sideloaded %@ backbone=ane head=gpu", variant.rawValue)
-                return try await ObjectDetector(backboneAt: bb, headAt: head)
+                return .detr(try await ObjectDetector(backboneAt: bb, headAt: head))
             }
             NSLog("MODEL split downloading %@ backbone=ane head=gpu", variant.rawValue)
-            return try await ObjectDetector(
-                backboneModel: split.backbone, headModel: split.head
-            ) { progress in
-                Task { @MainActor in
-                    self.status = "Downloading… \(Int(progress.fraction * 100))%"
-                }
-            }
+            return .detr(
+                try await ObjectDetector(
+                    backboneModel: split.backbone, headModel: split.head
+                ) { progress in
+                    Task { @MainActor in
+                        self.status = "Downloading… \(Int(progress.fraction * 100))%"
+                    }
+                })
         }
         if FileManager.default.fileExists(atPath: sideloaded.path) {
             NSLog("MODEL sideloaded %@ unit=%@", variant.bundledName, unit.rawValue)
-            return try await ObjectDetector(bundleAt: sideloaded, computeUnits: unit.computeUnits)
+            return .detr(
+                try await ObjectDetector(bundleAt: sideloaded, computeUnits: unit.computeUnits))
         }
         NSLog("MODEL downloading %@ unit=%@", variant.bundledName, unit.rawValue)
-        return try await ObjectDetector(model: variant.modelID, computeUnits: unit.computeUnits) { progress in
-            Task { @MainActor in
-                self.status = "Downloading… \(Int(progress.fraction * 100))%"
-            }
-        }
+        return .detr(
+            try await ObjectDetector(model: variant.modelID, computeUnits: unit.computeUnits) {
+                progress in
+                Task { @MainActor in
+                    self.status = "Downloading… \(Int(progress.fraction * 100))%"
+                }
+            })
     }
 
     /// On-device numerics gate: detect on the bundled reference photo and log every
     /// confident detection (compare against the Mac fp32 oracle from the console).
-    private func gate(_ detector: ObjectDetector) async throws {
+    private func gate(_ detector: LiveDetector) async throws {
         guard
             let url = Bundle.main.url(forResource: "gate_image", withExtension: "jpg"),
             let source = CGImageSourceCreateWithURL(url as CFURL, nil),

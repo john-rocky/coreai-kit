@@ -98,6 +98,12 @@ extension ModelID {
     /// RF-DETR-Seg medium 432px instance segmentation (Apache-2.0, fp32, no NMS).
     public static let rfdetrSegMedium = ModelID(
         "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-medium_float32.aimodel")
+    /// YOLOX-S 640px single-stage anchor-free detector (Megvii, Apache-2.0, fp32). Unlike the
+    /// DETR family this is a dense detector — `YOLOXDetector` does the obj·cls threshold +
+    /// per-class NMS host-side. Same bundle on both platforms. (Upload pending: until the repo
+    /// is live, sideload `yolox-s_float32.aimodel` into Documents/Models/.)
+    public static let yoloxS = ModelID(
+        "mlboydaisuke/YOLOX-CoreAI", path: "yolox-s_float32.aimodel")
     /// AdcSR ×4 one-step diffusion-GAN super-resolution (CVPR 2025). Apache-2.0 code; weights
     /// derived from Stable Diffusion 2.1 (CreativeML OpenRAIL++-M — commercial use OK, the same
     /// license under which Apple ships SD CoreML). One 128→512 tile (`SuperResolver` tiles any-size
