@@ -132,7 +132,10 @@ public struct StreamStats: Sendable {
     public var samples: Int
     public var firstChunkSeconds: Double
     public var totalSeconds: Double
-    public var audioSeconds: Double { Double(samples) / Double(VoxCPMTTS.sampleRate) }
+    /// Output sample rate of the model that produced these samples (VoxCPM 16 kHz / VoxCPM2 48 kHz).
+    /// Defaults to 16 kHz so the shipped 0.5B call sites are unchanged.
+    public var sampleRate: Int = VoxCPMTTS.sampleRate
+    public var audioSeconds: Double { Double(samples) / Double(sampleRate) }
     public var realTimeFactor: Double { audioSeconds > 0 ? totalSeconds / audioSeconds : 0 }
 }
 
