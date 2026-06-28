@@ -54,6 +54,8 @@ final class VideoDetectModel {
     var frameSize = CGSize(width: 1280, height: 720)
     var status = "Pick a video to detect"
     var inferenceMS: Double?
+    /// Live confidence cutoff fed to the detector — adjustable via the slider.
+    var scoreThreshold: Float = 0.5
     var player: AVPlayer?
     var hasVideo = false
 
@@ -173,7 +175,7 @@ final class VideoDetectModel {
                 do {
                     let prepared = try detector.prepare(buffer)  // sync CPU letterbox/scale
                     let start = SuspendingClock.now
-                    let dets = try await detector.detect(prepared, scoreThreshold: 0.3)
+                    let dets = try await detector.detect(prepared, scoreThreshold: scoreThreshold)
                     let c = (SuspendingClock.now - start).components
                     inferenceMS = Double(c.seconds) * 1000 + Double(c.attoseconds) / 1e15
                     detections = dets.map { Detection(classID: $0.classID, label: $0.label, score: $0.score, box: rotation.map($0.box)) }
@@ -257,6 +259,9 @@ struct VideoDetectView: View {
                 .frame(maxWidth: 140)
             }
             .padding(.horizontal, 12)
+
+            ThresholdSlider(value: $model.scoreThreshold)
+                .padding(.horizontal, 12)
 
             HStack {
                 PhotosPicker(selection: $model.pickerItem, matching: .videos) {

@@ -111,6 +111,8 @@ final class DetectCameraModel {
     var wallFPS: Double?
     /// Non-nil when the system reports thermal pressure (the GPU is throttled).
     var thermal: String?
+    /// Live confidence cutoff fed to the detector — adjustable via the slider.
+    var scoreThreshold: Float = 0.5
     var variant: DetectVariant = .nano {
         didSet { if oldValue != variant { restart() } }
     }
@@ -217,8 +219,9 @@ final class DetectCameraModel {
                 do {
                     for await input in prepared {
                         if Task.isCancelled { break }
+                        let thr = await MainActor.run { self?.scoreThreshold ?? 0.5 }
                         let start = SuspendingClock.now
-                        var dets = try await detector.detect(input, scoreThreshold: 0.5)
+                        var dets = try await detector.detect(input, scoreThreshold: thr)
                         if ProcessInfo.processInfo.environment["DETECT_TESTBOX"] == "1" {
                             // debug: known normalized positions to validate overlay mapping
                             dets = [
@@ -392,6 +395,21 @@ final class DetectCameraModel {
     }
 }
 
+/// A compact confidence-threshold slider, shared by the camera and video views.
+struct ThresholdSlider: View {
+    @Binding var value: Float
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "slider.horizontal.3").font(.caption2).foregroundStyle(.secondary)
+            Text("conf").font(.caption2).foregroundStyle(.secondary)
+            Slider(value: $value, in: 0.05...0.95)
+            Text(String(format: "%.2f", value))
+                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                .frame(width: 32, alignment: .trailing)
+        }
+    }
+}
+
 struct DetectCameraView: View {
     @State private var model = DetectCameraModel()
 
@@ -430,6 +448,9 @@ struct DetectCameraView: View {
                 .frame(maxWidth: 140)
             }
             .padding(.horizontal, 12)
+
+            ThresholdSlider(value: $model.scoreThreshold)
+                .padding(.horizontal, 12)
 
             HStack {
                 Text(model.status)
