@@ -39,9 +39,13 @@ let package = Package(
                 .product(name: "CoreAILM", package: "coreai-models"),
                 .product(name: "Transformers", package: "swift-transformers"),
             ],
-            // Whisper-large-v3 mel filterbank ([201,128] fp32) for the audio frontend; bit-exact
-            // with the HF feature extractor (gated cos 1.0), so the mel never recomputes librosa.
-            resources: [.copy("Audio/Resources/mel_filters.f32")]
+            // Mel filterbanks for the audio frontends, each bit-exact with its HF feature
+            // extractor so the mel never recomputes librosa: Whisper-large-v3 ([201,128] fp32,
+            // gated cos 1.0) and Parakeet ([128,257] fp32 librosa-slaney, gated token-exact e2e).
+            resources: [
+                .copy("Audio/Resources/mel_filters.f32"),
+                .copy("Audio/Resources/parakeet_mel_filters_128x257.f32"),
+            ]
         ),
         .target(
             name: "CoreAIKitVision",

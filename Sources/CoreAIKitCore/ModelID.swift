@@ -128,4 +128,10 @@ extension ModelID {
     /// single 512px tile). The `doc/` subtree holds the `.aimodel`. Pair with `colModernVBERTQuery`.
     public static let colModernVBERTDoc = ModelID(
         "mlboydaisuke/ColModernVBERT-CoreAI", path: "doc")
+    /// NVIDIA Parakeet-TDT-0.6B-v3 (cc-by-4.0) — the zoo's first transducer / TDT (RNN-T family)
+    /// ASR. FastConformer encoder (fp16) + LSTM predictor + joint (fp32), 25 EU languages, ≤~29 s
+    /// clips. Flat repo (bundle at root): the three `.aimodel` graphs + `tokenizer.json`. Driven by
+    /// `KitParakeetModel`. (Upload pending — until live, sideload the bundle into Documents/Models/.)
+    public static let parakeetTDT = ModelID(
+        "mlboydaisuke/Parakeet-TDT-0.6B-CoreAI", path: "")
 }
