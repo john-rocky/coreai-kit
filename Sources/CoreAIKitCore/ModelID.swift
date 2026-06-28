@@ -107,10 +107,12 @@ extension ModelID {
     public static let adcsrX4 = ModelID(
         "mlboydaisuke/AdcSR-CoreAI", path: "adcsr_x4_float32.aimodel")
     /// Whisper large-v3-turbo (OpenAI, MIT) — the zoo's first official ASR. fp16 fixed-128-window
-    /// encoder-decoder transcription graph + HF tokenizer (`.aimodel` + `tokenizer/` at repo root,
-    /// same bundle on both platforms). Driven by `KitWhisperModel`. ≤30 s clips, 100 languages.
+    /// encoder-decoder transcription graph + HF tokenizer. Platform subtrees: `macos/` is the stock
+    /// JIT `.aimodel` (Mac JIT-compiles fine); `ios/` is the AOT-compiled `.aimodelc` (h18p — the
+    /// on-device JIT compiler aborts on the 1.6 GB graph). `path` is nil so `resolvedPath` picks the
+    /// right one. Driven by `KitWhisperModel`. ≤30 s clips, 100 languages.
     public static let whisperLargeV3Turbo = ModelID(
-        "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official", path: "")
+        "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official")
     /// ColModernVBERT visual document retriever (MIT) — query/text encoder (fp16, 298 MB).
     /// The `query/` subtree holds the `.aimodel` + `tokenizer/`; pair with `colModernVBERTDoc`.
     /// Drives `VisualDocumentRetriever` (late-interaction / MaxSim, OCR-free page retrieval).
