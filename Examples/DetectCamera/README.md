@@ -42,8 +42,9 @@ open DetectCamera.xcodeproj
 Run on an iPhone (camera required). First launch downloads the RF-DETR model from the
 Hugging Face Hub ([mlboydaisuke/RF-DETR-CoreAI](https://huggingface.co/mlboydaisuke/RF-DETR-CoreAI));
 later launches load from cache. The segmented control switches between the variants
-(Nano / Medium / Seg / **YOLOX**). YOLOX-S is not on the Hub yet, so sideload it (see
-below); it gates fp32-clean and runs **4.8 ms / 208 FPS on the M4 Max GPU** and
+(Nano / Medium / Seg / **YOLOX**). YOLOX-S downloads from the Hub
+([mlboydaisuke/YOLOX-CoreAI](https://huggingface.co/mlboydaisuke/YOLOX-CoreAI)) like the
+others; it gates fp32-clean and runs **4.8 ms / 208 FPS on the M4 Max GPU** and
 **~22 ms / 35–40 FPS end-to-end on the iPhone 17 Pro** (device-verified live, GPU,
 Low Power Mode on; the static graph specializes on-device in ~2.6 s on first load).
 
@@ -116,8 +117,8 @@ xcrun devicectl device copy to --device <UDID> \
 
 The app prefers `Documents/Models/` over the Hub download.
 
-**YOLOX-S** is the only variant not yet on the Hub, so it must be sideloaded this way
-(the gated `yolox-s_float32.aimodel` is staged in `Models/`):
+**YOLOX-S** is on the Hub too, so the app downloads it automatically; to sideload a local
+build instead (the gated `yolox-s_float32.aimodel` is staged in `Models/`):
 
 ```bash
 xcrun devicectl device copy to --device <UDID> \
