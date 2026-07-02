@@ -62,6 +62,15 @@ public struct VLModelID: Sendable, Hashable {
             "mlboydaisuke/Qwen3-VL-8B-CoreAI",
             path: "gpu-pipelined/qwen3_vl_8b_instruct_vision"),
         arch: .qwen3VL8B)
+
+    /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
+    /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
+    /// a preset here; the id is the one the model's card shows.
+    static let byCatalogID: [String: VLModelID] = [
+        "qwen3-vl-2b": .qwen3VL2B,
+        "qwen3-vl-4b": .qwen3VL4B,
+        "qwen3-vl-8b": .qwen3VL8B,
+    ]
 }
 
 /// A Core AI VL bundle as a `LanguageModelSession` provider.
@@ -84,6 +93,26 @@ public struct KitVisionModel: LanguageModel {
 
     public var executorConfiguration: KitVisionExecutor.Configuration {
         KitVisionExecutor.Configuration(runtime: runtime, modelID: modelID, profile: profile)
+    }
+
+    /// Loads a vision-language model by its catalog id — the id shown on the model's card:
+    ///
+    /// ```swift
+    /// let vlm = try await KitVisionModel(catalog: "qwen3-vl-2b")
+    /// ```
+    ///
+    /// Resolves the platform variant from the live catalog (built-in snapshot offline) and
+    /// the decoder + vision bundle pair internally — consumers never touch bundle paths.
+    public init(
+        catalog id: String,
+        store: ModelStore = .default,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .vlm)
+        guard let model = VLModelID.byCatalogID[entry.id] else {
+            throw CoreAIKitError.modelNotInCatalog(id: id)
+        }
+        try await self.init(model: model, store: store, downloadProgress: downloadProgress)
     }
 
     /// Downloads the decoder + vision bundles from the Hub (if needed) and loads them.

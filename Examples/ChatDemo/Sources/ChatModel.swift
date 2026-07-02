@@ -62,7 +62,7 @@ final class ChatModel {
         Task {
             do {
                 // Same gesture as the model card: the catalog id resolves the platform
-                // variant and the engine hint (zoo decode-pipelined ports need .sequential).
+                // variant and the engine hint (zoo decode-only ports ride "pipelined").
                 let session = try await ChatSession(catalog: entry.id) { progress in
                     Task { @MainActor in
                         self.status = progress.fraction < 1

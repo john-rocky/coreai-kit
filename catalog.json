@@ -7,8 +7,14 @@
       "repo": "mlboydaisuke/qwen3-0.6b-CoreAI-official",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "macos", "sizeMB": 352 },
-        "ios": { "path": "ios", "sizeMB": 454 }
+        "macos": {
+          "path": "macos",
+          "sizeMB": 352
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 454
+        }
       },
       "thinking": true
     },
@@ -18,8 +24,14 @@
       "repo": "mlboydaisuke/qwen3-4b-CoreAI-official",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "macos", "sizeMB": 2280 },
-        "ios": { "path": "ios", "sizeMB": 2498 }
+        "macos": {
+          "path": "macos",
+          "sizeMB": 2280
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 2498
+        }
       },
       "thinking": true
     },
@@ -28,14 +40,24 @@
       "name": "Mistral 7B v0.3",
       "repo": "mlboydaisuke/mistral-7b-v0.3-CoreAI-official",
       "kind": "chat",
-      "variants": { "macos": { "path": "macos", "sizeMB": 4078 } }
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 4078
+        }
+      }
     },
     {
       "id": "gemma-3-4b-it",
       "name": "Gemma 3 4B",
       "repo": "mlboydaisuke/gemma-3-4b-it-CoreAI-official",
       "kind": "chat",
-      "variants": { "macos": { "path": "macos", "sizeMB": 2223 } }
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 2223
+        }
+      }
     },
     {
       "id": "qwen3.5-0.8b",
@@ -43,8 +65,14 @@
       "repo": "mlboydaisuke/qwen3.5-0.8B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym", "sizeMB": 1300 },
-        "ios": { "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym", "sizeMB": 1300 }
+        "macos": {
+          "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym",
+          "sizeMB": 1300
+        },
+        "ios": {
+          "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym",
+          "sizeMB": 1300
+        }
       },
       "thinking": true,
       "engine": "pipelined"
@@ -55,8 +83,14 @@
       "repo": "mlboydaisuke/qwen3.5-2B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym", "sizeMB": 2900 },
-        "ios": { "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym", "sizeMB": 2900 }
+        "macos": {
+          "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym",
+          "sizeMB": 2900
+        },
+        "ios": {
+          "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym",
+          "sizeMB": 2900
+        }
       },
       "thinking": true,
       "engine": "pipelined"
@@ -67,8 +101,14 @@
       "repo": "mlboydaisuke/LFM2.5-1.2B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8lin", "sizeMB": 1500 },
-        "ios": { "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8lin", "sizeMB": 1500 }
+        "macos": {
+          "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
+          "sizeMB": 1702
+        },
+        "ios": {
+          "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
+          "sizeMB": 1702
+        }
       },
       "engine": "pipelined"
     },
@@ -78,8 +118,14 @@
       "repo": "mlboydaisuke/granite-4.0-h-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", "sizeMB": 1200 },
-        "ios": { "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", "sizeMB": 1200 }
+        "macos": {
+          "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8lin",
+          "sizeMB": 1706
+        },
+        "ios": {
+          "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8hu_block32_sym",
+          "sizeMB": 1872
+        }
       },
       "engine": "pipelined"
     },
@@ -89,8 +135,14 @@
       "repo": "mlboydaisuke/MiniCPM5-1B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "int8", "sizeMB": 2000 },
-        "ios": { "path": "int8", "sizeMB": 2000 }
+        "macos": {
+          "path": "int8",
+          "sizeMB": 2000
+        },
+        "ios": {
+          "path": "int8",
+          "sizeMB": 2000
+        }
       },
       "thinking": true,
       "engine": "pipelined"
@@ -101,8 +153,14 @@
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1", "sizeMB": 3900 },
-        "ios": { "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1", "sizeMB": 3900 }
+        "macos": {
+          "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
+          "sizeMB": 3900
+        },
+        "ios": {
+          "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
+          "sizeMB": 3900
+        }
       },
       "thinking": true,
       "engine": "pipelined"
@@ -112,7 +170,12 @@
       "name": "Qwen3 8B",
       "repo": "mlboydaisuke/qwen3-8b-CoreAI-official",
       "kind": "chat",
-      "variants": { "macos": { "path": "macos", "sizeMB": 4400 } },
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 4400
+        }
+      },
       "thinking": true
     },
     {
@@ -120,7 +183,12 @@
       "name": "Gemma 3 12B",
       "repo": "mlboydaisuke/gemma-3-12b-it-CoreAI-official",
       "kind": "chat",
-      "variants": { "macos": { "path": "macos", "sizeMB": 6000 } }
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 6000
+        }
+      }
     },
     {
       "id": "qwen3.6-35b-a3b",
@@ -128,7 +196,10 @@
       "repo": "mlboydaisuke/Qwen3.6-35B-A3B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/qwen3_6_35b_a3b_decode_sym8_gather", "sizeMB": 35000 }
+        "macos": {
+          "path": "gpu-pipelined/qwen3_6_35b_a3b_decode_sym8_gather",
+          "sizeMB": 35000
+        }
       },
       "thinking": true,
       "engine": "pipelined"
@@ -139,7 +210,10 @@
       "repo": "mlboydaisuke/Qwen3.6-27B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym", "sizeMB": 28000 }
+        "macos": {
+          "path": "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym",
+          "sizeMB": 28000
+        }
       },
       "thinking": true,
       "engine": "pipelined"
@@ -150,7 +224,10 @@
       "repo": "mlboydaisuke/GLM-4.7-Flash-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/glm_4_7_flash_decode_sym8_gather", "sizeMB": 30000 }
+        "macos": {
+          "path": "gpu-pipelined/glm_4_7_flash_decode_sym8_gather",
+          "sizeMB": 30000
+        }
       },
       "thinking": true,
       "engine": "pipelined"
@@ -161,7 +238,10 @@
       "repo": "mlboydaisuke/LFM2.5-8B-A1B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/lfm2_5_8b_a1b_decode_sym8_gather", "sizeMB": 9000 }
+        "macos": {
+          "path": "gpu-pipelined/lfm2_5_8b_a1b_decode_sym8_gather",
+          "sizeMB": 9000
+        }
       },
       "engine": "pipelined"
     },
@@ -171,7 +251,10 @@
       "repo": "mlboydaisuke/Gemma-4-12B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8", "sizeMB": 13000 }
+        "macos": {
+          "path": "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8",
+          "sizeMB": 13000
+        }
       },
       "engine": "pipelined"
     },
@@ -181,9 +264,56 @@
       "repo": "mlboydaisuke/Gemma-4-31B-CoreAI",
       "kind": "chat",
       "variants": {
-        "macos": { "path": "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8", "sizeMB": 18000 }
+        "macos": {
+          "path": "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8",
+          "sizeMB": 18000
+        }
       },
       "engine": "pipelined"
+    },
+    {
+      "id": "qwen3-vl-2b",
+      "name": "Qwen3-VL 2B",
+      "repo": "mlboydaisuke/Qwen3-VL-2B-CoreAI",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/qwen3_vl_2b_instruct_decode_int8hu_s1",
+          "sizeMB": 3278
+        },
+        "ios": {
+          "path": "gpu-pipelined/qwen3_vl_2b_instruct_decode_int8hu_s1",
+          "sizeMB": 3278
+        }
+      }
+    },
+    {
+      "id": "qwen3-vl-4b",
+      "name": "Qwen3-VL 4B",
+      "repo": "mlboydaisuke/Qwen3-VL-4B-CoreAI",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/qwen3_vl_4b_instruct_decode_int8hu_s1",
+          "sizeMB": 5897
+        },
+        "ios": {
+          "path": "gpu-pipelined/qwen3_vl_4b_instruct_decode_int8hu_s1",
+          "sizeMB": 5897
+        }
+      }
+    },
+    {
+      "id": "qwen3-vl-8b",
+      "name": "Qwen3-VL 8B",
+      "repo": "mlboydaisuke/Qwen3-VL-8B-CoreAI",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/qwen3_vl_8b_instruct_decode_int8hu_s1",
+          "sizeMB": 10453
+        }
+      }
     },
     {
       "id": "whisper-large-v3-turbo",
@@ -191,8 +321,14 @@
       "repo": "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official",
       "kind": "asr",
       "variants": {
-        "macos": { "path": "macos", "sizeMB": 1620 },
-        "ios": { "path": "ios", "sizeMB": 3240 }
+        "macos": {
+          "path": "macos",
+          "sizeMB": 1620
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 3240
+        }
       }
     },
     {
@@ -201,7 +337,10 @@
       "repo": "mlboydaisuke/Qwen3-ASR-1.7B-CoreAI",
       "kind": "asr",
       "variants": {
-        "macos": { "path": "gpu-pipelined/qwen3_asr_1.7b_decode_int8hu_n390_s1", "sizeMB": 3100 }
+        "macos": {
+          "path": "gpu-pipelined/qwen3_asr_1.7b_decode_int8hu_n390_s1",
+          "sizeMB": 3100
+        }
       }
     },
     {
@@ -210,7 +349,10 @@
       "repo": "mlboydaisuke/Parakeet-TDT-0.6B-CoreAI",
       "kind": "asr",
       "variants": {
-        "macos": { "path": "", "sizeMB": 1290 }
+        "macos": {
+          "path": "",
+          "sizeMB": 1290
+        }
       }
     },
     {
@@ -219,8 +361,14 @@
       "repo": "mlboydaisuke/clip-vit-base-patch32-CoreAI-official",
       "kind": "imageText",
       "variants": {
-        "macos": { "path": "model", "sizeMB": 291 },
-        "ios": { "path": "model", "sizeMB": 291 }
+        "macos": {
+          "path": "model",
+          "sizeMB": 291
+        },
+        "ios": {
+          "path": "model",
+          "sizeMB": 291
+        }
       }
     },
     {
@@ -229,8 +377,14 @@
       "repo": "mlboydaisuke/Depth-Anything-3-CoreAI",
       "kind": "depth",
       "variants": {
-        "macos": { "path": "small/da3-small_float16.aimodel", "sizeMB": 54 },
-        "ios": { "path": "small/da3-small_float16.aimodel", "sizeMB": 54 }
+        "macos": {
+          "path": "small/da3-small_float16.aimodel",
+          "sizeMB": 54
+        },
+        "ios": {
+          "path": "small/da3-small_float16.aimodel",
+          "sizeMB": 54
+        }
       }
     },
     {
@@ -239,8 +393,14 @@
       "repo": "mlboydaisuke/embeddinggemma-300m-CoreAI",
       "kind": "textEmbedding",
       "variants": {
-        "macos": { "path": "model", "sizeMB": 1230 },
-        "ios": { "path": "model", "sizeMB": 1230 }
+        "macos": {
+          "path": "model",
+          "sizeMB": 1230
+        },
+        "ios": {
+          "path": "model",
+          "sizeMB": 1230
+        }
       }
     },
     {
@@ -249,8 +409,14 @@
       "repo": "mlboydaisuke/RF-DETR-CoreAI",
       "kind": "detection",
       "variants": {
-        "macos": { "path": "rfdetr-nano_float32.aimodel", "sizeMB": 103 },
-        "ios": { "path": "rfdetr-nano_float32.aimodel", "sizeMB": 103 }
+        "macos": {
+          "path": "rfdetr-nano_float32.aimodel",
+          "sizeMB": 103
+        },
+        "ios": {
+          "path": "rfdetr-nano_float32.aimodel",
+          "sizeMB": 103
+        }
       }
     },
     {
@@ -259,8 +425,14 @@
       "repo": "mlboydaisuke/AdcSR-CoreAI",
       "kind": "superResolution",
       "variants": {
-        "macos": { "path": "adcsr_x4_float32.aimodel", "sizeMB": 1740 },
-        "ios": { "path": "adcsr_x4_float32.aimodel", "sizeMB": 1740 }
+        "macos": {
+          "path": "adcsr_x4_float32.aimodel",
+          "sizeMB": 1740
+        },
+        "ios": {
+          "path": "adcsr_x4_float32.aimodel",
+          "sizeMB": 1740
+        }
       }
     }
   ]

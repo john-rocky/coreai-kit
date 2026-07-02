@@ -1,0 +1,370 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0788B9CBD67097FBD53EE6DD /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2B236932C95494822194E437 /* CoreAIKit */; };
+		1536BE7071574E19103645B2 /* CoreAIKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 8E7F5D450469EDC212F1D72E /* CoreAIKitUI */; };
+		56FEDEF7C8305CABA49C9F48 /* VLChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4BF6CC633D20FADA5F1EE2F /* VLChatApp.swift */; };
+		5F2E4C51EC0B8F8D795E53A8 /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05891AE91DDE498BC658EBBC /* QuickStart.swift */; };
+		B66657406675BACEE16C1FC9 /* VLChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E08B81E5A891028882246E /* VLChatView.swift */; };
+		C8BEA993128581EE98942F1A /* VLChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0203C292A0AB7A7D49EF11C /* VLChatModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		05891AE91DDE498BC658EBBC /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
+		51E08B81E5A891028882246E /* VLChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLChatView.swift; sourceTree = "<group>"; };
+		821D4FAFF4954B4F162492F4 /* VLChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VLChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0203C292A0AB7A7D49EF11C /* VLChatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLChatModel.swift; sourceTree = "<group>"; };
+		C4BF6CC633D20FADA5F1EE2F /* VLChatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLChatApp.swift; sourceTree = "<group>"; };
+		F3BB4AFB4E40A5345F76A562 /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A18165A4FD3DAC4FE6E54F77 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0788B9CBD67097FBD53EE6DD /* CoreAIKit in Frameworks */,
+				1536BE7071574E19103645B2 /* CoreAIKitUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0782E80E030D39969A9D6F20 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				05891AE91DDE498BC658EBBC /* QuickStart.swift */,
+				C4BF6CC633D20FADA5F1EE2F /* VLChatApp.swift */,
+				B0203C292A0AB7A7D49EF11C /* VLChatModel.swift */,
+				51E08B81E5A891028882246E /* VLChatView.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		1E1CDA9DFA30806BC4B88CBC /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				821D4FAFF4954B4F162492F4 /* VLChat.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		3BAC7A896BAFD42FDE55AEF5 = {
+			isa = PBXGroup;
+			children = (
+				E58C9AA418496EE760EBAE03 /* Packages */,
+				0782E80E030D39969A9D6F20 /* Sources */,
+				1E1CDA9DFA30806BC4B88CBC /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E58C9AA418496EE760EBAE03 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				F3BB4AFB4E40A5345F76A562 /* coreai-kit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		044D8264F301BB58FAFDB1C0 /* VLChat */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4242D30490C0CF6EE2D81E75 /* Build configuration list for PBXNativeTarget "VLChat" */;
+			buildPhases = (
+				DAEA15B6833662AEDD47000D /* Sources */,
+				A18165A4FD3DAC4FE6E54F77 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VLChat;
+			packageProductDependencies = (
+				2B236932C95494822194E437 /* CoreAIKit */,
+				8E7F5D450469EDC212F1D72E /* CoreAIKitUI */,
+			);
+			productName = VLChat;
+			productReference = 821D4FAFF4954B4F162492F4 /* VLChat.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		62705B159240FB01FEB5C72E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					044D8264F301BB58FAFDB1C0 = {
+						DevelopmentTeam = MFN25KNUGJ;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 9985923666EDB74D40A2083C /* Build configuration list for PBXProject "VLChat" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 3BAC7A896BAFD42FDE55AEF5;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				74BD872A81194E29DEC3B9A8 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				044D8264F301BB58FAFDB1C0 /* VLChat */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DAEA15B6833662AEDD47000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5F2E4C51EC0B8F8D795E53A8 /* QuickStart.swift in Sources */,
+				56FEDEF7C8305CABA49C9F48 /* VLChatApp.swift in Sources */,
+				C8BEA993128581EE98942F1A /* VLChatModel.swift in Sources */,
+				B66657406675BACEE16C1FC9 /* VLChatView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		7BD48AAF54F6068BCAD00FD8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "VLChat sends a photo you choose to a local vision-language model on this device to describe it. Nothing leaves your device.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coreaikit.vlchat;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		802E91E0545FB1E1A101897F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		BD9073578105EEA4882AE863 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "VLChat sends a photo you choose to a local vision-language model on this device to describe it. Nothing leaves your device.";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coreaikit.vlchat;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		E7A5B64A2A5EED81E5D1D5E4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4242D30490C0CF6EE2D81E75 /* Build configuration list for PBXNativeTarget "VLChat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7BD48AAF54F6068BCAD00FD8 /* Debug */,
+				BD9073578105EEA4882AE863 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9985923666EDB74D40A2083C /* Build configuration list for PBXProject "VLChat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E7A5B64A2A5EED81E5D1D5E4 /* Debug */,
+				802E91E0545FB1E1A101897F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		74BD872A81194E29DEC3B9A8 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2B236932C95494822194E437 /* CoreAIKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreAIKit;
+		};
+		8E7F5D450469EDC212F1D72E /* CoreAIKitUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreAIKitUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 62705B159240FB01FEB5C72E /* Project object */;
+}

@@ -15,6 +15,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case asr
         /// Object detection (RF-DETR / YOLOX).
         case detection
+        /// Vision-language chat (Qwen3-VL): image + prompt → answer.
+        case vlm
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -193,19 +195,24 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/LFM2.5-1.2B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8lin", sizeMB: 1500),
+                        path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
+                        sizeMB: 1702),
                     "ios": .init(
-                        path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8lin", sizeMB: 1500),
+                        path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
+                        sizeMB: 1702),
                 ],
                 engine: "pipelined"),
             CatalogEntry(
                 id: "granite-4.0-h-1b", name: "Granite 4.0-H 1B",
                 repo: "mlboydaisuke/granite-4.0-h-CoreAI", kind: .chat,
                 variants: [
+                    // Split ship: Mac ships int8lin (136.5 tok/s), the device ships the
+                    // untied-int8-head variant (+17–21% decode on iPhone).
                     "macos": .init(
-                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1200),
+                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1706),
                     "ios": .init(
-                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1200),
+                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8hu_block32_sym",
+                        sizeMB: 1872),
                 ],
                 engine: "pipelined"),
             CatalogEntry(
@@ -277,6 +284,37 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: ["macos": .init(
                     path: "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8", sizeMB: 18000)],
                 engine: "pipelined"),
+            // ── Vision-language (image + prompt → answer). A VL model is TWO bundles
+            //    (decoder + vision tower); `path` names the decoder (the primary artifact,
+            //    used for platform gating), sizeMB is the decoder + vision total the first
+            //    run actually downloads. KitVisionModel(catalog:) resolves both bundle
+            //    paths + graph geometry via VLModelID.byCatalogID. 8B is Mac-only: its
+            //    decoder exceeds the iPhone jetsam ceiling. ──
+            CatalogEntry(
+                id: "qwen3-vl-2b", name: "Qwen3-VL 2B",
+                repo: "mlboydaisuke/Qwen3-VL-2B-CoreAI", kind: .vlm,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/qwen3_vl_2b_instruct_decode_int8hu_s1", sizeMB: 3278),
+                    "ios": .init(
+                        path: "gpu-pipelined/qwen3_vl_2b_instruct_decode_int8hu_s1", sizeMB: 3278),
+                ]),
+            CatalogEntry(
+                id: "qwen3-vl-4b", name: "Qwen3-VL 4B",
+                repo: "mlboydaisuke/Qwen3-VL-4B-CoreAI", kind: .vlm,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/qwen3_vl_4b_instruct_decode_int8hu_s1", sizeMB: 5897),
+                    "ios": .init(
+                        path: "gpu-pipelined/qwen3_vl_4b_instruct_decode_int8hu_s1", sizeMB: 5897),
+                ]),
+            CatalogEntry(
+                id: "qwen3-vl-8b", name: "Qwen3-VL 8B",
+                repo: "mlboydaisuke/Qwen3-VL-8B-CoreAI", kind: .vlm,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/qwen3_vl_8b_instruct_decode_int8hu_s1", sizeMB: 10453)
+                ]),
             // ── Speech-to-text ──
             CatalogEntry(
                 id: "whisper-large-v3-turbo", name: "Whisper large-v3-turbo",
