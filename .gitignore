@@ -1,7 +1,7 @@
 .build/
 .swiftpm/
 DerivedData/
-*.xcodeproj
+xcuserdata/
 .DS_Store
 Examples/**/build/
 Examples/**/Models/

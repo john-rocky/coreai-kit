@@ -1,0 +1,386 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		459174F30A3AD13B09891044 /* ChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88559E8DAF61E2697FDE4A8A /* ChatModel.swift */; };
+		4BEE19981BF0A5B2CB09E675 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A73BBCE45CCC3BB763864DAB /* ContentView.swift */; };
+		6614AE412362AB1098325D7B /* RagEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 003C94E5896012E2B006295B /* RagEngine.swift */; };
+		8D7E454502449F819110B173 /* SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC8D0ACC4845AF9A7341A57F /* SelfTest.swift */; };
+		8D86BD0853536A5FD51B0274 /* Tools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3336D95083DF4D5F6BD507BF /* Tools.swift */; };
+		9CEAA76E746C87B5C01BC68C /* FileLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12649A50A340D83A32452002 /* FileLibrary.swift */; };
+		C05D064CF1E885B5CA4614A0 /* SpotlightAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23D847832643727ED3B1886C /* SpotlightAppApp.swift */; };
+		C27011754933F436364AB634 /* CoreAIKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = D2CAC2507000CDECB6824A0B /* CoreAIKitUI */; };
+		F3E187399236E38B078E90C0 /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 3E20534869D4A52A92A2508E /* CoreAIKit */; };
+		FFB359342CBEB1E745FE0019 /* Screenshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C038A03225C046EFAFA4D0D /* Screenshot.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		003C94E5896012E2B006295B /* RagEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RagEngine.swift; sourceTree = "<group>"; };
+		12649A50A340D83A32452002 /* FileLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLibrary.swift; sourceTree = "<group>"; };
+		23D847832643727ED3B1886C /* SpotlightAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotlightAppApp.swift; sourceTree = "<group>"; };
+		3336D95083DF4D5F6BD507BF /* Tools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tools.swift; sourceTree = "<group>"; };
+		88559E8DAF61E2697FDE4A8A /* ChatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModel.swift; sourceTree = "<group>"; };
+		8C038A03225C046EFAFA4D0D /* Screenshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Screenshot.swift; sourceTree = "<group>"; };
+		A73BBCE45CCC3BB763864DAB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A7841F8489925E1C13A8DBAA /* SpotlightApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpotlightApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C464302C6CBA32BB6B11E2EF /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
+		FC8D0ACC4845AF9A7341A57F /* SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfTest.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AE6B4F2C61AF7CB8ACFA9BDD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F3E187399236E38B078E90C0 /* CoreAIKit in Frameworks */,
+				C27011754933F436364AB634 /* CoreAIKitUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		098C20D4B898A546C3FC39C7 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				C464302C6CBA32BB6B11E2EF /* coreai-kit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		77A5CB00DE2D03E3C4B77176 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				88559E8DAF61E2697FDE4A8A /* ChatModel.swift */,
+				A73BBCE45CCC3BB763864DAB /* ContentView.swift */,
+				12649A50A340D83A32452002 /* FileLibrary.swift */,
+				003C94E5896012E2B006295B /* RagEngine.swift */,
+				8C038A03225C046EFAFA4D0D /* Screenshot.swift */,
+				FC8D0ACC4845AF9A7341A57F /* SelfTest.swift */,
+				23D847832643727ED3B1886C /* SpotlightAppApp.swift */,
+				3336D95083DF4D5F6BD507BF /* Tools.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		9C4469228649F6C16A307C6A = {
+			isa = PBXGroup;
+			children = (
+				098C20D4B898A546C3FC39C7 /* Packages */,
+				77A5CB00DE2D03E3C4B77176 /* Sources */,
+				BFD9B8EF51A1485F42DED342 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BFD9B8EF51A1485F42DED342 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A7841F8489925E1C13A8DBAA /* SpotlightApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8E87D0D714D72763810B5BC6 /* SpotlightApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 65B6E1A27BEA505A5C4915E8 /* Build configuration list for PBXNativeTarget "SpotlightApp" */;
+			buildPhases = (
+				67593F06E170E3EDBDAE7D21 /* Sources */,
+				AE6B4F2C61AF7CB8ACFA9BDD /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpotlightApp;
+			packageProductDependencies = (
+				3E20534869D4A52A92A2508E /* CoreAIKit */,
+				D2CAC2507000CDECB6824A0B /* CoreAIKitUI */,
+			);
+			productName = SpotlightApp;
+			productReference = A7841F8489925E1C13A8DBAA /* SpotlightApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4F39BE712633AC949726F91C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					8E87D0D714D72763810B5BC6 = {
+						DevelopmentTeam = MFN25KNUGJ;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = C77A23B762C3C38EAD9041EB /* Build configuration list for PBXProject "SpotlightApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9C4469228649F6C16A307C6A;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F0965B65DB4D368B3357B873 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8E87D0D714D72763810B5BC6 /* SpotlightApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		67593F06E170E3EDBDAE7D21 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				459174F30A3AD13B09891044 /* ChatModel.swift in Sources */,
+				4BEE19981BF0A5B2CB09E675 /* ContentView.swift in Sources */,
+				9CEAA76E746C87B5C01BC68C /* FileLibrary.swift in Sources */,
+				6614AE412362AB1098325D7B /* RagEngine.swift in Sources */,
+				FFB359342CBEB1E745FE0019 /* Screenshot.swift in Sources */,
+				8D7E454502449F819110B173 /* SelfTest.swift in Sources */,
+				C05D064CF1E885B5CA4614A0 /* SpotlightAppApp.swift in Sources */,
+				8D86BD0853536A5FD51B0274 /* Tools.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		01C3F4C0BC99D378D83D3ED1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		6296ABE5155755243244E673 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ask Files";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coreaikit.spotlightapp;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BB2745956AEFC479564A20A0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		DF1880CB256A10F8B9045F9B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ask Files";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.coreaikit.spotlightapp;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		65B6E1A27BEA505A5C4915E8 /* Build configuration list for PBXNativeTarget "SpotlightApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DF1880CB256A10F8B9045F9B /* Debug */,
+				6296ABE5155755243244E673 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C77A23B762C3C38EAD9041EB /* Build configuration list for PBXProject "SpotlightApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				01C3F4C0BC99D378D83D3ED1 /* Debug */,
+				BB2745956AEFC479564A20A0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F0965B65DB4D368B3357B873 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3E20534869D4A52A92A2508E /* CoreAIKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreAIKit;
+		};
+		D2CAC2507000CDECB6824A0B /* CoreAIKitUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CoreAIKitUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 4F39BE712633AC949726F91C /* Project object */;
+}
