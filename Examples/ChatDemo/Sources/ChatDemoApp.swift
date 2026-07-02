@@ -4,7 +4,11 @@ import SwiftUI
 struct ChatDemoApp: App {
     var body: some Scene {
         WindowGroup {
-            ChatView()
+            if FalconBench.isRequested {
+                FalconBenchView()
+            } else {
+                ChatView()
+            }
         }
     }
 }
