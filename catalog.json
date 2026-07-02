@@ -316,6 +316,22 @@
       }
     },
     {
+      "id": "voxcpm-0.5b",
+      "name": "VoxCPM 0.5B",
+      "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",
+      "kind": "tts",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 1373
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 1679
+        }
+      }
+    },
+    {
       "id": "whisper-large-v3-turbo",
       "name": "Whisper large-v3-turbo",
       "repo": "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official",

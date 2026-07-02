@@ -17,6 +17,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case detection
         /// Vision-language chat (Qwen3-VL): image + prompt → answer.
         case vlm
+        /// Text-to-speech (VoxCPM).
+        case tts
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -314,6 +316,17 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/qwen3_vl_8b_instruct_decode_int8hu_s1", sizeMB: 10453)
+                ]),
+            // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
+            //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant
+            //    path names the platform bundle dir and KitSpeaker resolves the rest.
+            //    sizeMB is the platform + tokenizer + glue total the first run downloads. ──
+            CatalogEntry(
+                id: "voxcpm-0.5b", name: "VoxCPM 0.5B",
+                repo: "mlboydaisuke/VoxCPM-0.5B-CoreAI", kind: .tts,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 1373),
+                    "ios": .init(path: "ios", sizeMB: 1679),
                 ]),
             // ── Speech-to-text ──
             CatalogEntry(

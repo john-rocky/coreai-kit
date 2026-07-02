@@ -18,6 +18,7 @@ Every example app in one place, on two shelves:
 | [Transcribe](Transcribe/) | speech-to-text | Any `asr` catalog model (Whisper / Qwen3-ASR / Parakeet): record, choose, or demo clip → transcript. GUI + `swift run transcribe-cli`. |
 | [ChatDemo](ChatDemo/) | chat | Minimal multiplatform chat over `ChatSession`; pick a starter model, it downloads and streams. |
 | [VLChat](VLChat/) | vision-language | Any `vlm` catalog model (Qwen3-VL 2B/4B/8B): pick a photo, ask about it. GUI + `swift run vlchat-cli`. |
+| [Speak](Speak/) | text-to-speech | Any `tts` catalog model (VoxCPM): type a sentence, hear it. GUI + `swift run speak-cli`. |
 | [AudioChat](AudioChat/) | audio understanding | Qwen2.5-Omni Thinker: load a clip, ask "what do you hear?" (macOS). |
 | [DepthCamera](DepthCamera/) | depth | Any `depth` catalog model: live camera depth via `CameraFeed`. GUI + `swift run depth-cli`. |
 | [DetectCamera](DetectCamera/) | detection | Real-time object detection on the zero-copy camera path (RF-DETR / YOLOX). GUI + `swift run detect-cli`. |
