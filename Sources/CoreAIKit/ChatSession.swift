@@ -275,7 +275,20 @@ public actor ChatSession {
                     samplingConfiguration: sampling,
                     options: InferenceOptions(
                         maxTokens: configuration.maxResponseTokens, includeLogits: false),
-                    stopSequences: StopSequences(for: runtime.tokenizer)
+                    // Chat templates end turns with a dedicated marker that tokenizer_config's
+                    // eos doesn't always cover (gemma-3: eos = <eos>, turns end with
+                    // <end_of_turn> — generation would run to maxTokens spewing the marker).
+                    // Add every turn-end token the vocab actually has (round trip guards the
+                    // UNK-vocab false positive); duplicates of eos dedupe inside StopSequences.
+                    stopSequences: StopSequences(
+                        for: runtime.tokenizer,
+                        additionalSequences: ["<end_of_turn>", "<|im_end|>", "<|eot_id|>", "<turn|>"]
+                            .compactMap { marker in
+                                guard let id = runtime.tokenizer.convertTokenToId(marker),
+                                    runtime.tokenizer.convertIdToToken(id) == marker
+                                else { return nil }
+                                return [Int32(id)]
+                            })
                 )
             }
 
