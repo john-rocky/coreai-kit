@@ -75,7 +75,7 @@ final class AudioChatModel: ObservableObject {
     }
 
     func loadFile(_ url: URL) {
-        guard let pcm = AudioLoader.load16kMono(url) else {
+        guard let pcm = try? AudioFile.pcm16kMono(url) else {
             status = "Could not decode \(url.lastPathComponent)."
             return
         }
@@ -86,7 +86,7 @@ final class AudioChatModel: ObservableObject {
     }
 
     func loadDemoNoise() {
-        let pcm = AudioLoader.demoNoise()
+        let pcm = AudioFile.demoNoise()
         samples = pcm
         clipName = "Demo: white noise (4s)"
         answer = ""
@@ -98,25 +98,22 @@ final class AudioChatModel: ObservableObject {
         if recording {
             recording = false
             status = "Processing recording…"
-            recorder.stop { [weak self] pcm in
-                Task { @MainActor in
-                    guard let self else { return }
-                    self.samples = pcm
-                    self.clipName = String(format: "Mic clip (%.1fs)", Double(pcm.count) / 16000)
-                    self.status = pcm.isEmpty ? "No audio captured." : "Recorded. Ask a question."
-                }
-            }
+            let pcm = recorder.stop()
+            samples = pcm
+            clipName = String(format: "Mic clip (%.1fs)", Double(pcm.count) / 16000)
+            status = pcm.isEmpty ? "No audio captured." : "Recorded. Ask a question."
         } else {
             recording = true
             answer = ""
             clipName = "Recording… tap Stop when done."
             status = "Listening…"
-            recorder.start { [weak self] error in
-                Task { @MainActor in
-                    guard let self, let error else { return }
-                    self.recording = false
-                    self.clipName = "No audio loaded."
-                    self.status = "Mic error: \(error.localizedDescription)"
+            Task {
+                do {
+                    try await recorder.start()
+                } catch {
+                    recording = false
+                    clipName = "No audio loaded."
+                    status = "Mic error: \(error.localizedDescription)"
                 }
             }
         }
