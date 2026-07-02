@@ -76,13 +76,16 @@ public final class WhisperRuntime: @unchecked Sendable {
         var generated: [Int32] = []
         var emitted = ""
         while seq.count < arch.decoderWindow {
-            let next = try await step(feat: feat, seq: seq)
-
-            if autoDetect && seq.count == 1 {  // first step emits the language token
-                detectedLang = cleanLanguage(tokenizer.convertIdToToken(Int(next)) ?? "")
-                seq.append(contentsOf: [next, task, arch.noTimestamps])
+            if autoDetect && seq.count == 1 {
+                // Language detect = argmax over the language tokens ONLY (as in openai/whisper's
+                // detect_language) — the raw full-vocab argmax after <sot> lands on a task token.
+                let lang = try await step(
+                    feat: feat, seq: seq, vocabRange: Int(arch.langFirst)..<Int(arch.translate))
+                detectedLang = cleanLanguage(tokenizer.convertIdToToken(Int(lang)) ?? "")
+                seq.append(contentsOf: [lang, task, arch.noTimestamps])
                 continue
             }
+            let next = try await step(feat: feat, seq: seq)
             if next == arch.eot { break }
             seq.append(next)
             generated.append(next)
@@ -110,8 +113,11 @@ public final class WhisperRuntime: @unchecked Sendable {
     // MARK: - Internals
 
     /// Run the graph once with `seq` packed into the fixed decoder window and return the argmax of
-    /// the logits at the real last position (`seq.count - 1`).
-    private func step(feat: TensorValue, seq: [Int32]) async throws -> Int32 {
+    /// the logits at the real last position (`seq.count - 1`), optionally restricted to
+    /// `vocabRange` (language detection scores the language tokens only).
+    private func step(
+        feat: TensorValue, seq: [Int32], vocabRange: Range<Int>? = nil
+    ) async throws -> Int32 {
         var ids = [Int32](repeating: arch.eot, count: arch.decoderWindow)
         for i in 0..<seq.count { ids[i] = seq[i] }
         let dec = TensorValue.int32(ids, shape: [1, arch.decoderWindow])
@@ -123,7 +129,7 @@ public final class WhisperRuntime: @unchecked Sendable {
         let base = (seq.count - 1) * arch.vocab
         var best = 0
         var bestVal = -Float.greatestFiniteMagnitude
-        for v in 0..<arch.vocab where flat[base + v] > bestVal {
+        for v in vocabRange ?? 0..<arch.vocab where flat[base + v] > bestVal {
             bestVal = flat[base + v]
             best = v
         }
