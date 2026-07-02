@@ -52,9 +52,11 @@ public final class WhisperRuntime: @unchecked Sendable {
 
     /// Transcribe a raw 16 kHz mono waveform. The clip is padded/trimmed to the 30 s window.
     /// `language` is an optional forced Whisper code ("en", "ja", …); nil = auto-detect.
+    /// `onPartial` (optional) is called with the running transcript after each decoded token, so a
+    /// UI can show text as it streams instead of waiting for the whole clip to finish.
     public func transcribe(
         samples: [Float], sampleRate: Int = 16000, language: String? = nil,
-        translate: Bool = false
+        translate: Bool = false, onPartial: (@Sendable (String) -> Void)? = nil
     ) async throws -> Transcription {
         guard sampleRate == arch.sampleRate else {
             throw KitWhisperError.unsupportedSampleRate(sampleRate)
@@ -72,6 +74,7 @@ public final class WhisperRuntime: @unchecked Sendable {
         let autoDetect = seq.count == 1
 
         var generated: [Int32] = []
+        var emitted = ""
         while seq.count < arch.decoderWindow {
             let next = try await step(feat: feat, seq: seq)
 
@@ -83,6 +86,18 @@ public final class WhisperRuntime: @unchecked Sendable {
             if next == arch.eot { break }
             seq.append(next)
             generated.append(next)
+
+            // Stream the running transcript. Re-decoding the (short) text-token list each step is
+            // negligible next to a graph step; skip emits that land mid-multibyte (`\u{FFFD}`).
+            if let onPartial {
+                let running = generated.filter { $0 < arch.eot }.map(Int.init)
+                let text = tokenizer.decode(tokens: running)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if text != emitted && !text.unicodeScalars.contains("\u{FFFD}") {
+                    emitted = text
+                    onPartial(text)
+                }
+            }
         }
 
         // Keep real text tokens only (drop the EOT and any timestamp/special token, all >= eot).

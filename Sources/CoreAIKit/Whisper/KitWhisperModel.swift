@@ -31,6 +31,13 @@ public struct WhisperModelID: Sendable, Hashable {
         model: .whisperLargeV3Turbo,
         aimodelName: "whisper-large-v3-turbo_float16_fixed128.aimodel",
         arch: .largeV3Turbo)
+
+    /// Presets by catalog id. Whisper geometry (window/vocab/special tokens) can't ride
+    /// catalog.json, so every `asr` catalog entry driven by `KitWhisperModel` pairs with a
+    /// preset here — the id is the one the model's card shows.
+    static let byCatalogID: [String: WhisperModelID] = [
+        "whisper-large-v3-turbo": .largeV3Turbo
+    ]
 }
 
 /// A Core AI Whisper transcription bundle. Primary use is the direct `transcribe()`.
@@ -38,6 +45,28 @@ public struct WhisperModelID: Sendable, Hashable {
 /// `@MainActor` view model sends the value into `transcribe`'s non-isolated async context.
 public struct KitWhisperModel: Sendable {
     public let runtime: WhisperRuntime
+
+    /// Loads a Whisper model by its catalog id — the id shown on the model's card:
+    ///
+    /// ```swift
+    /// let whisper = try await KitWhisperModel(catalog: "whisper-large-v3-turbo")
+    /// ```
+    ///
+    /// Resolves the repo, platform variant, and graph geometry internally (no network needed
+    /// for the lookup), then downloads if needed.
+    public init(
+        catalog id: String,
+        store: ModelStore = .default,
+        computeUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        guard let model = WhisperModelID.byCatalogID[id] else {
+            throw CoreAIKitError.modelNotInCatalog(id: id)
+        }
+        try await self.init(
+            model: model, store: store, computeUnits: computeUnits,
+            downloadProgress: downloadProgress)
+    }
 
     /// Downloads the graph + tokenizer from the Hub (if needed) and loads them.
     public init(
@@ -63,11 +92,14 @@ public struct KitWhisperModel: Sendable {
             computeUnits: computeUnits)
     }
 
-    /// Transcribe a raw 16 kHz mono waveform. `language` nil = auto-detect (100 languages).
+    /// Transcribe a raw 16 kHz mono waveform. `language` nil = auto-detect (100 languages). Pass
+    /// `onPartial` to stream the running transcript (called after each decoded token).
     public func transcribe(
-        samples: [Float], sampleRate: Int = 16000, language: String? = nil, translate: Bool = false
+        samples: [Float], sampleRate: Int = 16000, language: String? = nil, translate: Bool = false,
+        onPartial: (@Sendable (String) -> Void)? = nil
     ) async throws -> Transcription {
         try await runtime.transcribe(
-            samples: samples, sampleRate: sampleRate, language: language, translate: translate)
+            samples: samples, sampleRate: sampleRate, language: language, translate: translate,
+            onPartial: onPartial)
     }
 }

@@ -58,6 +58,25 @@ public final class KitParakeetModel: @unchecked Sendable {
 
     // MARK: - Init
 
+    /// Loads a Parakeet model by its catalog id — the id shown on the model's card:
+    ///
+    /// ```swift
+    /// let parakeet = try await KitParakeetModel(catalog: "parakeet-tdt-0.6b-v3")
+    /// ```
+    public convenience init(
+        catalog id: String,
+        store: ModelStore = .default,
+        computeUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        guard id == "parakeet-tdt-0.6b-v3" else {
+            throw CoreAIKitError.modelNotInCatalog(id: id)
+        }
+        try await self.init(
+            model: .parakeetTDT, store: store, computeUnits: computeUnits,
+            downloadProgress: downloadProgress)
+    }
+
     /// Downloads the Parakeet bundle from the Hub (if needed) and loads it.
     public convenience init(
         model: ModelID = .parakeetTDT,

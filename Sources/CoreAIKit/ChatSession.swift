@@ -52,6 +52,35 @@ public actor ChatSession {
     /// Display name from the bundle metadata.
     public var modelName: String { runtime.modelName }
 
+    /// Loads a model by its catalog id — the id shown on the model's card:
+    ///
+    /// ```swift
+    /// let chat = try await ChatSession(catalog: "qwen3.5-2b")
+    /// ```
+    ///
+    /// Resolves repo, platform variant, and engine hint from the live catalog (built-in
+    /// snapshot offline), then downloads if needed — consumers never touch bundle paths or
+    /// engine names. A catalog engine hint applies only when `configuration.engineVariant`
+    /// is `.auto`; an explicit setting (e.g. `.sequential` for guided generation) wins.
+    public init(
+        catalog id: String,
+        store: ModelStore = .default,
+        configuration: Configuration = Configuration(),
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .chat)
+        guard let model = entry.modelID else {
+            throw CoreAIKitError.modelNotAvailableOnPlatform(id: id)
+        }
+        var configuration = configuration
+        if configuration.engineVariant == .auto {
+            configuration.engineVariant = EngineVariant(catalogHint: entry.engine)
+        }
+        try await self.init(
+            model: model, store: store, configuration: configuration,
+            downloadProgress: downloadProgress)
+    }
+
     /// Downloads the model if needed (cached afterwards), then loads it.
     public init(
         model: ModelID,

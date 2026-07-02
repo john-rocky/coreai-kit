@@ -22,6 +22,17 @@ public enum EngineVariant: String, Sendable {
 
     /// The factory override string; nil = auto-detection.
     var factoryOverride: String? { self == .auto ? nil : rawValue }
+
+    /// The engine a catalog entry's `engine` hint names. An unknown hint (a newer catalog
+    /// than this build) degrades to `.auto`, mirroring `CatalogEntry.Kind.unknown`.
+    init(catalogHint: String?) {
+        switch catalogHint {
+        case "sequential": self = .sequential
+        case "pipelined": self = .pipelined
+        case "static-shape": self = .staticShape
+        default: self = .auto
+        }
+    }
 }
 
 struct ModelRuntime: Sendable {
