@@ -25,15 +25,45 @@ final class ModelCatalogTests: XCTestCase {
         #endif
     }
 
+    func testDecodesKnownAndUnknownKinds() throws {
+        let json = """
+            {"version": 1, "models": [
+              {"id": "a", "name": "A", "repo": "org/a", "kind": "asr",
+               "variants": {"macos": {"path": "macos"}, "ios": {"path": "ios"}}},
+              {"id": "d", "name": "D", "repo": "org/d", "kind": "detection",
+               "variants": {"macos": {"path": "m.aimodel"}, "ios": {"path": "m.aimodel"}}},
+              {"id": "f", "name": "F", "repo": "org/f", "kind": "hologram",
+               "variants": {"macos": {"path": "macos"}, "ios": {"path": "ios"}}}
+            ]}
+            """
+        let catalog = try JSONDecoder().decode(ModelCatalog.self, from: Data(json.utf8))
+        XCTAssertEqual(catalog.models.map(\.kind), [.asr, .detection, .unknown])
+        // Forward-compat: the unknown kind decodes but never surfaces in available().
+        XCTAssertEqual(catalog.available().map(\.id), ["a", "d"])
+        XCTAssertEqual(catalog.available(.asr).map(\.id), ["a"])
+    }
+
     func testBuiltinAvailableFiltering() {
         let chat = ModelCatalog.builtin.available(.chat)
         XCTAssertFalse(chat.isEmpty)
         XCTAssertTrue(chat.allSatisfy { $0.kind == .chat && $0.modelID != nil })
+
+        let asr = ModelCatalog.builtin.available(.asr)
+        // Whisper publishes both platform variants; the JIT-only ASR bundles are macOS-only.
         #if os(macOS)
-        XCTAssertEqual(chat.count, 4)
+        XCTAssertEqual(
+            asr.map(\.id), ["whisper-large-v3-turbo", "qwen3-asr-1.7b", "parakeet-tdt-0.6b-v3"])
         #else
-        XCTAssertEqual(chat.count, 2)  // qwen3 only on iOS
+        XCTAssertEqual(asr.map(\.id), ["whisper-large-v3-turbo"])
         #endif
+
+        // rf-detr regression: "detection" used to decode to .unknown, hiding the entry.
+        XCTAssertEqual(ModelCatalog.builtin.available(.detection).map(\.id), ["rf-detr"])
+    }
+
+    func testEntryLookup() {
+        XCTAssertEqual(ModelCatalog.builtin.entry(id: "whisper-large-v3-turbo")?.kind, .asr)
+        XCTAssertNil(ModelCatalog.builtin.entry(id: "nope"))
     }
 
     func testBuiltinMatchesShippedCatalogFile() throws {

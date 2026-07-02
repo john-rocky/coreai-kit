@@ -11,6 +11,18 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case depth
         case textEmbedding
         case superResolution
+        /// Speech-to-text (Whisper / Qwen3-ASR / Parakeet).
+        case asr
+        /// Object detection (RF-DETR / YOLOX).
+        case detection
+        /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
+        /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
+        case unknown
+
+        public init(from decoder: any Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = Kind(rawValue: raw) ?? .unknown
+        }
     }
 
     public struct Variant: Sendable, Codable, Hashable {
@@ -32,10 +44,14 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// Keyed by platform: "macos" / "ios". A missing key = not published there.
     public let variants: [String: Variant]
     public let thinking: Bool?
+    /// Engine override hint: "sequential" / "pipelined" / "static-shape"; nil = auto-detect.
+    /// Zoo decode-pipelined ports (custom Metal kernels) must load on "sequential" — the
+    /// generic pipelined path SIGTRAPs on them; official-recipe bundles leave this nil (auto).
+    public let engine: String?
 
     public init(
         id: String, name: String, repo: String, kind: Kind,
-        variants: [String: Variant], thinking: Bool? = nil
+        variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -43,6 +59,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.kind = kind
         self.variants = variants
         self.thinking = thinking
+        self.engine = engine
     }
 
     static var platformKey: String {
@@ -74,7 +91,8 @@ public struct ModelCatalog: Sendable, Codable {
     /// Entries available on this platform, optionally filtered by kind.
     public func available(_ kind: CatalogEntry.Kind? = nil) -> [CatalogEntry] {
         models.filter { entry in
-            entry.modelID != nil && (kind == nil || entry.kind == kind)
+            entry.modelID != nil && entry.kind != .unknown
+                && (kind == nil || entry.kind == kind)
         }
     }
 
@@ -92,6 +110,30 @@ public struct ModelCatalog: Sendable, Codable {
     /// Fetches the live catalog, falling back to the built-in snapshot — never throws.
     public static func load(from url: URL = defaultURL) async -> ModelCatalog {
         (try? await fetch(from: url)) ?? .builtin
+    }
+
+    /// The entry with this catalog id, or nil.
+    public func entry(id: String) -> CatalogEntry? {
+        models.first { $0.id == id }
+    }
+
+    /// Resolves a catalog id against the live catalog (built-in snapshot offline) to an entry
+    /// available on this platform. This is what the `catalog:` model initializers ride, so a
+    /// card's id works verbatim: unknown id and wrong-platform failures throw with the id in
+    /// the message instead of surfacing as a download error.
+    public static func entry(
+        forID id: String, expecting kind: CatalogEntry.Kind? = nil, from url: URL = defaultURL
+    ) async throws -> CatalogEntry {
+        let entry = await load(from: url).entry(id: id) ?? ModelCatalog.builtin.entry(id: id)
+        guard let entry else { throw CoreAIKitError.modelNotInCatalog(id: id) }
+        if let kind, entry.kind != kind {
+            throw CoreAIKitError.catalogKindMismatch(
+                id: id, expected: kind.rawValue, found: entry.kind.rawValue)
+        }
+        guard entry.modelID != nil else {
+            throw CoreAIKitError.modelNotAvailableOnPlatform(id: id)
+        }
+        return entry
     }
 
     /// Snapshot of the hosted models at packaging time (mirrors catalog.json).
@@ -122,6 +164,140 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "gemma-3-4b-it", name: "Gemma 3 4B",
                 repo: "mlboydaisuke/gemma-3-4b-it-CoreAI-official", kind: .chat,
                 variants: ["macos": .init(path: "macos", sizeMB: 2223)]),
+            // ── Zoo ports that also run on iPhone (≤4B, JIT bundles) — load on "sequential".
+            //    The same gpu-pipelined bundle drives macOS + iOS. ──
+            CatalogEntry(
+                id: "qwen3.5-0.8b", name: "Qwen3.5 0.8B",
+                repo: "mlboydaisuke/qwen3.5-0.8B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym", sizeMB: 1300),
+                    "ios": .init(
+                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym", sizeMB: 1300),
+                ],
+                thinking: true, engine: "sequential"),
+            CatalogEntry(
+                id: "qwen3.5-2b", name: "Qwen3.5 2B",
+                repo: "mlboydaisuke/qwen3.5-2B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/qwen3_5_2b_decode_int8lin", sizeMB: 2400),
+                    "ios": .init(path: "gpu-pipelined/qwen3_5_2b_decode_int8lin", sizeMB: 2400),
+                ],
+                thinking: true, engine: "sequential"),
+            CatalogEntry(
+                id: "lfm2.5-1.2b", name: "LFM2.5 1.2B",
+                repo: "mlboydaisuke/LFM2.5-1.2B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8lin", sizeMB: 1500),
+                    "ios": .init(
+                        path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8lin", sizeMB: 1500),
+                ],
+                engine: "sequential"),
+            CatalogEntry(
+                id: "granite-4.0-h-1b", name: "Granite 4.0-H 1B",
+                repo: "mlboydaisuke/granite-4.0-h-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1200),
+                    "ios": .init(
+                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1200),
+                ],
+                engine: "sequential"),
+            CatalogEntry(
+                id: "minicpm5-1b", name: "MiniCPM5 1B",
+                repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(path: "int8", sizeMB: 2000),
+                    "ios": .init(path: "int8", sizeMB: 2000),
+                ],
+                thinking: true, engine: "sequential"),
+            CatalogEntry(
+                id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
+                repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
+                        sizeMB: 3900),
+                    "ios": .init(
+                        path: "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
+                        sizeMB: 3900),
+                ],
+                thinking: true, engine: "sequential"),
+            // ── More official-recipe chat (stock runtime, macOS) ──
+            CatalogEntry(
+                id: "qwen3-8b", name: "Qwen3 8B",
+                repo: "mlboydaisuke/qwen3-8b-CoreAI-official", kind: .chat,
+                variants: ["macos": .init(path: "macos", sizeMB: 4400)],
+                thinking: true),
+            CatalogEntry(
+                id: "gemma-3-12b-it", name: "Gemma 3 12B",
+                repo: "mlboydaisuke/gemma-3-12b-it-CoreAI-official", kind: .chat,
+                variants: ["macos": .init(path: "macos", sizeMB: 6000)]),
+            // ── Zoo community ports (decode-pipelined custom Metal kernels) — load on
+            //    "sequential" (generic pipelined SIGTRAPs). macOS-only: they run well past a
+            //    12 GB iPhone's per-process limit. Proven by the CoreAIChatMac dmg. ──
+            CatalogEntry(
+                id: "qwen3.6-35b-a3b", name: "Qwen3.6-35B-A3B (MoE)",
+                repo: "mlboydaisuke/Qwen3.6-35B-A3B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/qwen3_6_35b_a3b_decode_sym8_gather", sizeMB: 35000)],
+                thinking: true, engine: "sequential"),
+            CatalogEntry(
+                id: "qwen3.6-27b", name: "Qwen3.6-27B (dense)",
+                repo: "mlboydaisuke/Qwen3.6-27B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym", sizeMB: 28000)],
+                thinking: true, engine: "sequential"),
+            CatalogEntry(
+                id: "glm-4.7-flash", name: "GLM-4.7-Flash (MoE+MLA)",
+                repo: "mlboydaisuke/GLM-4.7-Flash-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/glm_4_7_flash_decode_sym8_gather", sizeMB: 30000)],
+                thinking: true, engine: "sequential"),
+            CatalogEntry(
+                id: "lfm2.5-8b-a1b", name: "LFM2.5-8B-A1B (MoE)",
+                repo: "mlboydaisuke/LFM2.5-8B-A1B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/lfm2_5_8b_a1b_decode_sym8_gather", sizeMB: 9000)],
+                engine: "sequential"),
+            CatalogEntry(
+                id: "gemma-4-12b", name: "Gemma 4 12B",
+                repo: "mlboydaisuke/Gemma-4-12B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8", sizeMB: 13000)],
+                engine: "sequential"),
+            CatalogEntry(
+                id: "gemma-4-31b", name: "Gemma 4 31B",
+                repo: "mlboydaisuke/Gemma-4-31B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8", sizeMB: 18000)],
+                engine: "sequential"),
+            // ── Speech-to-text ──
+            CatalogEntry(
+                id: "whisper-large-v3-turbo", name: "Whisper large-v3-turbo",
+                repo: "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official", kind: .asr,
+                variants: [
+                    // macos = stock JIT .aimodel; ios = AOT-compiled (h18p) — the on-device JIT
+                    // aborts on the 1.6 GB graph. Driven by `KitWhisperModel`.
+                    "macos": .init(path: "macos", sizeMB: 1620),
+                    "ios": .init(path: "ios", sizeMB: 3240),
+                ]),
+            CatalogEntry(
+                id: "qwen3-asr-1.7b", name: "Qwen3-ASR 1.7B",
+                repo: "mlboydaisuke/Qwen3-ASR-1.7B-CoreAI", kind: .asr,
+                // The variant path is the decoder bundle; `KitASRModel(catalog:)` resolves the
+                // paired AuT encoder internally, and sizeMB covers both downloads. macOS-only:
+                // the JIT decoder graph has no device-verified iOS path.
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/qwen3_asr_1.7b_decode_int8hu_n390_s1", sizeMB: 3100)]),
+            CatalogEntry(
+                id: "parakeet-tdt-0.6b-v3", name: "Parakeet-TDT 0.6B v3",
+                repo: "mlboydaisuke/Parakeet-TDT-0.6B-CoreAI", kind: .asr,
+                // Flat repo (path ""): three JIT .aimodel graphs + tokenizer.json, driven by
+                // `KitParakeetModel`. macOS-only: the published iPhone numbers rode an AOT
+                // encoder this repo doesn't carry yet.
+                variants: ["macos": .init(path: "", sizeMB: 1290)]),
             CatalogEntry(
                 id: "clip-vit-b32", name: "CLIP ViT-B/32",
                 repo: "mlboydaisuke/clip-vit-base-patch32-CoreAI-official", kind: .imageText,
@@ -142,6 +318,16 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "model", sizeMB: 1230),
                     "ios": .init(path: "model", sizeMB: 1230),
+                ]),
+            CatalogEntry(
+                id: "rf-detr", name: "RF-DETR (nano)",
+                repo: "mlboydaisuke/RF-DETR-CoreAI", kind: .detection,
+                // One bundle per platform is the catalog contract, so the entry carries the
+                // nano tier (DetectCamera's default); the other tiers stay reachable through
+                // the `ModelID.rfdetr*` presets.
+                variants: [
+                    "macos": .init(path: "rfdetr-nano_float32.aimodel", sizeMB: 103),
+                    "ios": .init(path: "rfdetr-nano_float32.aimodel", sizeMB: 103),
                 ]),
             CatalogEntry(
                 id: "adcsr-x4", name: "AdcSR ×4 Super-Resolution",
