@@ -55,15 +55,15 @@ final class ChatModel {
     }
 
     func load() {
-        guard !isBusy, let entry = selectedEntry, let model = entry.modelID else { return }
+        guard !isBusy, let entry = selectedEntry else { return }
         status = .loading
         bubbles = []
         session = nil
-        var config = ChatSession.Configuration()
-        config.engineVariant = Self.engineVariant(for: entry.engine)
         Task {
             do {
-                let session = try await ChatSession(model: model, configuration: config) { progress in
+                // Same gesture as the model card: the catalog id resolves the platform
+                // variant and the engine hint (zoo decode-pipelined ports need .sequential).
+                let session = try await ChatSession(catalog: entry.id) { progress in
                     Task { @MainActor in
                         self.status = progress.fraction < 1
                             ? .downloading(progress.fraction) : .loading
@@ -77,18 +77,6 @@ final class ChatModel {
             } catch {
                 self.status = .error(error.localizedDescription)
             }
-        }
-    }
-
-    /// Map the catalog's optional engine hint to an EngineVariant. Zoo decode-pipelined ports
-    /// carry "sequential" (the generic pipelined path SIGTRAPs on them); official-recipe bundles
-    /// leave it nil → .auto (the runtime picks the fastest compatible engine).
-    private static func engineVariant(for hint: String?) -> EngineVariant {
-        switch hint {
-        case "sequential": return .sequential
-        case "pipelined": return .pipelined
-        case "static-shape": return .staticShape
-        default: return .auto
         }
     }
 
