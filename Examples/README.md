@@ -19,9 +19,9 @@ Every example app in one place, on two shelves:
 | [ChatDemo](ChatDemo/) | chat | Minimal multiplatform chat over `ChatSession`; pick a starter model, it downloads and streams. |
 | [VLChat](VLChat/) | vision-language | Any `vlm` catalog model (Qwen3-VL 2B/4B/8B): pick a photo, ask about it. GUI + `swift run vlchat-cli`. |
 | [AudioChat](AudioChat/) | audio understanding | Qwen2.5-Omni Thinker: load a clip, ask "what do you hear?" (macOS). |
-| [DepthCamera](DepthCamera/) | depth | Live monocular depth from the camera via `CameraFeed` + Depth Anything 3. |
-| [DetectCamera](DetectCamera/) | detection | Real-time object detection on the zero-copy camera path (RF-DETR / YOLOX). |
-| [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. |
+| [DepthCamera](DepthCamera/) | depth | Any `depth` catalog model: live camera depth via `CameraFeed`. GUI + `swift run depth-cli`. |
+| [DetectCamera](DetectCamera/) | detection | Real-time object detection on the zero-copy camera path (RF-DETR / YOLOX). GUI + `swift run detect-cli`. |
+| [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. GUI + `swift run upscale-cli`. |
 | [PhotoSearch](PhotoSearch/) | image-text embeddings | Semantic photo search — the photo library indexed with CLIP. |
 | [DocSearch](DocSearch/) | visual doc retrieval | On-device visual document retrieval (ColModernVBERT). |
 

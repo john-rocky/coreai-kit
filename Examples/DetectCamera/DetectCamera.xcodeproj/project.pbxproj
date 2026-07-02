@@ -11,10 +11,12 @@
 		46CC5D472EB87566AAF39F5D /* DetectCameraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF162084A2DC9AF6B6286A33 /* DetectCameraApp.swift */; };
 		83D812ED4AEB8738EE0076F8 /* CoreAIKitVision in Frameworks */ = {isa = PBXBuildFile; productRef = BCD02DE061DDC62750ABB71B /* CoreAIKitVision */; };
 		A486C0989BC8476AEA0A88B6 /* VideoDetectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ABC7F8EDA17DD5A83832944 /* VideoDetectView.swift */; };
+		B39A6711803C0422DD9415FD /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31CD96D745587C8F2E86B9D2 /* QuickStart.swift */; };
 		CED5C7A58833D1C9AF40A9A6 /* DetectCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBC06F1CEAF389090FAC3777 /* DetectCameraView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		31CD96D745587C8F2E86B9D2 /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
 		3ABC7F8EDA17DD5A83832944 /* VideoDetectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDetectView.swift; sourceTree = "<group>"; };
 		88B246DA8794BEBEC5449A2A /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
 		A1EDACE0A593B13106EB8B82 /* gate_image.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = gate_image.jpg; sourceTree = "<group>"; };
@@ -74,6 +76,7 @@
 			children = (
 				AF162084A2DC9AF6B6286A33 /* DetectCameraApp.swift */,
 				EBC06F1CEAF389090FAC3777 /* DetectCameraView.swift */,
+				31CD96D745587C8F2E86B9D2 /* QuickStart.swift */,
 				3ABC7F8EDA17DD5A83832944 /* VideoDetectView.swift */,
 			);
 			path = Sources;
@@ -157,6 +160,7 @@
 			files = (
 				46CC5D472EB87566AAF39F5D /* DetectCameraApp.swift in Sources */,
 				CED5C7A58833D1C9AF40A9A6 /* DetectCameraView.swift in Sources */,
+				B39A6711803C0422DD9415FD /* QuickStart.swift in Sources */,
 				A486C0989BC8476AEA0A88B6 /* VideoDetectView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

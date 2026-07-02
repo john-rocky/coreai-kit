@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		32F73DD790FB36A7C235976A /* DepthCameraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCBA2AA829CCBA8A31D5D796 /* DepthCameraApp.swift */; };
+		675637785208C31CED1A713F /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74CEC1BA504935BC5D5DEC9F /* QuickStart.swift */; };
 		C459781851E3ABA9DF25281E /* CoreAIKitVision in Frameworks */ = {isa = PBXBuildFile; productRef = AB299F925B71D1C1AAFCF6E3 /* CoreAIKitVision */; };
 		D7D85DD5F0A06A3F2682FA01 /* DepthCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0CDBF824B6B0EF43820912F /* DepthCameraView.swift */; };
 /* End PBXBuildFile section */
@@ -15,6 +16,7 @@
 /* Begin PBXFileReference section */
 		1A6A5D6BF9C4A8BADBEAEFFC /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
 		1DF8879C7DF6F6C7F7E2E97C /* DepthCamera.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DepthCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		74CEC1BA504935BC5D5DEC9F /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
 		B0CDBF824B6B0EF43820912F /* DepthCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthCameraView.swift; sourceTree = "<group>"; };
 		DCBA2AA829CCBA8A31D5D796 /* DepthCameraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DepthCameraApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -61,6 +63,7 @@
 			children = (
 				DCBA2AA829CCBA8A31D5D796 /* DepthCameraApp.swift */,
 				B0CDBF824B6B0EF43820912F /* DepthCameraView.swift */,
+				74CEC1BA504935BC5D5DEC9F /* QuickStart.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -131,6 +134,7 @@
 			files = (
 				32F73DD790FB36A7C235976A /* DepthCameraApp.swift in Sources */,
 				D7D85DD5F0A06A3F2682FA01 /* DepthCameraView.swift in Sources */,
+				675637785208C31CED1A713F /* QuickStart.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

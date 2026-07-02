@@ -65,6 +65,24 @@ public final class DepthEstimator: @unchecked Sendable {
             size: side, mean: SIMD3(0, 0, 0), std: SIMD3(1, 1, 1))
     }
 
+
+    /// Loads a depth model by its catalog id — the id shown on the model's card:
+    ///
+    /// ```swift
+    /// let estimator = try await DepthEstimator(catalog: "depth-anything-3-small")
+    /// ```
+    public convenience init(
+        catalog id: String,
+        store: ModelStore = .default,
+        computeUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .depth)
+        try await self.init(
+            model: entry.modelID!, store: store, computeUnits: computeUnits,
+            downloadProgress: downloadProgress)
+    }
+
     /// Downloads the bundle from the Hugging Face Hub if needed, then loads it.
     public convenience init(
         model: ModelID = .depthAnything3Small,

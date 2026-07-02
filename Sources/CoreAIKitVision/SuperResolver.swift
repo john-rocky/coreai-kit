@@ -59,6 +59,24 @@ public final class SuperResolver: @unchecked Sendable {
         self.overlap = max(4, inSide / 8)
     }
 
+
+    /// Loads a super-resolution model by its catalog id — the id shown on the model's card:
+    ///
+    /// ```swift
+    /// let resolver = try await SuperResolver(catalog: "adcsr-x4")
+    /// ```
+    public convenience init(
+        catalog id: String,
+        store: ModelStore = .default,
+        computeUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .superResolution)
+        try await self.init(
+            model: entry.modelID!, store: store, computeUnits: computeUnits,
+            downloadProgress: downloadProgress)
+    }
+
     /// Downloads the bundle from the Hugging Face Hub if needed, then loads it.
     public convenience init(
         model: ModelID = .adcsrX4,

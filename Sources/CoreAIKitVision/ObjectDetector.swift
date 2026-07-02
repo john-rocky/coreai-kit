@@ -201,6 +201,24 @@ public final class ObjectDetector: @unchecked Sendable {
             backboneUnits: backboneUnits, headUnits: headUnits)
     }
 
+
+    /// Loads a detection model by its catalog id — the id shown on the model's card:
+    ///
+    /// ```swift
+    /// let detector = try await ObjectDetector(catalog: "rf-detr")
+    /// ```
+    public convenience init(
+        catalog id: String,
+        store: ModelStore = .default,
+        computeUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .detection)
+        try await self.init(
+            model: entry.modelID!, store: store, computeUnits: computeUnits,
+            downloadProgress: downloadProgress)
+    }
+
     /// Downloads the bundle from the Hugging Face Hub if needed, then loads it.
     public convenience init(
         model: ModelID = .rfdetrMedium,

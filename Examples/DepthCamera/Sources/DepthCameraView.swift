@@ -1,3 +1,4 @@
+import CoreAIKitCore
 import CoreAIKitVision
 import SwiftUI
 
@@ -8,15 +9,32 @@ final class DepthCameraModel {
     var depthImage: CGImage?
     var status = "Loading model…"
     var inferenceMS: Double?
+    /// Depth entries in the catalog; the picker restarts the feed on a new choice.
+    var entries: [CatalogEntry] = []
+    var selectedEntry: CatalogEntry?
 
     private var feed: CameraFeed?
     private var started = false
 
+    /// Live catalog with the built-in snapshot as offline fallback.
+    func loadCatalog() async {
+        guard entries.isEmpty else { return }
+        entries = await ModelCatalog.load().available(.depth)
+        if selectedEntry == nil { selectedEntry = entries.first }
+    }
+
+    func restart() {
+        stop()
+        started = false
+        Task { await start() }
+    }
+
     func start() async {
-        guard !started else { return }
+        guard !started, let entry = selectedEntry else { return }
         started = true
         do {
-            let estimator = try await DepthEstimator { progress in
+            // Same gesture as the model card: the catalog id resolves the bundle.
+            let estimator = try await DepthEstimator(catalog: entry.id) { progress in
                 Task { @MainActor in
                     self.status = "Downloading… \(Int(progress.fraction * 100))%"
                 }
@@ -49,6 +67,16 @@ struct DepthCameraView: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Picker("Model", selection: $model.selectedEntry) {
+                    ForEach(model.entries) { entry in
+                        Text(entry.name).tag(Optional(entry))
+                    }
+                }
+                .fixedSize()
+                Spacer()
+            }
+            .padding(.horizontal, 12)
             frame(model.cameraImage, label: "Camera")
             frame(model.depthImage, label: "Depth")
             HStack {
@@ -63,7 +91,13 @@ struct DepthCameraView: View {
             .padding(.horizontal, 12)
         }
         .padding(.vertical, 8)
-        .task { await model.start() }
+        .task {
+            await model.loadCatalog()
+            await model.start()
+        }
+        .onChange(of: model.selectedEntry) { old, _ in
+            if old != nil { model.restart() }
+        }
         .onDisappear { model.stop() }
     }
 

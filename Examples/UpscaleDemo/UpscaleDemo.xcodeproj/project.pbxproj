@@ -10,6 +10,7 @@
 		122A67D657C530573482E232 /* UpscaleEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780897AA475F20AEE1A1E2D3 /* UpscaleEngine.swift */; };
 		46AAF5B3E25D89964F7E1418 /* UpscaleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90C3589DFFD3EB50CA75255 /* UpscaleApp.swift */; };
 		4E1128B349EA5DFF77758576 /* UpscaleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92AC3C4D3043DEA703B7EDCE /* UpscaleView.swift */; };
+		A1CFA57201179D37049BF58D /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC092110854DA3CF4B6406ED /* QuickStart.swift */; };
 		EC42EBE592365FF122486ADB /* CoreAIKitVision in Frameworks */ = {isa = PBXBuildFile; productRef = 9F704E2E9F240794BB4489C9 /* CoreAIKitVision */; };
 /* End PBXBuildFile section */
 
@@ -19,6 +20,7 @@
 		92AC3C4D3043DEA703B7EDCE /* UpscaleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpscaleView.swift; sourceTree = "<group>"; };
 		BC08423E890C30A484D091D5 /* UpscaleDemo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = UpscaleDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C90C3589DFFD3EB50CA75255 /* UpscaleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpscaleApp.swift; sourceTree = "<group>"; };
+		FC092110854DA3CF4B6406ED /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -45,6 +47,7 @@
 		74ADDA6C79A737EE1FCF961B /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				FC092110854DA3CF4B6406ED /* QuickStart.swift */,
 				C90C3589DFFD3EB50CA75255 /* UpscaleApp.swift */,
 				780897AA475F20AEE1A1E2D3 /* UpscaleEngine.swift */,
 				92AC3C4D3043DEA703B7EDCE /* UpscaleView.swift */,
@@ -132,6 +135,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1CFA57201179D37049BF58D /* QuickStart.swift in Sources */,
 				46AAF5B3E25D89964F7E1418 /* UpscaleApp.swift in Sources */,
 				122A67D657C530573482E232 /* UpscaleEngine.swift in Sources */,
 				4E1128B349EA5DFF77758576 /* UpscaleView.swift in Sources */,
