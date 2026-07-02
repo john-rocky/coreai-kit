@@ -78,7 +78,14 @@ public struct OutputProfile: Sendable, Equatable {
     /// Picks the profile by probing the tokenizer vocab for marker tokens (markers only
     /// exist as dedicated tokens on models trained to emit them).
     public static func detect(probing tokenizer: any Tokenizer) -> OutputProfile {
-        func has(_ token: String) -> Bool { tokenizer.convertTokenToId(token) != nil }
+        // On vocabs that define an UNK token (granite / llama family), convertTokenToId
+        // maps ANY unknown string to the UNK id — a bare nil-check makes every probe hit,
+        // misdetects harmony, and its .suppress default then swallows the whole reply.
+        // Require the round trip: the id must map back to the probed marker.
+        func has(_ token: String) -> Bool {
+            guard let id = tokenizer.convertTokenToId(token) else { return false }
+            return tokenizer.convertIdToToken(id) == token
+        }
         if has("<|channel|>") { return .harmony }
         if has("<think>"), has("</think>") { return .thinkTags() }
         if has("<|reasoning_start|>"), has("<|reasoning_end|>") {
