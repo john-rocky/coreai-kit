@@ -46,6 +46,15 @@ struct ModelRuntime: Sendable {
     /// Loads a bundle directory (metadata.json + *.aimodel/ + tokenizer/), creating the
     /// engine and tokenizer concurrently — the same path as Apple's CoreAIRunner.
     init(bundleAt url: URL, engineVariant: EngineVariant = .auto) async throws {
+        // Zoo decode-only ports (catalog hint "pipelined") are S=1 graphs: any multi-token
+        // prefill chunk is rejected by the runtime (shape substitution fatal), so chunking
+        // must stay off — the same guard every other kit runtime for zoo ports carries
+        // (Gemma/VL/Audio/ASR). Official dynamic bundles load via `.auto` and keep the
+        // default threshold (single-pass prefill). Process-wide by necessity: the runtime
+        // reads the env var per generation; a user-set value always wins.
+        if engineVariant == .pipelined, getenv("COREAI_CHUNK_THRESHOLD") == nil {
+            setenv("COREAI_CHUNK_THRESHOLD", "1", 1)
+        }
         let start = SuspendingClock.now
         let bundle = try LanguageBundle(at: url)
         let runner = CoreAIRunner(from: bundle, variant: engineVariant.factoryOverride)

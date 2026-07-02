@@ -45,8 +45,10 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     public let variants: [String: Variant]
     public let thinking: Bool?
     /// Engine override hint: "sequential" / "pipelined" / "static-shape"; nil = auto-detect.
-    /// Zoo decode-pipelined ports (custom Metal kernels) must load on "sequential" — the
-    /// generic pipelined path SIGTRAPs on them; official-recipe bundles leave this nil (auto).
+    /// Zoo decode-only ports hint "pipelined": their S=1 graphs need S=1 prefill (the
+    /// runtime's chunk threshold drops to 1 on load) and the hybrid ones (extra conv/SSM
+    /// states) only load on the pipelined engine — "sequential" validates exactly 2 states
+    /// and rejects them. Official-recipe bundles (dynamic shapes) leave this nil (auto).
     public let engine: String?
 
     public init(
@@ -164,8 +166,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "gemma-3-4b-it", name: "Gemma 3 4B",
                 repo: "mlboydaisuke/gemma-3-4b-it-CoreAI-official", kind: .chat,
                 variants: ["macos": .init(path: "macos", sizeMB: 2223)]),
-            // ── Zoo ports that also run on iPhone (≤4B, JIT bundles) — load on "sequential".
-            //    The same gpu-pipelined bundle drives macOS + iOS. ──
+            // ── Zoo ports that also run on iPhone (≤4B, JIT bundles) — S=1 decode-only
+            //    graphs, hint "pipelined". The same gpu-pipelined bundle drives macOS + iOS. ──
             CatalogEntry(
                 id: "qwen3.5-0.8b", name: "Qwen3.5 0.8B",
                 repo: "mlboydaisuke/qwen3.5-0.8B-CoreAI", kind: .chat,
@@ -175,15 +177,17 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(
                         path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym", sizeMB: 1300),
                 ],
-                thinking: true, engine: "sequential"),
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "qwen3.5-2b", name: "Qwen3.5 2B",
                 repo: "mlboydaisuke/qwen3.5-2B-CoreAI", kind: .chat,
                 variants: [
-                    "macos": .init(path: "gpu-pipelined/qwen3_5_2b_decode_int8lin", sizeMB: 2400),
-                    "ios": .init(path: "gpu-pipelined/qwen3_5_2b_decode_int8lin", sizeMB: 2400),
+                    "macos": .init(
+                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym", sizeMB: 2900),
+                    "ios": .init(
+                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym", sizeMB: 2900),
                 ],
-                thinking: true, engine: "sequential"),
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "lfm2.5-1.2b", name: "LFM2.5 1.2B",
                 repo: "mlboydaisuke/LFM2.5-1.2B-CoreAI", kind: .chat,
@@ -193,7 +197,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(
                         path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8lin", sizeMB: 1500),
                 ],
-                engine: "sequential"),
+                engine: "pipelined"),
             CatalogEntry(
                 id: "granite-4.0-h-1b", name: "Granite 4.0-H 1B",
                 repo: "mlboydaisuke/granite-4.0-h-CoreAI", kind: .chat,
@@ -203,7 +207,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(
                         path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1200),
                 ],
-                engine: "sequential"),
+                engine: "pipelined"),
             CatalogEntry(
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
@@ -211,7 +215,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "int8", sizeMB: 2000),
                     "ios": .init(path: "int8", sizeMB: 2000),
                 ],
-                thinking: true, engine: "sequential"),
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,
@@ -223,7 +227,7 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
                         sizeMB: 3900),
                 ],
-                thinking: true, engine: "sequential"),
+                thinking: true, engine: "pipelined"),
             // ── More official-recipe chat (stock runtime, macOS) ──
             CatalogEntry(
                 id: "qwen3-8b", name: "Qwen3 8B",
@@ -234,45 +238,45 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "gemma-3-12b-it", name: "Gemma 3 12B",
                 repo: "mlboydaisuke/gemma-3-12b-it-CoreAI-official", kind: .chat,
                 variants: ["macos": .init(path: "macos", sizeMB: 6000)]),
-            // ── Zoo community ports (decode-pipelined custom Metal kernels) — load on
-            //    "sequential" (generic pipelined SIGTRAPs). macOS-only: they run well past a
+            // ── Zoo community ports (decode-pipelined, some with custom Metal kernels) —
+            //    S=1 decode-only graphs, hint "pipelined". macOS-only: they run well past a
             //    12 GB iPhone's per-process limit. Proven by the CoreAIChatMac dmg. ──
             CatalogEntry(
                 id: "qwen3.6-35b-a3b", name: "Qwen3.6-35B-A3B (MoE)",
                 repo: "mlboydaisuke/Qwen3.6-35B-A3B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
                     path: "gpu-pipelined/qwen3_6_35b_a3b_decode_sym8_gather", sizeMB: 35000)],
-                thinking: true, engine: "sequential"),
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "qwen3.6-27b", name: "Qwen3.6-27B (dense)",
                 repo: "mlboydaisuke/Qwen3.6-27B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
                     path: "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym", sizeMB: 28000)],
-                thinking: true, engine: "sequential"),
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "glm-4.7-flash", name: "GLM-4.7-Flash (MoE+MLA)",
                 repo: "mlboydaisuke/GLM-4.7-Flash-CoreAI", kind: .chat,
                 variants: ["macos": .init(
                     path: "gpu-pipelined/glm_4_7_flash_decode_sym8_gather", sizeMB: 30000)],
-                thinking: true, engine: "sequential"),
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "lfm2.5-8b-a1b", name: "LFM2.5-8B-A1B (MoE)",
                 repo: "mlboydaisuke/LFM2.5-8B-A1B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
                     path: "gpu-pipelined/lfm2_5_8b_a1b_decode_sym8_gather", sizeMB: 9000)],
-                engine: "sequential"),
+                engine: "pipelined"),
             CatalogEntry(
                 id: "gemma-4-12b", name: "Gemma 4 12B",
                 repo: "mlboydaisuke/Gemma-4-12B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
                     path: "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8", sizeMB: 13000)],
-                engine: "sequential"),
+                engine: "pipelined"),
             CatalogEntry(
                 id: "gemma-4-31b", name: "Gemma 4 31B",
                 repo: "mlboydaisuke/Gemma-4-31B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
                     path: "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8", sizeMB: 18000)],
-                engine: "sequential"),
+                engine: "pipelined"),
             // ── Speech-to-text ──
             CatalogEntry(
                 id: "whisper-large-v3-turbo", name: "Whisper large-v3-turbo",
