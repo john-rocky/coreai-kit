@@ -63,11 +63,18 @@ public final class MicRecorder: NSObject, @unchecked Sendable {
 
     /// Stops recording and returns the captured 16 kHz mono samples (empty if nothing captured).
     public func stop() -> [Float] {
+        stopFile().flatMap { try? AudioFile.pcm16kMono($0) } ?? []
+    }
+
+    /// Stops recording and returns the clip as a temp WAV URL (nil if nothing was captured) —
+    /// for handing to file-shaped APIs. The recorder writes a WAV natively, so this is the
+    /// primitive; `stop()` is its decoded convenience. The next `start()` overwrites the file.
+    public func stopFile() -> URL? {
         recorder?.stop()
         recorder = nil
         #if os(iOS)
             try? AVAudioSession.sharedInstance().setActive(false)
         #endif
-        return fileURL.flatMap { try? AudioFile.pcm16kMono($0) } ?? []
+        return fileURL
     }
 }
