@@ -7,7 +7,8 @@
 import CoreAIKitVision
 import Foundation
 
-/// Detect objects in one image file with any detection model in the catalog
+/// Detect objects in one image file with any detection model in the catalog — RF-DETR
+/// (DETR, no NMS) or YOLOX (dense head, host NMS) behind the same call
 /// (`ModelCatalog.builtin.available(.detection)`). First use downloads the model (progress
 /// via `downloadProgress`), later runs load from the local cache. Real time? Feed each
 /// camera frame to `detect(in:)` — see the GUI app's pixel-buffer fast path.
@@ -17,7 +18,7 @@ func detect(
     downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
 ) async throws -> [Detection] {
     // CARD-SNIPPET-BEGIN
-    let detector = try await ObjectDetector(catalog: id, downloadProgress: downloadProgress)
+    let detector = try await KitDetector(catalog: id, downloadProgress: downloadProgress)
     let image = try ImageFile.load(imageURL)  // any image file → CGImage + EXIF orientation
     let detections = try await detector.detect(in: image.cgImage)
     // CARD-SNIPPET-END

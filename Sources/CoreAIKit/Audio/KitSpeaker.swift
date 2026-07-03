@@ -24,7 +24,12 @@ public struct SpokenAudio: Sendable {
 /// let audio = try await speaker.synthesize("Hello from Core AI.")
 /// ```
 public struct KitSpeaker: Sendable {
-    private let tts: VoxCPMTTS
+    enum Engine: Sendable {
+        case voxcpm(VoxCPMTTS)
+        case voxcpm2(VoxCPM2TTS)
+    }
+
+    private let engine: Engine
     /// The catalog id this speaker was loaded from.
     public let catalogID: String
 
@@ -36,30 +41,52 @@ public struct KitSpeaker: Sendable {
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
         let entry = try await ModelCatalog.entry(forID: id, expecting: .tts)
-        // VoxCPM is the only tts family today; a dispatch table (KitTranscriber-style)
-        // lands with the second one.
-        guard entry.id == "voxcpm-0.5b", let variant = entry.variant else {
+        guard let variant = entry.variant else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
+        }
+        let glueName: String
+        switch entry.id {
+        case "voxcpm-0.5b": glueName = "voxcpm_host_glue"
+        case "voxcpm2-2b": glueName = "voxcpm2_host_glue"
+        default: throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         let platform = try await store.download(
             ModelID(entry.repo, path: variant.path), progress: downloadProgress)
         let tokenizer = try await store.download(
             ModelID(entry.repo, path: "tokenizer"), progress: downloadProgress)
         let glue = try await store.download(
-            ModelID(entry.repo, path: "voxcpm_host_glue"), progress: downloadProgress)
-        #if os(iOS)
-        var paths = VoxCPMPaths.aot(root: platform, arch: "h18p", tokenizerDir: tokenizer)
-        #else
-        var paths = VoxCPMPaths.standard(artifactsRoot: platform, tokenizerDir: tokenizer)
-        #endif
-        paths.glueDir = glue
-        self.tts = try await VoxCPMTTS(paths: paths)
+            ModelID(entry.repo, path: glueName), progress: downloadProgress)
+        switch entry.id {
+        case "voxcpm-0.5b":
+            #if os(iOS)
+            var paths = VoxCPMPaths.aot(root: platform, arch: "h18p", tokenizerDir: tokenizer)
+            #else
+            var paths = VoxCPMPaths.standard(artifactsRoot: platform, tokenizerDir: tokenizer)
+            #endif
+            paths.glueDir = glue
+            self.engine = .voxcpm(try await VoxCPMTTS(paths: paths))
+        default:
+            #if os(iOS)
+            var paths = VoxCPM2Paths.aot(root: platform, arch: "h18p", tokenizerDir: tokenizer)
+            #else
+            var paths = VoxCPM2Paths.standard(artifactsRoot: platform, tokenizerDir: tokenizer)
+            #endif
+            paths.glueDir = glue
+            self.engine = .voxcpm2(try await VoxCPM2TTS(paths: paths))
+        }
         self.catalogID = entry.id
     }
 
-    /// Synthesizes one utterance (16 kHz mono for VoxCPM).
+    /// Synthesizes one utterance (16 kHz mono for VoxCPM, 48 kHz for VoxCPM2).
     public func synthesize(_ text: String) async throws -> SpokenAudio {
-        SpokenAudio(samples: try await tts.synthesize(text), sampleRate: VoxCPMTTS.sampleRate)
+        switch engine {
+        case .voxcpm(let tts):
+            return SpokenAudio(
+                samples: try await tts.synthesize(text), sampleRate: VoxCPMTTS.sampleRate)
+        case .voxcpm2(let tts):
+            return SpokenAudio(
+                samples: try await tts.synthesize(text), sampleRate: VoxCPM2TTS.sampleRate)
+        }
     }
 
     /// Streaming synthesis: `onChunk` receives ~0.5 s chunks as they decode, so playback can
@@ -67,6 +94,9 @@ public struct KitSpeaker: Sendable {
     public func synthesizeStreaming(
         _ text: String, onChunk: @Sendable ([Float]) async -> Void
     ) async throws {
-        _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
+        switch engine {
+        case .voxcpm(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
+        case .voxcpm2(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
+        }
     }
 }

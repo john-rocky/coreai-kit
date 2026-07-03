@@ -42,6 +42,13 @@ public struct AudioModelID: Sendable, Hashable {
             "mlboydaisuke/Qwen2.5-Omni-3B-Audio-CoreAI",
             path: "gpu-pipelined/qwen2_5_omni_3b_audio_encoder_fp16_k15"),
         arch: .qwen2_5Omni3B)
+
+    /// Presets by catalog id. An audio model is a decoder + encoder pair plus graph geometry
+    /// — none of which ride catalog.json — so every `audio` catalog entry pairs with a preset
+    /// here; the id is the one the model's card shows.
+    static let byCatalogID: [String: AudioModelID] = [
+        "qwen2.5-omni-3b-audio": .qwen2_5Omni3B
+    ]
 }
 
 /// A Core AI audio-understanding bundle as a `LanguageModelSession` provider.
@@ -62,6 +69,24 @@ public struct KitAudioModel: LanguageModel {
 
     public var executorConfiguration: KitAudioExecutor.Configuration {
         KitAudioExecutor.Configuration(runtime: runtime, modelID: modelID, profile: profile)
+    }
+
+    /// Loads an audio-understanding model by its catalog id — the id shown on the model's
+    /// card:
+    ///
+    /// ```swift
+    /// let audio = try await KitAudioModel(catalog: "qwen2.5-omni-3b-audio")
+    /// ```
+    public init(
+        catalog id: String,
+        store: ModelStore = .default,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .audio)
+        guard let model = AudioModelID.byCatalogID[entry.id] else {
+            throw CoreAIKitError.modelNotInCatalog(id: id)
+        }
+        try await self.init(model: model, store: store, downloadProgress: downloadProgress)
     }
 
     /// Downloads the decoder + encoder bundles from the Hub (if needed) and loads them.

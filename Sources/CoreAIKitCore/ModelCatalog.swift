@@ -19,6 +19,10 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case vlm
         /// Text-to-speech (VoxCPM).
         case tts
+        /// Text-to-music / audio generation (Stable Audio).
+        case music
+        /// Audio understanding (Qwen2.5-Omni): clip + question → answer.
+        case audio
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -328,6 +332,24 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "macos", sizeMB: 1373),
                     "ios": .init(path: "ios", sizeMB: 1679),
                 ]),
+            CatalogEntry(
+                id: "voxcpm2-2b", name: "VoxCPM2 2B",
+                repo: "mlboydaisuke/VoxCPM2-CoreAI", kind: .tts,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 4719),
+                    "ios": .init(path: "ios", sizeMB: 5658),
+                ]),
+            // ── Text-to-music: prompt → 44.1 kHz audio (T5 cond + DiT + VAE, one subtree). ──
+            CatalogEntry(
+                id: "stable-audio-open-small", name: "Stable Audio Open Small",
+                repo: "mlboydaisuke/Stable-Audio-Open-Small-CoreAI", kind: .music,
+                variants: ["macos": .init(path: "macos", sizeMB: 1060)]),
+            // ── Audio understanding: clip + question → answer (thinker decoder + audio
+            //    encoder pair; KitAudioModel resolves both via AudioModelID.byCatalogID). ──
+            CatalogEntry(
+                id: "qwen2.5-omni-3b-audio", name: "Qwen2.5-Omni 3B Audio",
+                repo: "mlboydaisuke/Qwen2.5-Omni-3B-Audio-CoreAI", kind: .audio,
+                variants: ["macos": .init(path: "gpu-pipelined", sizeMB: 5485)]),
             // ── Speech-to-text ──
             CatalogEntry(
                 id: "whisper-large-v3-turbo", name: "Whisper large-v3-turbo",
@@ -373,6 +395,13 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "model", sizeMB: 1230),
                     "ios": .init(path: "model", sizeMB: 1230),
+                ]),
+            CatalogEntry(
+                id: "yolox-s", name: "YOLOX-S",
+                repo: "mlboydaisuke/YOLOX-CoreAI", kind: .detection,
+                variants: [
+                    "macos": .init(path: "yolox-s_float32.aimodel", sizeMB: 36),
+                    "ios": .init(path: "yolox-s_float32.aimodel", sizeMB: 36),
                 ]),
             CatalogEntry(
                 id: "rf-detr", name: "RF-DETR (nano)",

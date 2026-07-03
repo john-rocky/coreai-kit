@@ -26,27 +26,6 @@ final class AudioChatModel: ObservableObject {
     @Published var clipName = "No audio loaded."
     @Published var answer = ""
 
-    // macOS: local bundles from the conversion repo (the GPU-pipelined .aimodel decoder).
-    // iOS: the AOT decoder (.aimodelc, dodges the on-device JIT jetsam) + JIT encoder, sideloaded
-    // into the app container's Documents/models via `devicectl device copy to`.
-    #if os(macOS)
-        private let decoderDir =
-            "/Users/majimadaisuke/code/coreai/ondevice/artifacts/qwen2_5_omni_3b_thinker_int8lin_n750_s1_bundle"
-        private let encoderModel =
-            "/Users/majimadaisuke/code/coreai/ondevice/artifacts/qwen2_5_omni_3b_audio_encoder_fp16_k15.aimodel"
-    #else
-        private var modelsDir: URL {
-            FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("models")
-        }
-        private var decoderDir: String {
-            modelsDir.appendingPathComponent("qwen2_5_omni_3b_thinker_n750_ios").path
-        }
-        private var encoderModel: String {
-            modelsDir.appendingPathComponent("qwen2_5_omni_3b_audio_encoder_fp16_k15.aimodel").path
-        }
-    #endif
-
     @Published var recording = false
 
     private var model: KitAudioModel?
@@ -58,10 +37,9 @@ final class AudioChatModel: ObservableObject {
         busy = true
         status = "Loading audio model…"
         do {
-            let m = try await KitAudioModel(
-                decoderBundleAt: URL(fileURLWithPath: decoderDir),
-                encoderModelAt: URL(fileURLWithPath: encoderModel),
-                arch: .qwen2_5Omni3B)
+            // Same gesture as the model card: the catalog id resolves the decoder + encoder
+            // pair (downloaded on first use, cached afterwards).
+            let m = try await KitAudioModel(catalog: "qwen2.5-omni-3b-audio")
             self.model = m
             loaded = true
             let mem = availableMemoryMB()

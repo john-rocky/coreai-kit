@@ -10,6 +10,7 @@
 		648A89957B27220696261C99 /* AudioChatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37329A1E7CA3810727D4CE8E /* AudioChatApp.swift */; };
 		7BE7958F75C95DC0C1EAD99A /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 36DCB77DF31EB9CAA4BAB2C8 /* CoreAIKit */; };
 		7D24D4F8F3E3767EC8CE1BAF /* AudioChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D23AA1A4F32202D8539AE4F /* AudioChatView.swift */; };
+		A78C4A69C0A57BF69F2A709D /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC2F69111215509F3D0544D /* QuickStart.swift */; };
 		AC1C35A4E06549314EA1892B /* CoreAIKitUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3957EBE58FA680163DA314D6 /* CoreAIKitUI */; };
 		C0E89D818BF66BD97B073618 /* AudioChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491C65814C088DFB1E516458 /* AudioChatModel.swift */; };
 /* End PBXBuildFile section */
@@ -20,6 +21,7 @@
 		3DD0E5FD337B49048A48F868 /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
 		491C65814C088DFB1E516458 /* AudioChatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChatModel.swift; sourceTree = "<group>"; };
 		771454F12A56D5E3664F11C4 /* AudioChat.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AudioChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FAC2F69111215509F3D0544D /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +51,7 @@
 				37329A1E7CA3810727D4CE8E /* AudioChatApp.swift */,
 				491C65814C088DFB1E516458 /* AudioChatModel.swift */,
 				2D23AA1A4F32202D8539AE4F /* AudioChatView.swift */,
+				FAC2F69111215509F3D0544D /* QuickStart.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -138,6 +141,7 @@
 				648A89957B27220696261C99 /* AudioChatApp.swift in Sources */,
 				C0E89D818BF66BD97B073618 /* AudioChatModel.swift in Sources */,
 				7D24D4F8F3E3767EC8CE1BAF /* AudioChatView.swift in Sources */,
+				A78C4A69C0A57BF69F2A709D /* QuickStart.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
