@@ -428,6 +428,18 @@
       }
     },
     {
+      "id": "llada-8b",
+      "name": "LLaDA-8B (diffusion)",
+      "repo": "mlboydaisuke/LLaDA-8B-dLLM-CoreAI",
+      "kind": "dllm",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 5265
+        }
+      }
+    },
+    {
       "id": "whisper-large-v3-turbo",
       "name": "Whisper large-v3-turbo",
       "repo": "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official",

@@ -24,6 +24,7 @@ Every example app in one place, on two shelves:
 | [DepthCamera](DepthCamera/) | depth | Any `depth` catalog model: live camera depth via `CameraFeed`. GUI + `swift run depth-cli`. |
 | [ActionCamera](ActionCamera/) | video | Any `video` catalog model (V-JEPA 2): a rolling 16-frame clip → live action label. GUI + `swift run action-cli`. |
 | [ReadDoc](ReadDoc/) | document OCR | Any `ocr` catalog model (Unlimited-OCR): document image → structured markdown. GUI + `swift run readdoc-cli`. |
+| [DiffuseChat](DiffuseChat/) | diffusion LM | Any `dllm` catalog model (LLaDA-8B): watch the reply denoise in place (parallel fill-in, not left-to-right). GUI + `swift run diffuse-cli`. |
 | [DetectCamera](DetectCamera/) | detection | Any `detection` catalog model (RF-DETR / YOLOX) behind one `KitDetector`. GUI + `swift run detect-cli`. |
 | [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. GUI + `swift run upscale-cli`. |
 | [PhotoSearch](PhotoSearch/) | image-text embeddings | Semantic photo search — the photo library indexed with CLIP. |

@@ -27,6 +27,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case video
         /// Document OCR (Unlimited-OCR): image → structured markdown.
         case ocr
+        /// Masked-diffusion language model (LLaDA): parallel canvas denoising, not AR chat.
+        case dllm
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -388,6 +390,14 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/Unlimited-OCR-CoreAI", kind: .ocr,
                 variants: [
                     "macos": .init(path: "", sizeMB: 4532)
+                ]),
+            // ── Diffusion LM: parallel canvas denoising behind KitDiffusionLM (its own
+            //    surface — snapshots, not append-only streams — so not a ChatSession). ──
+            CatalogEntry(
+                id: "llada-8b", name: "LLaDA-8B (diffusion)",
+                repo: "mlboydaisuke/LLaDA-8B-dLLM-CoreAI", kind: .dllm,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 5265)
                 ]),
             // ── Speech-to-text ──
             CatalogEntry(

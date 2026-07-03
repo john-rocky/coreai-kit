@@ -1,0 +1,44 @@
+name: DiffuseChat
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+# Release: the per-step host work (entropy over the whole canvas) is ~3x slower unoptimized.
+schemes:
+  DiffuseChat:
+    build:
+      targets:
+        DiffuseChat: all
+    run:
+      config: Release
+
+targets:
+  DiffuseChat:
+    type: application
+    # The shipped bundle is macOS-only today (5.3 GB canvas graph); iOS needs an AOT export.
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.diffusechat
+        DEVELOPMENT_TEAM: MFN25KNUGJ
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
