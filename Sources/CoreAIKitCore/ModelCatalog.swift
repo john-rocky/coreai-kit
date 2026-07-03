@@ -25,6 +25,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case audio
         /// Video understanding (V-JEPA 2): clip → action classification.
         case video
+        /// Document OCR (Unlimited-OCR): image → structured markdown.
+        case ocr
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -378,6 +380,14 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 708),
                     "ios": .init(path: "ios", sizeMB: 1415),
+                ]),
+            // ── Document OCR: image → structured markdown (vision + unified prefill/decode
+            //    decoder + host constant tables; KitDocReader resolves the four subtrees). ──
+            CatalogEntry(
+                id: "unlimited-ocr", name: "Unlimited-OCR",
+                repo: "mlboydaisuke/Unlimited-OCR-CoreAI", kind: .ocr,
+                variants: [
+                    "macos": .init(path: "", sizeMB: 4532)
                 ]),
             // ── Speech-to-text ──
             CatalogEntry(

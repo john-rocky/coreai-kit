@@ -416,6 +416,18 @@
       }
     },
     {
+      "id": "unlimited-ocr",
+      "name": "Unlimited-OCR",
+      "repo": "mlboydaisuke/Unlimited-OCR-CoreAI",
+      "kind": "ocr",
+      "variants": {
+        "macos": {
+          "path": "",
+          "sizeMB": 4532
+        }
+      }
+    },
+    {
       "id": "whisper-large-v3-turbo",
       "name": "Whisper large-v3-turbo",
       "repo": "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official",
