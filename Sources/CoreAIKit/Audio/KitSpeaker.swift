@@ -27,6 +27,7 @@ public struct KitSpeaker: Sendable {
     enum Engine: Sendable {
         case voxcpm(VoxCPMTTS)
         case voxcpm2(VoxCPM2TTS)
+        case kokoro(KokoroTTS)
     }
 
     private let engine: Engine
@@ -44,6 +45,26 @@ public struct KitSpeaker: Sendable {
         guard let variant = entry.variant else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
+
+        // Kokoro is three stateless graph bundles + host glue at the repo root — no platform
+        // dir, no tokenizer subtree (G2P rides the glue) — so it resolves its own subtrees.
+        if entry.id == "kokoro-82m" {
+            let predictor = try await store.download(
+                ModelID(entry.repo, path: "kokoro_predictor.aimodel"), progress: downloadProgress)
+            let prosody = try await store.download(
+                ModelID(entry.repo, path: "kokoro_prosody.aimodel"), progress: downloadProgress)
+            let vocoder = try await store.download(
+                ModelID(entry.repo, path: "kokoro_vocoder.aimodel"), progress: downloadProgress)
+            let glue = try await store.download(
+                ModelID(entry.repo, path: "kokoro_host_glue"), progress: downloadProgress)
+            self.engine = .kokoro(
+                try await KokoroTTS(
+                    predictorAt: predictor, prosodyAt: prosody, vocoderAt: vocoder,
+                    glueDir: glue))
+            self.catalogID = entry.id
+            return
+        }
+
         let glueName: String
         switch entry.id {
         case "voxcpm-0.5b": glueName = "voxcpm_host_glue"
@@ -77,7 +98,8 @@ public struct KitSpeaker: Sendable {
         self.catalogID = entry.id
     }
 
-    /// Synthesizes one utterance (16 kHz mono for VoxCPM, 48 kHz for VoxCPM2).
+    /// Synthesizes one utterance (16 kHz mono for VoxCPM, 48 kHz for VoxCPM2, 24 kHz for
+    /// Kokoro).
     public func synthesize(_ text: String) async throws -> SpokenAudio {
         switch engine {
         case .voxcpm(let tts):
@@ -86,6 +108,9 @@ public struct KitSpeaker: Sendable {
         case .voxcpm2(let tts):
             return SpokenAudio(
                 samples: try await tts.synthesize(text), sampleRate: VoxCPM2TTS.sampleRate)
+        case .kokoro(let tts):
+            return SpokenAudio(
+                samples: try await tts.synthesize(text), sampleRate: KokoroTTS.sampleRate)
         }
     }
 
@@ -97,6 +122,7 @@ public struct KitSpeaker: Sendable {
         switch engine {
         case .voxcpm(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
         case .voxcpm2(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
+        case .kokoro(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
         }
     }
 }

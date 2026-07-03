@@ -17,11 +17,12 @@ Every example app in one place, on two shelves:
 |---|---|---|
 | [Transcribe](Transcribe/) | speech-to-text | Any `asr` catalog model (Whisper / Qwen3-ASR / Parakeet): record, choose, or demo clip → transcript. GUI + `swift run transcribe-cli`. |
 | [ChatDemo](ChatDemo/) | chat | Minimal multiplatform chat over `ChatSession`; pick a starter model, it downloads and streams. |
-| [VLChat](VLChat/) | vision-language | Any `vlm` catalog model (Qwen3-VL 2B/4B/8B): pick a photo, ask about it. GUI + `swift run vlchat-cli`. |
-| [Speak](Speak/) | text-to-speech | Any `tts` catalog model (VoxCPM): type a sentence, hear it. GUI + `swift run speak-cli`. |
+| [VLChat](VLChat/) | vision-language | Any `vlm` catalog model (Qwen3-VL 2B/4B/8B, Holo2 GUI grounding): pick a photo, ask about it. GUI + `swift run vlchat-cli`. |
+| [Speak](Speak/) | text-to-speech | Any `tts` catalog model (VoxCPM / VoxCPM2 / Kokoro): type a sentence, hear it. GUI + `swift run speak-cli`. |
 | [Music](Music/) | text-to-music | Any `music` catalog model (Stable Audio): prompt → 44.1 kHz stereo. GUI + `swift run music-cli`. |
 | [AudioChat](AudioChat/) | audio understanding | Any `audio` catalog model (Qwen2.5-Omni): load a clip, ask "what do you hear?". GUI + `swift run audiochat-cli` (macOS). |
 | [DepthCamera](DepthCamera/) | depth | Any `depth` catalog model: live camera depth via `CameraFeed`. GUI + `swift run depth-cli`. |
+| [ActionCamera](ActionCamera/) | video | Any `video` catalog model (V-JEPA 2): a rolling 16-frame clip → live action label. GUI + `swift run action-cli`. |
 | [DetectCamera](DetectCamera/) | detection | Any `detection` catalog model (RF-DETR / YOLOX) behind one `KitDetector`. GUI + `swift run detect-cli`. |
 | [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. GUI + `swift run upscale-cli`. |
 | [PhotoSearch](PhotoSearch/) | image-text embeddings | Semantic photo search — the photo library indexed with CLIP. |

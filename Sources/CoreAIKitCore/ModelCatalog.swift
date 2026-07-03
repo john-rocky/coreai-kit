@@ -23,6 +23,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case music
         /// Audio understanding (Qwen2.5-Omni): clip + question → answer.
         case audio
+        /// Video understanding (V-JEPA 2): clip → action classification.
+        case video
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -321,6 +323,15 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(
                         path: "gpu-pipelined/qwen3_vl_8b_instruct_decode_int8hu_s1", sizeMB: 10453)
                 ]),
+            CatalogEntry(
+                id: "holo2-4b", name: "Holo2 4B",
+                repo: "mlboydaisuke/Holo2-4B-CoreAI", kind: .vlm,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/holo2_4b_decode_int8lin_s1", sizeMB: 5484),
+                    "ios": .init(
+                        path: "gpu-pipelined/holo2_4b_decode_int8lin_s1", sizeMB: 5484),
+                ]),
             // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
             //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant
             //    path names the platform bundle dir and KitSpeaker resolves the rest.
@@ -331,6 +342,15 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1373),
                     "ios": .init(path: "ios", sizeMB: 1679),
+                ]),
+            // Kokoro is three stateless graph bundles + host glue at the repo root (no
+            // platform dir); the variant path is empty and KitSpeaker resolves the subtrees.
+            // sizeMB is the three bundles + glue (lexicons + voice packs) total.
+            CatalogEntry(
+                id: "kokoro-82m", name: "Kokoro 82M",
+                repo: "mlboydaisuke/Kokoro-82M-CoreAI", kind: .tts,
+                variants: [
+                    "macos": .init(path: "", sizeMB: 341)
                 ]),
             CatalogEntry(
                 id: "voxcpm2-2b", name: "VoxCPM2 2B",
@@ -350,6 +370,15 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "qwen2.5-omni-3b-audio", name: "Qwen2.5-Omni 3B Audio",
                 repo: "mlboydaisuke/Qwen2.5-Omni-3B-Audio-CoreAI", kind: .audio,
                 variants: ["macos": .init(path: "gpu-pipelined", sizeMB: 5485)]),
+            // ── Video understanding: 16-frame clip → action class (ActionRecognizer).
+            //    The platform dir holds the graph (JIT .aimodel / AOT .aimodelc) + labels. ──
+            CatalogEntry(
+                id: "vjepa2-vitl-ssv2", name: "V-JEPA 2 ViT-L (SSv2)",
+                repo: "mlboydaisuke/VJEPA2-ViTL-SSv2-CoreAI", kind: .video,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 708),
+                    "ios": .init(path: "ios", sizeMB: 1415),
+                ]),
             // ── Speech-to-text ──
             CatalogEntry(
                 id: "whisper-large-v3-turbo", name: "Whisper large-v3-turbo",

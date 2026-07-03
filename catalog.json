@@ -316,6 +316,22 @@
       }
     },
     {
+      "id": "holo2-4b",
+      "name": "Holo2 4B",
+      "repo": "mlboydaisuke/Holo2-4B-CoreAI",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/holo2_4b_decode_int8lin_s1",
+          "sizeMB": 5484
+        },
+        "ios": {
+          "path": "gpu-pipelined/holo2_4b_decode_int8lin_s1",
+          "sizeMB": 5484
+        }
+      }
+    },
+    {
       "id": "voxcpm-0.5b",
       "name": "VoxCPM 0.5B",
       "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",
@@ -328,6 +344,18 @@
         "ios": {
           "path": "ios",
           "sizeMB": 1679
+        }
+      }
+    },
+    {
+      "id": "kokoro-82m",
+      "name": "Kokoro 82M",
+      "repo": "mlboydaisuke/Kokoro-82M-CoreAI",
+      "kind": "tts",
+      "variants": {
+        "macos": {
+          "path": "",
+          "sizeMB": 341
         }
       }
     },
@@ -368,6 +396,22 @@
         "macos": {
           "path": "gpu-pipelined",
           "sizeMB": 5485
+        }
+      }
+    },
+    {
+      "id": "vjepa2-vitl-ssv2",
+      "name": "V-JEPA 2 ViT-L (SSv2)",
+      "repo": "mlboydaisuke/VJEPA2-ViTL-SSv2-CoreAI",
+      "kind": "video",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 708
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 1415
         }
       }
     },

@@ -58,7 +58,8 @@ final class ModelCatalogTests: XCTestCase {
         #endif
 
         // rf-detr regression: "detection" used to decode to .unknown, hiding the entry.
-        XCTAssertEqual(ModelCatalog.builtin.available(.detection).map(\.id), ["rf-detr"])
+        XCTAssertEqual(
+            ModelCatalog.builtin.available(.detection).map(\.id), ["yolox-s", "rf-detr"])
     }
 
     func testEntryLookup() {
