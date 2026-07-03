@@ -1,13 +1,13 @@
 {
-  "originHash" : "3cec38249499dbc05117be4e18ba2680252ce1ad13b43c141d22b21908b01b09",
+  "originHash" : "0a6fc0eb1efefc955058a5398f714101c02465588d0c7db93254a568154fe540",
   "pins" : [
     {
       "identity" : "coreai-models",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/john-rocky/coreai-models",
       "state" : {
-        "revision" : "627fec75edea432db7d0c318073da7a7ef921403",
-        "version" : "0.1.1-zoo"
+        "revision" : "0fdf710774638ced1fc82783a1456835b4be1811",
+        "version" : "0.1.2-zoo"
       }
     },
     {
