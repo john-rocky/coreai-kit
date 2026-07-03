@@ -15,7 +15,7 @@ let package = Package(
             name: "vlchat-cli",
             dependencies: [.product(name: "CoreAIKit", package: "coreai-kit")],
             path: ".",
-            exclude: ["build", "VLChat.xcodeproj", "project.yml", "README.md", "sample.jpg"],
+            exclude: ["build", "VLChat.xcodeproj", "project.yml", "README.md", "sample.jpg", "screenshot.png"],
             sources: ["Sources/QuickStart.swift", "CLI/main.swift"]
         )
     ]
