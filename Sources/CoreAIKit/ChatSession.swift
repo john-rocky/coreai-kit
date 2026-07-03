@@ -48,6 +48,17 @@ public actor ChatSession {
     public private(set) var stats = GenerationStats()
     private var generationTask: Task<Void, Never>?
     private var isGenerating = false
+    // Exact token sequence held in the engine's KV cache (prompt + committed generation).
+    // Drives cross-turn PREFIX REUSE: the next turn keeps the KV for the longest common
+    // prefix and prefills only the new tokens instead of re-processing the whole history.
+    private var kvTokens: [Int32] = []
+
+    private static func commonPrefixLength(_ a: [Int32], _ b: [Int32]) -> Int {
+        let n = min(a.count, b.count)
+        var i = 0
+        while i < n, a[i] == b[i] { i += 1 }
+        return i
+    }
 
     /// Display name from the bundle metadata.
     public var modelName: String { runtime.modelName }
@@ -215,6 +226,7 @@ public actor ChatSession {
     public func reset() {
         generationTask?.cancel()
         history = []
+        kvTokens = []
         stats.promptTokens = 0
         stats.ttftSeconds = nil
         stats.generatedTokens = 0
@@ -247,10 +259,27 @@ public actor ChatSession {
         stats.tokensPerSecond = nil
 
         do {
-            let promptTokens = try runtime.tokenizer.applyChatTemplate(messages: rendered)
-            stats.promptTokens = promptTokens.count
+            let full = try runtime.tokenizer.applyChatTemplate(messages: rendered).map(Int32.init)
+            stats.promptTokens = full.count
 
-            try await runtime.engine.reset()
+            // PREFIX REUSE: keep the KV for the longest common prefix with the tokens already
+            // cached and prefill only the divergent tail, instead of re-processing the whole
+            // conversation. `trimKVCache` returns <0 on engines that can't rewind (recurrent/SSM)
+            // or the constrained path below → fall back to reset() + full re-prefill. Lossless.
+            let want = schema == nil
+                ? min(Self.commonPrefixLength(full, kvTokens), max(0, full.count - 1))
+                : 0
+            var reused = 0
+            if want > 0 {
+                let r = await runtime.engine.trimKVCache(to: want)
+                if r >= 0 { reused = r } else { try await runtime.engine.reset() }
+            } else {
+                try await runtime.engine.reset()
+            }
+            let feed = runtime.engine.prefixReuseFeedsFullSequence ? full : Array(full[reused...])
+            let promptTokens = feed.map(Int.init)
+            kvTokens = full   // committed generation is appended as it streams below
+
             let sampling =
                 configuration.temperature.map { SamplingConfiguration(temperature: $0) }
                 ?? SamplingConfiguration.greedy
@@ -323,6 +352,7 @@ public actor ChatSession {
                     if stats.ttftSeconds == nil {
                         stats.ttftSeconds = ProcessStats.seconds(from: requestStart, to: now)
                     }
+                    kvTokens.append(chunk.tokenId)   // track committed generation into the KV mirror
                     stats.generatedTokens += 1
                     window.append(now)
                     if window.count > windowSize { window.removeFirst() }
@@ -347,8 +377,10 @@ public actor ChatSession {
             continuation.yield(.complete(reply))
             continuation.finish()
         } catch {
-            // Roll back the user turn so a retry re-sends cleanly.
+            // Roll back the user turn so a retry re-sends cleanly. The engine's KV state is
+            // now indeterminate, so invalidate the mirror → the next turn does a full reset.
             history.removeSubrange(historyMark...)
+            kvTokens = []
             continuation.finish(throwing: error)
         }
     }

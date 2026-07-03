@@ -22,7 +22,7 @@ let package = Package(
         // v0.1.1-zoo adds the D1 engine fix: a consumer that breaks the stream at EOS now stops the
         // pipelined engine (instead of running to maxTokens), so a SECOND consecutive generation no
         // longer collides with the still-running first one ("something went wrong" on turn 2).
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.1.1-zoo"),
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.1.2-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [
