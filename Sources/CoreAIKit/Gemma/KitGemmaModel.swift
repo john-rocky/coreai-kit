@@ -32,14 +32,26 @@ public struct GemmaModelID: Sendable, Hashable {
         self.arch = arch
     }
 
-    /// Gemma 4 E2B, official-QAT int4 (license: gemma). The shippable on-device size — its
-    /// 2.0 GB pipelined `…_tbl` bundle + 2.4 GB PLE tables run on both Mac and iPhone 17 Pro
-    /// (device builds use the paired AOT `…_tbl_aotc_h18p` bundle). int4 ≈ bf16 by design
-    /// (Google's QAT). The QAT bundle is paired with the QAT tables.
+    /// Gemma 4 E2B decoder subtree, picked per platform. iOS MUST use the AOT-compiled
+    /// `…_tbl_aotc_h18p` bundle — the plain bundle's ~2 GB of graph constants crash the
+    /// on-device GPU specializer (`LLVM ERROR: Failed to allocate mmap'd buffer`). macOS
+    /// JIT-specializes the plain `…_tbl` bundle fine (there is no Mac AOT artifact).
+    #if os(iOS)
+    static let gemma4E2BDecoderPath = "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p"
+    #else
+    static let gemma4E2BDecoderPath = "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl"
+    #endif
+
+    /// Gemma 4 E2B, official-QAT int4 (license: gemma). The shippable on-device size — a
+    /// ~2.1 GB decode bundle + 2.8 GB PLE tables, running on both Mac (JIT `…_tbl`) and
+    /// iPhone 17 Pro (AOT `…_tbl_aotc_h18p`; device-verified through this class in SiriAsk:
+    /// ~30 tok/s decode, ~4.45 GB peak — the driving app needs the increased-memory
+    /// entitlement). int4 ≈ bf16 by design (Google's QAT). The QAT bundle is paired with
+    /// the QAT tables.
     public static let gemma4E2B = GemmaModelID(
         decoder: ModelID(
             "mlboydaisuke/gemma-4-E2B-CoreAI",
-            path: "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl"),
+            path: gemma4E2BDecoderPath),
         tables: ModelID(
             "mlboydaisuke/gemma-4-E2B-CoreAI",
             path: "ios-frontend/gemma4_qat_gather_raw"),

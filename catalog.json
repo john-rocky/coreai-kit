@@ -280,6 +280,10 @@
         "macos": {
           "path": "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl",
           "sizeMB": 4929
+        },
+        "ios": {
+          "path": "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p",
+          "sizeMB": 4931
         }
       },
       "engine": "pipelined"

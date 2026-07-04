@@ -303,14 +303,21 @@ public struct ModelCatalog: Sendable, Codable {
             //    decode bundle + paired PLE tables bound as static graph inputs. The
             //    variant path names the decoder; ChatSession(catalog:) resolves both
             //    subtrees via GemmaModelID.byCatalogID and loads through GemmaRuntime.
-            //    sizeMB is the decoder + tables total the first run downloads. macOS-only
-            //    for now: the iPhone path (AOT decoder + memory entitlement) is app-proven
-            //    but not kit-wired yet. ──
+            //    sizeMB is the decoder + tables total the first run downloads. E2B's ios
+            //    variant is the AOT `…_aotc_h18p` decoder (the plain bundle crashes the
+            //    on-device specializer; ~4.45 GB peak, so the driving app needs the
+            //    increased-memory entitlement). E4B stays macOS-only — the static-table
+            //    form exceeds the device memory budget. ──
             CatalogEntry(
                 id: "gemma-4-e2b", name: "Gemma 4 E2B",
                 repo: "mlboydaisuke/gemma-4-E2B-CoreAI", kind: .chat,
-                variants: ["macos": .init(
-                    path: "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl", sizeMB: 4929)],
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl", sizeMB: 4929),
+                    "ios": .init(
+                        path: "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p",
+                        sizeMB: 4931),
+                ],
                 engine: "pipelined"),
             CatalogEntry(
                 id: "gemma-4-e4b", name: "Gemma 4 E4B",

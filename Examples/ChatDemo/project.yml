@@ -35,6 +35,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.chatdemo
         DEVELOPMENT_TEAM: MFN25KNUGJ
         CODE_SIGN_STYLE: Automatic
+        # Gemma 4 E2B peaks ~4.45 GB on iPhone — needs the increased memory limit.
+        CODE_SIGN_ENTITLEMENTS: ChatDemo.entitlements
         SWIFT_VERSION: "6.0"
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"

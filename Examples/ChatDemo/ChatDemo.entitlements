@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Gemma 4 E2B on iPhone peaks ~4.45 GB (2.1 GB AOT decode bundle + PLE tables +
+	     activations), past the default jetsam limit; the increased memory limit is what
+	     lets the load and generate complete (same as the AudioChat / SiriAsk ports). -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>
