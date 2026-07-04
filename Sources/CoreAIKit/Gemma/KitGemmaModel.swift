@@ -56,6 +56,15 @@ public struct GemmaModelID: Sendable, Hashable {
             "mlboydaisuke/gemma-4-E4B-CoreAI",
             path: "ios-frontend/gemma4_e4b_qat_gather_raw"),
         arch: .gemma4)
+
+    /// Catalog id → decoder + tables pair. `ChatSession(catalog:)` dispatches through this
+    /// table (a chat entry whose bundle needs the Gemma load path — static PLE inputs — can't
+    /// ride the stock `ModelRuntime`), the same id→driving-class dispatch as KitSpeaker.
+    /// The catalog entry still owns platform availability and the download size shown in UI.
+    public static let byCatalogID: [String: GemmaModelID] = [
+        "gemma-4-e2b": .gemma4E2B,
+        "gemma-4-e4b": .gemma4E4B,
+    ]
 }
 
 /// A Core AI Gemma 4 bundle as a `LanguageModelSession` provider.
@@ -109,17 +118,9 @@ public struct KitGemmaModel: LanguageModel {
     public init(runtime: GemmaRuntime, modelID: String) {
         self.runtime = runtime
         self.modelID = modelID
-        // Gemma 4 frames an optional reasoning span as `<|channel>thought\n … <channel|>`. With
-        // `.stream` default, a direct answer flows straight out as response; when the model does
-        // think, the span is routed to `.reasoning` and the answer after `<channel|>` follows as
-        // response. The `<turn|>` / `<eos>` stop tokens are filtered in the executor before the
-        // parser, so they never reach the text.
-        self.profile = OutputProfile(
-            rules: [
-                OutputRule(
-                    open: runtime.arch.thoughtOpen, close: [runtime.arch.thoughtClose],
-                    kind: .thinking, streamsBody: true)
-            ],
-            defaultText: .stream)
+        // Gemma 4 frames an optional reasoning span as `<|channel>thought\n … <channel|>`
+        // (see GemmaArchitecture.outputProfile). The `<turn|>` / `<eos>` stop tokens are
+        // filtered in the executor before the parser, so they never reach the text.
+        self.profile = runtime.arch.outputProfile
     }
 }

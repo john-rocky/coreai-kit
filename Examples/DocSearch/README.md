@@ -18,6 +18,18 @@ open DocSearch.xcodeproj   # select your iPhone, Run
 
 (Bundle id `com.coreaikit.docsearch`, team `MFN25KNUGJ` — adjust the team to yours.)
 
+## CLI (macOS, no Xcode)
+
+```bash
+cd Examples/DocSearch
+swift run docsearch-cli --query "monthly revenue trend"          # ranks the bundled sample pages
+swift run docsearch-cli --query "wifi password" --pages ~/Scans  # or your own page images
+```
+
+First use downloads the two encoder bundles from the Hub (cached afterwards). The CLI is an
+argument shell over `Sources/QuickStart.swift` — the same `VisualDocumentRetriever(catalog:)`
+gesture the GUI drives.
+
 ## Models: sideload (skip the download)
 
 The retriever needs two fp16 bundles. Launch the app once (so its data container exists, device

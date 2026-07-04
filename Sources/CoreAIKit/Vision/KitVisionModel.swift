@@ -75,6 +75,19 @@ public struct VLModelID: Sendable, Hashable {
             path: "gpu-pipelined/holo2_4b_vision"),
         arch: .qwen3VL4B)
 
+    /// MiniCPM-V 4.6 (OpenBMB). Single-slice 448px VLM: SigLIP tower fed raw pixels →
+    /// `image_features` [64, 1024], one `image_embeds` static input on the qwen3_5-hybrid
+    /// decoder, plain 1D positions. The device-verified ship combo: fp16 vision + int8lin
+    /// decode.
+    public static let miniCPMV46 = VLModelID(
+        decoder: ModelID(
+            "mlboydaisuke/MiniCPM-V-4.6-CoreAI",
+            path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin"),
+        vision: ModelID(
+            "mlboydaisuke/MiniCPM-V-4.6-CoreAI",
+            path: "gpu-pipelined/minicpmv46_vision"),
+        arch: .miniCPMV46)
+
     /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
     /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
     /// a preset here; the id is the one the model's card shows.
@@ -83,6 +96,7 @@ public struct VLModelID: Sendable, Hashable {
         "qwen3-vl-4b": .qwen3VL4B,
         "qwen3-vl-8b": .qwen3VL8B,
         "holo2-4b": .holo2_4B,
+        "minicpm-v-4.6": .miniCPMV46,
     ]
 }
 

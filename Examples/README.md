@@ -28,7 +28,7 @@ Every example app in one place, on two shelves:
 | [DetectCamera](DetectCamera/) | detection | Any `detection` catalog model (RF-DETR / YOLOX) behind one `KitDetector`. GUI + `swift run detect-cli`. |
 | [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. GUI + `swift run upscale-cli`. |
 | [PhotoSearch](PhotoSearch/) | image-text embeddings | Semantic photo search — the photo library indexed with CLIP. |
-| [DocSearch](DocSearch/) | visual doc retrieval | On-device visual document retrieval (ColModernVBERT). |
+| [DocSearch](DocSearch/) | visual doc retrieval | Any `retrieval` catalog model (ColModernVBERT): query + page images → MaxSim ranking, no OCR. GUI (iPhone) + `swift run docsearch-cli`. |
 
 ## SDK-feature demos
 

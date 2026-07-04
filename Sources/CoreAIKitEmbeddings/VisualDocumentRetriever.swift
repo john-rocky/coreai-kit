@@ -136,9 +136,34 @@ public final class VisualDocumentRetriever: @unchecked Sendable {
             mean: SIMD3(0.5, 0.5, 0.5), std: SIMD3(0.5, 0.5, 0.5))
     }
 
-    /// Resolves both bundles via the `ModelStore` (downloading from the Hub if absent, or using a
-    /// sideloaded copy already present at the store path), then loads them. Defaults to the fp16
-    /// ColModernVBERT query/doc encoders.
+    /// Loads the visual document retriever by its catalog id — the id shown on the card:
+    ///
+    /// ```swift
+    /// let retriever = try await VisualDocumentRetriever(catalog: "colmodernvbert")
+    /// ```
+    ///
+    /// Resolves the query + doc encoder pair internally (the catalog entry gates platform
+    /// availability and carries the download size shown in UI) — consumers never touch
+    /// bundle paths.
+    public convenience init(
+        catalog id: String,
+        store: ModelStore = .default,
+        computeUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .retrieval)
+        // One retrieval model so far; its two-bundle pair rides the ModelID presets (the
+        // same id→driving-class dispatch as KitSpeaker).
+        guard entry.id == "colmodernvbert" else {
+            throw CoreAIKitError.modelNotInCatalog(id: id)
+        }
+        try await self.init(
+            store: store, computeUnits: computeUnits, downloadProgress: downloadProgress)
+    }
+
+    /// Resolves both bundles via the `ModelStore` (downloading from the Hub if absent, or using
+    /// a sideloaded copy already present at the store path), then loads them. Defaults to the
+    /// fp16 ColModernVBERT query/doc encoders.
     public convenience init(
         queryModel: ModelID = .colModernVBERTQuery,
         docModel: ModelID = .colModernVBERTDoc,

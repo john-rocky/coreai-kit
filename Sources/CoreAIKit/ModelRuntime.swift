@@ -35,6 +35,15 @@ public enum EngineVariant: String, Sendable {
     }
 }
 
+/// How `ChatSession` turns conversation history into prompt tokens.
+enum PromptRenderer: Sendable {
+    /// The bundle tokenizer's embedded chat template (the standard path).
+    case chatTemplate
+    /// Gemma 4's turn/channel format, emitted explicitly — the published Gemma 4 E2B/E4B
+    /// bundles ship the stock tokenizer with no embedded chat template.
+    case gemma(GemmaArchitecture)
+}
+
 struct ModelRuntime: Sendable {
     let engine: any InferenceEngine
     let tokenizer: any Tokenizer
@@ -42,6 +51,25 @@ struct ModelRuntime: Sendable {
     let vocabSize: Int
     let loadSeconds: Double
     let outputProfile: OutputProfile
+    let promptRenderer: PromptRenderer
+    /// Retains the Gemma runtime — and with it the static PLE table buffers the engine's
+    /// graph reads — for this runtime's lifetime.
+    private let gemma: GemmaRuntime?
+
+    /// Wraps a loaded Gemma 4 runtime (decode bundle + bound PLE tables) in the same
+    /// ready-to-generate shape as a plain bundle. The `…_tbl` graph fuses the PLE gather,
+    /// head, and softcap, so the engine returns sampled tokens exactly like a text bundle
+    /// and ChatSession's decode loop drives it unchanged.
+    init(gemma runtime: GemmaRuntime, loadSeconds: Double) {
+        self.engine = runtime.engine
+        self.tokenizer = runtime.tokenizer
+        self.modelName = runtime.modelName
+        self.vocabSize = runtime.vocabSize
+        self.loadSeconds = loadSeconds
+        self.outputProfile = runtime.arch.outputProfile
+        self.promptRenderer = .gemma(runtime.arch)
+        self.gemma = runtime
+    }
 
     /// Loads a bundle directory (metadata.json + *.aimodel/ + tokenizer/), creating the
     /// engine and tokenizer concurrently — the same path as Apple's CoreAIRunner.
@@ -67,5 +95,7 @@ struct ModelRuntime: Sendable {
         self.vocabSize = bundle.vocabSize
         self.outputProfile = OutputProfile.detect(probing: tokenizer)
         self.loadSeconds = ProcessStats.seconds(from: start, to: .now)
+        self.promptRenderer = .chatTemplate
+        self.gemma = nil
     }
 }

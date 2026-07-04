@@ -51,10 +51,11 @@ public final class VLRuntime: @unchecked Sendable {
 
     private let vision: GraphModel
     // Owned static-input buffers, alive for the engine's lifetime; rewritten per attach.
+    // Only the inputs the arch's decoder graph declares exist (MiniCPM-V: image embeds only).
     private let imageBuffer: any MTLBuffer
-    private let deepstackBuffer: any MTLBuffer
-    private let shiftStartBuffer: any MTLBuffer
-    private let shiftAmountBuffer: any MTLBuffer
+    private let deepstackBuffer: (any MTLBuffer)?
+    private let shiftStartBuffer: (any MTLBuffer)?
+    private let shiftAmountBuffer: (any MTLBuffer)?
 
     /// The FM segment id of the image currently in the buffers (nil = text-only). Guards the
     /// expensive vision encode: re-run only when the attached image changes.
@@ -84,13 +85,27 @@ public final class VLRuntime: @unchecked Sendable {
             return buffer
         }
         let imageBuffer = try owned(arch.imageEmbedCount * MemoryLayout<Float16>.size)
-        let deepstackBuffer = try owned(arch.deepstackEmbedCount * MemoryLayout<Float16>.size)
-        let shiftStartBuffer = try owned(64)   // engine pads [1] i32 static inputs to 64 bytes
-        let shiftAmountBuffer = try owned(64)
+        var staticInputs = ["image_embeds": StaticInputBuffer(imageBuffer)]
+        if arch.deepstackPerToken > 0 {
+            let deepstackBuffer = try owned(
+                arch.deepstackEmbedCount * MemoryLayout<Float16>.size)
+            staticInputs["deepstack_embeds"] = StaticInputBuffer(deepstackBuffer)
+            self.deepstackBuffer = deepstackBuffer
+        } else {
+            self.deepstackBuffer = nil
+        }
+        if arch.ropeShifted {
+            let shiftStartBuffer = try owned(64)  // engine pads [1] i32 static inputs to 64 B
+            let shiftAmountBuffer = try owned(64)
+            staticInputs["rope_shift_start"] = StaticInputBuffer(shiftStartBuffer)
+            staticInputs["rope_shift_amount"] = StaticInputBuffer(shiftAmountBuffer)
+            self.shiftStartBuffer = shiftStartBuffer
+            self.shiftAmountBuffer = shiftAmountBuffer
+        } else {
+            self.shiftStartBuffer = nil
+            self.shiftAmountBuffer = nil
+        }
         self.imageBuffer = imageBuffer
-        self.deepstackBuffer = deepstackBuffer
-        self.shiftStartBuffer = shiftStartBuffer
-        self.shiftAmountBuffer = shiftAmountBuffer
 
         let bundle = try LanguageBundle(at: decoderURL)
         self.modelName = bundle.name
@@ -112,12 +127,7 @@ public final class VLRuntime: @unchecked Sendable {
             modelURL: modelURL,
             options: EngineOptions(
                 variant: engineVariant.factoryOverride,
-                staticInputBuffers: [
-                    "image_embeds": StaticInputBuffer(imageBuffer),
-                    "deepstack_embeds": StaticInputBuffer(deepstackBuffer),
-                    "rope_shift_start": StaticInputBuffer(shiftStartBuffer),
-                    "rope_shift_amount": StaticInputBuffer(shiftAmountBuffer),
-                ]))
+                staticInputBuffers: staticInputs))
 
         self.tokenizer = try await bundle.loadTokenizer()
         self.vision = try await GraphModel(contentsOf: visionURL, computeUnits: .gpu)
@@ -139,25 +149,39 @@ public final class VLRuntime: @unchecked Sendable {
         if let segmentID, attachedSegmentID.withLock({ $0 == segmentID }) { return }
 
         let upright = cgImage.upright(orientation)
-        let patches = VLImagePreprocessor.patches(from: upright, arch: arch)
-        let outputs = try await vision.run([
-            "patches": .float16(patches, shape: [arch.patches, arch.patchDim])
-        ])
-        guard let embeds = outputs["image_embeds"] else {
-            throw KitVisionError.visionOutputMissing("image_embeds")
+        let outputs: [String: TensorValue]
+        switch arch.visionInput {
+        case .patches:
+            let patches = VLImagePreprocessor.patches(from: upright, arch: arch)
+            outputs = try await vision.run([
+                "patches": .float16(patches, shape: [arch.patches, arch.patchDim])
+            ])
+        case .pixels:
+            let pixels = VLImagePreprocessor.pixelValues(from: upright, arch: arch)
+            outputs = try await vision.run([
+                "pixel_values": .float16(
+                    pixels, shape: [1, 3, arch.imageSide, arch.imageSide])
+            ])
         }
-        guard let deepstack = outputs["deepstack_embeds"] else {
-            throw KitVisionError.visionOutputMissing("deepstack_embeds")
+        guard let embeds = outputs[arch.visionOutput] else {
+            throw KitVisionError.visionOutputMissing(arch.visionOutput)
         }
         write(embeds.floats(), into: imageBuffer, capacity: arch.imageEmbedCount)
-        write(deepstack.floats(), into: deepstackBuffer, capacity: arch.deepstackEmbedCount)
+        if let deepstackBuffer {
+            guard let deepstack = outputs["deepstack_embeds"] else {
+                throw KitVisionError.visionOutputMissing("deepstack_embeds")
+            }
+            write(deepstack.floats(), into: deepstackBuffer, capacity: arch.deepstackEmbedCount)
+        }
         attachedSegmentID.withLock { $0 = segmentID ?? "<anonymous>" }
     }
 
     /// Clears the resident image and reverts to the text-only rope shift.
     func detach() {
         memset(imageBuffer.contents(), 0, imageBuffer.length)
-        memset(deepstackBuffer.contents(), 0, deepstackBuffer.length)
+        if let deepstackBuffer {
+            memset(deepstackBuffer.contents(), 0, deepstackBuffer.length)
+        }
         setTextOnlyShift()
         attachedSegmentID.withLock { $0 = nil }
     }
@@ -171,8 +195,10 @@ public final class VLRuntime: @unchecked Sendable {
     // MARK: - Rope shift
 
     /// Binds the rope shift for an image whose first vision token sits at `imageStart`
-    /// (start = imageStart + mergedTokens; amount = mergedTokens - grid).
+    /// (start = imageStart + mergedTokens; amount = mergedTokens - grid). No-op on
+    /// plain-1D-position archs (no shift inputs on the graph).
     func setImageShift(imageStart: Int) {
+        guard let shiftStartBuffer, let shiftAmountBuffer else { return }
         shiftStartBuffer.contents().assumingMemoryBound(to: Int32.self)[0] =
             Int32(imageStart + arch.mergedTokens)
         shiftAmountBuffer.contents().assumingMemoryBound(to: Int32.self)[0] = arch.ropeShiftAmount
@@ -180,6 +206,7 @@ public final class VLRuntime: @unchecked Sendable {
 
     /// Degenerates the graph to a plain Qwen3 LLM (start = 1<<30 so no position is shifted).
     func setTextOnlyShift() {
+        guard let shiftStartBuffer, let shiftAmountBuffer else { return }
         shiftStartBuffer.contents().assumingMemoryBound(to: Int32.self)[0] = 1 << 30
         shiftAmountBuffer.contents().assumingMemoryBound(to: Int32.self)[0] = 0
     }

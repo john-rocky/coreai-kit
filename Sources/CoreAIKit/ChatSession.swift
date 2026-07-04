@@ -83,6 +83,22 @@ public actor ChatSession {
         guard let model = entry.modelID else {
             throw CoreAIKitError.modelNotAvailableOnPlatform(id: id)
         }
+        // Gemma 4 E2B/E4B are a decode bundle + PLE-tables pair whose graph declares two
+        // static table inputs the stock load path leaves unbound — resolve both subtrees
+        // and load through GemmaRuntime instead (the same id→driving-class dispatch as
+        // KitSpeaker's kokoro). The catalog entry above still gates platform availability.
+        if let gemma = GemmaModelID.byCatalogID[entry.id] {
+            let decoderURL = try await store.download(gemma.decoder, progress: downloadProgress)
+            let tablesURL = try await store.download(gemma.tables, progress: downloadProgress)
+            let start = SuspendingClock.now
+            let runtime = try await GemmaRuntime(
+                decoderBundleAt: decoderURL, tablesAt: tablesURL, arch: gemma.arch)
+            self.init(
+                runtime: ModelRuntime(
+                    gemma: runtime, loadSeconds: ProcessStats.seconds(from: start, to: .now)),
+                configuration: configuration)
+            return
+        }
         var configuration = configuration
         if configuration.engineVariant == .auto {
             configuration.engineVariant = EngineVariant(catalogHint: entry.engine)
@@ -105,8 +121,15 @@ public actor ChatSession {
 
     /// Loads a local bundle directory (metadata.json + *.aimodel/ + tokenizer/).
     public init(bundleAt url: URL, configuration: Configuration = Configuration()) async throws {
-        self.runtime = try await ModelRuntime(
-            bundleAt: url, engineVariant: configuration.engineVariant)
+        self.init(
+            runtime: try await ModelRuntime(
+                bundleAt: url, engineVariant: configuration.engineVariant),
+            configuration: configuration)
+    }
+
+    /// Wraps an already-loaded runtime (the Gemma catalog path lands here too).
+    init(runtime: ModelRuntime, configuration: Configuration = Configuration()) {
+        self.runtime = runtime
         self.configuration = configuration
         var stats = GenerationStats()
         stats.loadSeconds = runtime.loadSeconds
@@ -259,7 +282,17 @@ public actor ChatSession {
         stats.tokensPerSecond = nil
 
         do {
-            let full = try runtime.tokenizer.applyChatTemplate(messages: rendered).map(Int32.init)
+            let full: [Int32]
+            switch runtime.promptRenderer {
+            case .chatTemplate:
+                full = try runtime.tokenizer.applyChatTemplate(messages: rendered).map(Int32.init)
+            case .gemma(let arch):
+                // The Gemma 4 bundles ship the stock tokenizer with no embedded chat
+                // template; the turn format is emitted explicitly instead.
+                full = GemmaPromptRenderer.render(
+                    system: configuration.systemPrompt, history: history,
+                    tokenizer: runtime.tokenizer, arch: arch)
+            }
             stats.promptTokens = full.count
 
             // PREFIX REUSE: keep the KV for the longest common prefix with the tokens already

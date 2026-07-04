@@ -72,6 +72,40 @@ enum VLImagePreprocessor {
         }
         return out
     }
+
+    /// `[1 · 3 · imageSide · imageSide]` f16, plain CHW — for towers that patchify in-graph
+    /// (MiniCPM-V's SigLIP). Same resize + x/127.5 − 1 numerics as the patch path above,
+    /// mirroring the gated reference preprocess (mean/std 0.5 overrides ImageNet).
+    static func pixelValues(from cgImage: CGImage, arch: VLArchitecture) -> [Float16] {
+        let side = arch.imageSide
+        var out = [Float16](repeating: 0, count: 3 * side * side)
+
+        let byteCount = side * side * 4
+        let rgba = UnsafeMutableRawPointer.allocate(byteCount: byteCount, alignment: 16)
+        defer { rgba.deallocate() }
+        rgba.initializeMemory(as: UInt8.self, repeating: 0, count: byteCount)
+
+        guard
+            let context = CGContext(
+                data: rgba, width: side, height: side, bitsPerComponent: 8,
+                bytesPerRow: side * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return out }
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: side, height: side))
+
+        let pixels = rgba.assumingMemoryBound(to: UInt8.self)
+        for channel in 0..<3 {
+            let channelBase = channel * side * side
+            for y in 0..<side {
+                for x in 0..<side {
+                    out[channelBase + y * side + x] =
+                        Float16(Float(pixels[(y * side + x) * 4 + channel]) / 127.5 - 1.0)
+                }
+            }
+        }
+        return out
+    }
 }
 
 extension CGImage {

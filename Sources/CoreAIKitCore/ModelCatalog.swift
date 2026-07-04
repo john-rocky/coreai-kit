@@ -29,6 +29,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case ocr
         /// Masked-diffusion language model (LLaDA): parallel canvas denoising, not AR chat.
         case dllm
+        /// Visual document retrieval (ColModernVBERT): text query + page images → MaxSim
+        /// ranking, no OCR.
+        case retrieval
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -296,6 +299,25 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: ["macos": .init(
                     path: "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8", sizeMB: 18000)],
                 engine: "pipelined"),
+            // ── Gemma 4 E2B/E4B (per-layer embeddings, official-QAT int4): a `…_tbl`
+            //    decode bundle + paired PLE tables bound as static graph inputs. The
+            //    variant path names the decoder; ChatSession(catalog:) resolves both
+            //    subtrees via GemmaModelID.byCatalogID and loads through GemmaRuntime.
+            //    sizeMB is the decoder + tables total the first run downloads. macOS-only
+            //    for now: the iPhone path (AOT decoder + memory entitlement) is app-proven
+            //    but not kit-wired yet. ──
+            CatalogEntry(
+                id: "gemma-4-e2b", name: "Gemma 4 E2B",
+                repo: "mlboydaisuke/gemma-4-E2B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl", sizeMB: 4929)],
+                engine: "pipelined"),
+            CatalogEntry(
+                id: "gemma-4-e4b", name: "Gemma 4 E4B",
+                repo: "mlboydaisuke/gemma-4-E4B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/gemma4_e4b_qat_decode_int4lin_tbl", sizeMB: 7589)],
+                engine: "pipelined"),
             // ── Vision-language (image + prompt → answer). A VL model is TWO bundles
             //    (decoder + vision tower); `path` names the decoder (the primary artifact,
             //    used for platform gating), sizeMB is the decoder + vision total the first
@@ -335,6 +357,18 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-pipelined/holo2_4b_decode_int8lin_s1", sizeMB: 5484),
                     "ios": .init(
                         path: "gpu-pipelined/holo2_4b_decode_int8lin_s1", sizeMB: 5484),
+                ]),
+            // MiniCPM-V 4.6 rides its own VLArchitecture shape (raw-pixel SigLIP tower,
+            // single image_embeds static input, no deepstack/rope shift); the iPhone path
+            // is the same JIT bundle the device-verified zoo apps run.
+            CatalogEntry(
+                id: "minicpm-v-4.6", name: "MiniCPM-V 4.6",
+                repo: "mlboydaisuke/MiniCPM-V-4.6-CoreAI", kind: .vlm,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2145),
+                    "ios": .init(
+                        path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2145),
                 ]),
             // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
             //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant
@@ -444,6 +478,17 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "model", sizeMB: 1230),
                     "ios": .init(path: "model", sizeMB: 1230),
+                ]),
+            // ── Visual document retrieval: two fp16 graph bundles (query encoder +
+            //    tokenizer, doc encoder). The variant path names the doc encoder;
+            //    VisualDocumentRetriever(catalog:) resolves the pair, and sizeMB covers
+            //    both downloads. Same bundles on both platforms. ──
+            CatalogEntry(
+                id: "colmodernvbert", name: "ColModernVBERT",
+                repo: "mlboydaisuke/ColModernVBERT-CoreAI", kind: .retrieval,
+                variants: [
+                    "macos": .init(path: "doc", sizeMB: 741),
+                    "ios": .init(path: "doc", sizeMB: 741),
                 ]),
             CatalogEntry(
                 id: "yolox-s", name: "YOLOX-S",

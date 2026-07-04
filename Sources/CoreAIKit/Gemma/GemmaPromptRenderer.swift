@@ -60,6 +60,33 @@ enum GemmaPromptRenderer {
         return Rendered(tokens: tokens)
     }
 
+    /// Renders a `ChatSession` history in the same turn format (the ChatSession face of the
+    /// Transcript renderer above). Assistant turns replay only the final answer — thinking is
+    /// surfaced live but never re-prompted — and the generation prompt opens a model turn.
+    static func render(
+        system: String?,
+        history: [Message],
+        tokenizer: any Tokenizer,
+        arch: GemmaArchitecture
+    ) -> [Int32] {
+        var text = arch.bos
+        if let system, !system.isEmpty {
+            text += turn(role: "system", system, arch: arch)
+        }
+        for message in history {
+            switch message.role {
+            case .system:
+                text += turn(role: "system", message.content, arch: arch)
+            case .user:
+                text += turn(role: "user", message.content, arch: arch)
+            case .assistant:
+                text += turn(role: "model", message.content, arch: arch)
+            }
+        }
+        text += "\(arch.startOfTurn)model\n"
+        return tokenizer.encode(text: text).map(Int32.init)
+    }
+
     // MARK: - Helpers
 
     private static func turn(role: String, _ content: String, arch: GemmaArchitecture) -> String {

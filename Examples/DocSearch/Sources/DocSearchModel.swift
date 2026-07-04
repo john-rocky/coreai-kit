@@ -77,7 +77,8 @@ final class DocSearchModel {
         guard retriever == nil else { return }
         pages = Self.loadBundledPages()
         do {
-            let retriever = try await VisualDocumentRetriever { progress in
+            let retriever = try await VisualDocumentRetriever(catalog: "colmodernvbert") {
+                progress in
                 Task { @MainActor in self.phase = .downloading(progress.fraction) }
             }
             self.retriever = retriever

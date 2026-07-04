@@ -62,3 +62,20 @@ public struct GemmaArchitecture: Sendable, Hashable {
     /// The Gemma 4 family format, shared by every published size (E2B / E4B).
     public static let gemma4 = GemmaArchitecture()
 }
+
+extension GemmaArchitecture {
+    /// Streaming profile for the family's optional reasoning span. With `.stream` default,
+    /// a direct answer flows straight out as response; when the model opens its
+    /// `<|channel>thought … <channel|>` channel, the span streams as thinking and the
+    /// answer after `<channel|>` follows as response. Shared by the FoundationModels face
+    /// (`KitGemmaModel`) and the `ChatSession(catalog:)` path.
+    public var outputProfile: OutputProfile {
+        OutputProfile(
+            rules: [
+                OutputRule(
+                    open: thoughtOpen, close: [thoughtClose],
+                    kind: .thinking, streamsBody: true)
+            ],
+            defaultText: .stream)
+    }
+}
