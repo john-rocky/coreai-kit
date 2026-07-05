@@ -526,6 +526,22 @@
       }
     },
     {
+      "id": "nemotron-3.5-asr-streaming-0.6b",
+      "name": "Nemotron 3.5 ASR Streaming 0.6B",
+      "repo": "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI",
+      "kind": "asr",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 1340
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 2460
+        }
+      }
+    },
+    {
       "id": "clip-vit-b32",
       "name": "CLIP ViT-B/32",
       "repo": "mlboydaisuke/clip-vit-base-patch32-CoreAI-official",

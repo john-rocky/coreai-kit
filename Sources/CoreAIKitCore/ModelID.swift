@@ -134,4 +134,13 @@ extension ModelID {
     /// `KitParakeetModel`. (Upload pending — until live, sideload the bundle into Documents/Models/.)
     public static let parakeetTDT = ModelID(
         "mlboydaisuke/Parakeet-TDT-0.6B-CoreAI", path: "")
+    /// NVIDIA Nemotron 3.5 ASR Streaming 0.6B (OpenMDW-1.1) — the zoo's first STREAMING ASR.
+    /// Cache-aware FastConformer (fp16, explicit KV/conv caches, 320 ms chunks) + pure-RNNT
+    /// LSTM predictor + joint (fp32). 40 locales in one checkpoint (language one-hot input),
+    /// punctuation + capitalization built in, any-length audio. Platform subtrees like Whisper:
+    /// `macos/` = six JIT `.aimodel` graphs; `ios/` = the two conformer halves AOT-compiled to
+    /// h18p `.aimodelc` (a single >2 GB AOT bundle fails to load on-device) + the four small JIT
+    /// graphs. `path` is nil so `resolvedPath` picks the right one. Driven by `KitNemotronModel`.
+    public static let nemotronASRStreaming = ModelID(
+        "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI")
 }
