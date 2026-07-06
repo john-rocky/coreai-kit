@@ -96,6 +96,24 @@
       "engine": "pipelined"
     },
     {
+      "id": "youtu-llm-2b",
+      "name": "Youtu-LLM 2B",
+      "repo": "mlboydaisuke/Youtu-LLM-2B-CoreAI",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa",
+          "sizeMB": 2200
+        },
+        "ios": {
+          "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa",
+          "sizeMB": 2200
+        }
+      },
+      "thinking": true,
+      "engine": "pipelined"
+    },
+    {
       "id": "lfm2.5-1.2b",
       "name": "LFM2.5 1.2B",
       "repo": "mlboydaisuke/LFM2.5-1.2B-CoreAI",

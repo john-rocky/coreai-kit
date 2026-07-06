@@ -206,6 +206,16 @@ public struct ModelCatalog: Sendable, Codable {
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
+                id: "youtu-llm-2b", name: "Youtu-LLM 2B",
+                repo: "mlboydaisuke/Youtu-LLM-2B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa", sizeMB: 2200),
+                    "ios": .init(
+                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa", sizeMB: 2200),
+                ],
+                thinking: true, engine: "pipelined"),
+            CatalogEntry(
                 id: "lfm2.5-1.2b", name: "LFM2.5 1.2B",
                 repo: "mlboydaisuke/LFM2.5-1.2B-CoreAI", kind: .chat,
                 variants: [
@@ -431,6 +441,28 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/Unlimited-OCR-CoreAI", kind: .ocr,
                 variants: [
                     "macos": .init(path: "", sizeMB: 4532)
+                ]),
+            // Whole-page document parsing (stock Qwen2-VL) behind KitMineruReader — the VL
+            // rope-shift rider, fixed portrait 32×24 grid, letterbox + CLIP norm.
+            CatalogEntry(
+                id: "mineru2.5-pro", name: "MinerU2.5-Pro",
+                repo: "mlboydaisuke/MinerU2.5-Pro-CoreAI", kind: .ocr,
+                // iOS loads the h18p bundles sideloaded into Documents/mineru_pf/ (KitMineruReader
+                // is pointed there, not the catalog download), so the ios variant just makes the
+                // entry selectable in the picker.
+                variants: [
+                    "macos": .init(path: "", sizeMB: 1980),
+                    "ios": .init(path: "", sizeMB: 1980)
+                ]),
+            // GLM-OCR (GLM-4.V small, MIT) document OCR behind KitGlmOcrReader — the VL rope-shift
+            // rider, fixed portrait 32×24 grid, letterbox + CLIP norm. Bundles sideloaded into
+            // Documents/glm_ocr_pf/ (the reader is pointed there, not the catalog download).
+            CatalogEntry(
+                id: "glm-ocr", name: "GLM-OCR",
+                repo: "mlboydaisuke/GLM-OCR-CoreAI", kind: .ocr,
+                variants: [
+                    "macos": .init(path: "", sizeMB: 1600),
+                    "ios": .init(path: "", sizeMB: 1600)
                 ]),
             // ── Diffusion LM: parallel canvas denoising behind KitDiffusionLM (its own
             //    surface — snapshots, not append-only streams — so not a ChatSession). ──
