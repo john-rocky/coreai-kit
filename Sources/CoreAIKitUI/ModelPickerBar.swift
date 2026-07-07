@@ -31,24 +31,47 @@ public struct ModelPickerBar: View {
     }
 
     public var body: some View {
-        HStack {
-            Picker("Model", selection: $selection) {
+        HStack(spacing: 10) {
+            // A Menu (not a Picker) so the trigger can stay compact — just the model name,
+            // truncating when narrow — while the dropdown still lists the full "name (size)".
+            // A `.fixedSize()` Picker showing "Gemma 4 E2B (4931 MB)" overflows iPhone width
+            // and shoves the load button and status off-screen.
+            Menu {
                 ForEach(entries) { entry in
-                    Text(label(for: entry)).tag(Optional(entry))
+                    Button {
+                        selection = entry
+                    } label: {
+                        if entry == selection {
+                            Label(label(for: entry), systemImage: "checkmark")
+                        } else {
+                            Text(label(for: entry))
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(selection?.name ?? "Model").lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .fixedSize()
             .disabled(isBusy)
+
             Button(loadTitle, action: onLoad)
+                .fixedSize()
                 .disabled(isBusy || selection == nil)
-            Spacer()
+
+            Spacer(minLength: 8)
+
             if let downloadFraction {
-                ProgressView(value: downloadFraction).frame(width: 80)
+                ProgressView(value: downloadFraction).frame(width: 60)
             }
             Text(statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .fixedSize()
         }
         .padding(10)
     }
