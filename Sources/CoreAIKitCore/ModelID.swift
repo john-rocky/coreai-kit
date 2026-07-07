@@ -143,4 +143,13 @@ extension ModelID {
     /// graphs. `path` is nil so `resolvedPath` picks the right one. Driven by `KitNemotronModel`.
     public static let nemotronASRStreaming = ModelID(
         "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI")
+    /// GLiNER2-PII (fastino, Apache-2.0) — the zoo's first NER / schema-driven information-extraction
+    /// model and its first DeBERTa-v3 (disentangled-attention) port. mDeBERTa-v3 + SpanMarker +
+    /// CountLSTM fused into one static graph (fp16); pass any label set at call time (zero-shot,
+    /// ≤MMAX). Flagship use is on-device PII redaction. Platform subtrees like Whisper: `macos/` is
+    /// the JIT `.aimodel` (~582 MB), `ios/` is the AOT-compiled h18p bundle (~823 MB — the device JIT
+    /// is avoided). `path` is nil so `resolvedPath` picks the right one. Each subtree holds the
+    /// `.aimodel` + `tokenizer/` + `extractor.json`. Driven by `InformationExtractor`.
+    public static let gliner2PII = ModelID(
+        "mlboydaisuke/GLiNER2-PII-CoreAI")
 }
