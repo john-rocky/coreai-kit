@@ -143,6 +143,21 @@ extension ModelID {
     /// graphs. `path` is nil so `resolvedPath` picks the right one. Driven by `KitNemotronModel`.
     public static let nemotronASRStreaming = ModelID(
         "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI")
+    /// NVIDIA Streaming Sortformer 4-spk v2 (cc-by-4.0, 117M) — the zoo's first speaker
+    /// diarization model: "who spoke when", up to 4 speakers, 80 ms frames. Only the neural core
+    /// is a Core AI graph (fixed-buffer forward, fp16); the NeMo 128-mel frontend, streaming
+    /// chunk loop, and AOSC speaker-cache compression run in the Swift host. Flat repo, one graph
+    /// per platform — the path picks the JIT `.aimodel` on macOS / the AOT h18p `.aimodelc` on
+    /// iOS (the device JIT is avoided) so each platform downloads only its own form. The mel
+    /// filterbank ships inside CoreAIKit (the Parakeet resource — same NeMo family). Driven by
+    /// `KitDiarizer`.
+    #if os(iOS)
+    public static let sortformerDiarV2 = ModelID(
+        "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", path: "sortformer_float16.h18p.aimodelc")
+    #else
+    public static let sortformerDiarV2 = ModelID(
+        "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", path: "sortformer_float16.aimodel")
+    #endif
     /// GLiNER2-PII (fastino, Apache-2.0) — the zoo's first NER / schema-driven information-extraction
     /// model and its first DeBERTa-v3 (disentangled-attention) port. mDeBERTa-v3 + SpanMarker +
     /// CountLSTM fused into one static graph (fp16); pass any label set at call time (zero-shot,

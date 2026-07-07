@@ -13,6 +13,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case superResolution
         /// Speech-to-text (Whisper / Qwen3-ASR / Parakeet).
         case asr
+        /// Speaker diarization (Streaming Sortformer): clip → who spoke when.
+        case diarization
         /// Object detection (RF-DETR / YOLOX).
         case detection
         /// Vision-language chat (Qwen3-VL): image + prompt → answer.
@@ -497,6 +499,18 @@ public struct ModelCatalog: Sendable, Codable {
                 // `KitParakeetModel`. macOS-only: the published iPhone numbers rode an AOT
                 // encoder this repo doesn't carry yet.
                 variants: ["macos": .init(path: "", sizeMB: 1290)]),
+            // ── Speaker diarization: clip → who spoke when (up to 4 speakers, 80 ms frames).
+            //    Flat repo, one graph per platform: the variant path names the JIT .aimodel
+            //    (macOS) / AOT h18p .aimodelc (iOS) directly, so each platform downloads only
+            //    its own form. The 128-mel frontend filterbank ships inside CoreAIKit (the
+            //    Parakeet resource — same NeMo family). Driven by `KitDiarizer`. ──
+            CatalogEntry(
+                id: "sortformer-diar-v2", name: "Streaming Sortformer v2 (4-spk)",
+                repo: "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", kind: .diarization,
+                variants: [
+                    "macos": .init(path: "sortformer_float16.aimodel", sizeMB: 226),
+                    "ios": .init(path: "sortformer_float16.h18p.aimodelc", sizeMB: 451),
+                ]),
             CatalogEntry(
                 id: "clip-vit-b32", name: "CLIP ViT-B/32",
                 repo: "mlboydaisuke/clip-vit-base-patch32-CoreAI-official", kind: .imageText,

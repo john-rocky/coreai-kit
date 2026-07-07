@@ -560,6 +560,22 @@
       }
     },
     {
+      "id": "sortformer-diar-v2",
+      "name": "Streaming Sortformer v2 (4-spk)",
+      "repo": "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI",
+      "kind": "diarization",
+      "variants": {
+        "macos": {
+          "path": "sortformer_float16.aimodel",
+          "sizeMB": 226
+        },
+        "ios": {
+          "path": "sortformer_float16.h18p.aimodelc",
+          "sizeMB": 451
+        }
+      }
+    },
+    {
       "id": "clip-vit-b32",
       "name": "CLIP ViT-B/32",
       "repo": "mlboydaisuke/clip-vit-base-patch32-CoreAI-official",
