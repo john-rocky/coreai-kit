@@ -60,13 +60,15 @@ final class Model: ObservableObject {
         busy = true; defer { busy = false }
         do {
             let t0 = Date()
-            async let r = extractor.redact(input, entities: PII_LABELS,
-                                           replacement: { [style] in style.replace($0) })
-            async let s = extractor.extractSpans(from: input, entities: PII_LABELS)
-            redacted = try await r
-            spans = try await s.sorted { $0.confidence > $1.confidence }
+            // ONE model run — extract spans, then redact from those spans locally. Running two
+            // extractions concurrently on the shared graph corrupts it (every token → 0.50).
+            let found = try await extractor.extractSpans(from: input, entities: PII_LABELS)
+            redacted = InformationExtractor.redact(input, using: found,
+                                                   replacement: { [style] in style.replace($0) })
+            spans = found.sorted { $0.confidence > $1.confidence }
             status = String(format: "%d entities in %d ms", spans.count,
                             Int(Date().timeIntervalSince(t0) * 1000))
+            print("[infoextract] run: \(spans.count) spans -> \(redacted)")
         } catch { status = "error: \(error)" }
     }
 

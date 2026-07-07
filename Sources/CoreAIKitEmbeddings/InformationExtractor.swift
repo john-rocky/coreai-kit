@@ -142,6 +142,17 @@ public final class InformationExtractor: @unchecked Sendable {
         replacement: (EntitySpan) -> String = { "[\($0.label.uppercased())]" }
     ) async throws -> String {
         let spans = try await extractSpans(from: text, entities: labels, threshold: threshold)
+        return Self.redact(text, using: spans, replacement: replacement)
+    }
+
+    /// Pure rewrite from already-extracted spans — no model run. Use this when you already called
+    /// `extractSpans` (e.g. to also display the detections) so the graph runs only once: running two
+    /// extractions concurrently on one instance corrupts the shared graph. Cross-label overlaps are
+    /// resolved by confidence (highest wins).
+    public static func redact(
+        _ text: String, using spans: [EntitySpan],
+        replacement: (EntitySpan) -> String = { "[\($0.label.uppercased())]" }
+    ) -> String {
         var kept: [EntitySpan] = []
         for s in spans.sorted(by: { $0.confidence > $1.confidence })
         where !kept.contains(where: { $0.range.overlaps(s.range) }) {
