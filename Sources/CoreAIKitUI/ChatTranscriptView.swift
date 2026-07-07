@@ -45,6 +45,10 @@ public struct ChatTranscriptView: View {
                     }
                 }
                 .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .overlay {
+                if bubbles.isEmpty { emptyState }
             }
             .onChange(of: bubbles.last?.content) {
                 if let id = bubbles.last?.id {
@@ -52,6 +56,19 @@ public struct ChatTranscriptView: View {
                 }
             }
         }
+    }
+
+    // A quiet placeholder so an unstarted chat reads as "ready" rather than a blank void.
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 34))
+                .foregroundStyle(.tertiary)
+            Text("Pick a model, then say hello.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
     }
 }
 

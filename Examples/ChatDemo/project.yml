@@ -41,6 +41,8 @@ targets:
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: "YES"
+        # Without a launch screen iOS runs the app letterboxed (black bars top/bottom).
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
         SWIFT_APPROACHABLE_CONCURRENCY: "YES"
         ENABLE_APP_SANDBOX: "NO"
         ENABLE_HARDENED_RUNTIME: "NO"
