@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		455EB2AEF9E36948667EAC7E /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34742FCC142AAC892699763F /* QuickStart.swift */; };
 		89A87776E79E16813F9674DE /* ForecastApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CEED77474905B3766AA325 /* ForecastApp.swift */; };
+		93DBD52E22D59C3DC1FD22DA /* real_series.json in Resources */ = {isa = PBXBuildFile; fileRef = B5E18765B57C7D83F67A2784 /* real_series.json */; };
 		E49C4A0DCF3F11E3081903B4 /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = B73D671EE0B7C69BF24114F6 /* CoreAIKit */; };
 /* End PBXBuildFile section */
 
@@ -17,6 +18,7 @@
 		34742FCC142AAC892699763F /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
 		6876250DACCF7F2681CE1EB4 /* Forecast.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Forecast.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A7CEED77474905B3766AA325 /* ForecastApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastApp.swift; sourceTree = "<group>"; };
+		B5E18765B57C7D83F67A2784 /* real_series.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = real_series.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -47,6 +49,14 @@
 			name = Packages;
 			sourceTree = "<group>";
 		};
+		3F1162A94D68E81F3AD31F5A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B5E18765B57C7D83F67A2784 /* real_series.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		6AAB5D2DC03992C9A094C993 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -68,6 +78,7 @@
 			children = (
 				043C9856127FEA6B4FE62F11 /* App */,
 				3E0099B96562A08CE2484076 /* Packages */,
+				3F1162A94D68E81F3AD31F5A /* Resources */,
 				742D38DAD7F9FA70C66E7CB0 /* Sources */,
 				6AAB5D2DC03992C9A094C993 /* Products */,
 			);
@@ -81,6 +92,7 @@
 			buildConfigurationList = 00D986C9B7EB042B05DEF2FC /* Build configuration list for PBXNativeTarget "Forecast" */;
 			buildPhases = (
 				3D7EED4A185B1876C519F3F4 /* Sources */,
+				CEC9BC82B3AB4E0B6508D3C2 /* Resources */,
 				1DACFD23A4AD2E8FDB6CD21C /* Frameworks */,
 			);
 			buildRules = (
@@ -131,6 +143,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CEC9BC82B3AB4E0B6508D3C2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				93DBD52E22D59C3DC1FD22DA /* real_series.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		3D7EED4A185B1876C519F3F4 /* Sources */ = {

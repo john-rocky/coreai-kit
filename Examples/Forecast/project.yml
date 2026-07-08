@@ -23,6 +23,8 @@ targets:
     sources:
       - path: App
       - path: Sources/QuickStart.swift
+      - path: Resources
+        buildPhase: resources
     dependencies:
       - package: coreai-kit
         product: CoreAIKit
