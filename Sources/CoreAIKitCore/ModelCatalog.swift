@@ -34,6 +34,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// Visual document retrieval (ColModernVBERT): text query + page images → MaxSim
         /// ranking, no OCR.
         case retrieval
+        /// Time-series forecasting (TimesFM 2.5): univariate series → point + quantile forecast.
+        case forecasting
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -567,5 +569,14 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1740),
                     "ios": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1740),
                 ]),
+            // ── Time-series forecasting: one stateless transformer graph (fixed context 2048;
+            //    KitForecaster front-pads + masks shorter series host-side) + host RevIN/flip DSP. ──
+            CatalogEntry(
+                id: "timesfm-2.5-200m", name: "TimesFM 2.5 200M",
+                repo: "mlboydaisuke/TimesFM-2.5-200M-CoreAI", kind: .forecasting,
+                variants: [
+                    "macos": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
+                    "ios": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
+                ], engine: "static-shape"),
         ])
 }
