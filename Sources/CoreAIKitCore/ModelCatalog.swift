@@ -576,7 +576,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/TimesFM-2.5-200M-CoreAI", kind: .forecasting,
                 variants: [
                     "macos": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
-                    "ios": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
+                    "ios": .init(path: "ios", sizeMB: 883),   // AOT .aimodelc (h18p; weights + MPSGraph)
                 ], engine: "static-shape"),
         ])
 }

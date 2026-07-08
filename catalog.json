@@ -698,8 +698,8 @@
           "sizeMB": 463
         },
         "ios": {
-          "path": "timesfm_2p5_200m_ctx2048_fp16.aimodel",
-          "sizeMB": 463
+          "path": "ios",
+          "sizeMB": 883
         }
       }
     }
