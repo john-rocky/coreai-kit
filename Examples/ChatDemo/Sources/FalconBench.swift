@@ -50,6 +50,11 @@ enum FalconBench {
     }
 
     static func run() async {
+        // Catalog mode never sideloads into falcon-bench/, so the directory may not
+        // exist yet — create it or every writeResult silently fails and the results
+        // are lost when the devicectl console connection drops.
+        try? FileManager.default.createDirectory(
+            at: benchDir(), withIntermediateDirectories: true)
         var lines: [String] = []
         func emit(_ s: String) {
             print("FALCONBENCH \(s)")
@@ -62,22 +67,42 @@ enum FalconBench {
         emit("device=\(deviceModel()) ios=\(ProcessInfo.processInfo.operatingSystemVersionString)")
         emit("engine_variant=\(engineVariant.rawValue)")
 
-        guard let url = bundleURL() else {
-            emit("ERROR: no bundle (metadata.json) found under \(benchDir().path)")
-            await Task.yield()
-            exit(2)
+        let env = ProcessInfo.processInfo.environment
+        // FALCON_CATALOG=<id>: bench a catalog model already in the app's store — the
+        // exact load path and artifacts the interactive chat uses — instead of a
+        // sideloaded falcon-bench bundle.
+        let catalogID = env["FALCON_CATALOG"]
+        var url: URL?
+        if let catalogID {
+            emit("catalog=\(catalogID)")
+        } else {
+            guard let bundle = bundleURL() else {
+                emit("ERROR: no bundle (metadata.json) found under \(benchDir().path)")
+                await Task.yield()
+                exit(2)
+            }
+            emit("bundle=\(bundle.lastPathComponent)")
+            emit("bundle_bytes=\(directorySize(bundle))")
+            url = bundle
         }
-        emit("bundle=\(url.lastPathComponent)")
-        emit("bundle_bytes=\(directorySize(url))")
 
         do {
             var config = ChatSession.Configuration()
-            config.temperature = nil  // greedy → reproducible coherence sample
-            config.maxResponseTokens = 200
+            // Greedy by default (reproducible coherence sample); FALCON_TEMP=0.7
+            // measures the sampling configuration the interactive app runs with.
+            config.temperature = env["FALCON_TEMP"].flatMap(Double.init)
+            config.maxResponseTokens = Int(env["FALCON_MAX"] ?? "") ?? 200
             config.engineVariant = engineVariant
+            emit("temperature=\(config.temperature.map { "\($0)" } ?? "greedy")")
+            emit("max_tokens=\(config.maxResponseTokens)")
 
             let loadStart = Date()
-            let session = try await ChatSession(bundleAt: url, configuration: config)
+            let session: ChatSession
+            if let catalogID {
+                session = try await ChatSession(catalog: catalogID, configuration: config)
+            } else {
+                session = try await ChatSession(bundleAt: url!, configuration: config)
+            }
             emit(String(format: "engine_created_and_loaded_in=%.2fs", Date().timeIntervalSince(loadStart)))
             emit("model_name=\(await session.modelName)")
 
@@ -89,15 +114,12 @@ enum FalconBench {
             let reqStart = Date()
             var firstTokenAt: Date?
             var answer = ""
-            var tokenCount = 0
             for try await event in await session.streamResponse(to: prompt) {
                 switch event {
                 case .response(let delta):
                     if firstTokenAt == nil { firstTokenAt = Date() }
                     answer += delta
-                case .stats:
-                    tokenCount += 1
-                case .complete, .thinking:
+                case .stats, .complete, .thinking:
                     break
                 }
             }

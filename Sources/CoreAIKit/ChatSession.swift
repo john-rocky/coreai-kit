@@ -32,7 +32,7 @@ public actor ChatSession {
     }
 
     public enum Event: Sendable, Equatable {
-        /// Answer text delta.
+        /// Answer text delta (coalesced to ~25 fps — append in order).
         case response(String)
         /// Chain-of-thought delta (only on models that emit reasoning markup).
         case thinking(String)
@@ -361,21 +361,50 @@ public actor ChatSession {
             var window: [SuspendingClock.Instant] = []
             let windowSize = 32
 
+            // Events are coalesced to ~25 fps (the first flush goes out immediately, so
+            // TTFT stays honest). Per-token yields make a @MainActor consumer re-layout
+            // its growing transcript at token rate — main-thread + render work that
+            // competes with the engine for CPU/GPU on device. Decode itself is never
+            // blocked either way (the stream is unbounded); this keeps the app quiet
+            // while it runs. Same cadence the CoreAIChat sample settled on after
+            // measuring that drag.
+            let emitInterval: Duration = .milliseconds(40)
+            var pendingResponse = ""
+            var pendingThinking = ""
+            var lastEmit: SuspendingClock.Instant?
+
             func handle(_ events: [StreamingTagParser.Event]) {
                 for event in events {
                     switch event {
                     case .response(let delta):
                         content += delta
-                        continuation.yield(.response(delta))
+                        pendingResponse += delta
                     case .thinking(let delta):
                         thinking += delta
-                        continuation.yield(.thinking(delta))
+                        pendingThinking += delta
                     case .toolCallPayload:
                         // ChatSession does not execute tools; use KitLanguageModel with a
                         // LanguageModelSession for tool calling.
                         break
                     }
                 }
+            }
+
+            // Flush buffered deltas plus a stats snapshot. Thinking first: the reasoning
+            // block precedes the answer in the stream, so batch order matches stream order.
+            func emit(force: Bool = false) {
+                let now = SuspendingClock.now
+                if !force, let last = lastEmit, now - last < emitInterval { return }
+                lastEmit = now
+                if !pendingThinking.isEmpty {
+                    continuation.yield(.thinking(pendingThinking))
+                    pendingThinking = ""
+                }
+                if !pendingResponse.isEmpty {
+                    continuation.yield(.response(pendingResponse))
+                    pendingResponse = ""
+                }
+                continuation.yield(.stats(stats))
             }
 
             do {
@@ -396,7 +425,7 @@ public actor ChatSession {
                         }
                     }
                     handle(parser.consume(chunk.text))
-                    continuation.yield(.stats(stats))
+                    emit()
                 }
             } catch is CancellationError {
                 // Treated like a stop button: keep the partial reply.
@@ -406,7 +435,7 @@ public actor ChatSession {
             stats.footprintBytes = ProcessStats.physFootprint()
             let reply = Message(role: .assistant, content: content, thinking: thinking)
             history.append(reply)
-            continuation.yield(.stats(stats))
+            emit(force: true)   // tail under the 40 ms cadence + final stats
             continuation.yield(.complete(reply))
             continuation.finish()
         } catch {
