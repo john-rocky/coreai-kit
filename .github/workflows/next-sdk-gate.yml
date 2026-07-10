@@ -16,7 +16,7 @@ jobs:
     # CoreAI loader's strict versioned-IR path, which rejects every bundle
     # exported with coreai-core <1.0.0b2:
     #   "expected AICode versioned location" -> "Failed to convert to
-    #   versioned IR" -> LLVM ERROR (process crash). (FB filed 2026-07-10.)
+    #   versioned IR" -> LLVM ERROR (process crash). (FB23666783, 2026-07-10.)
     #
     # RED here means "published bundles are not next-SDK-ready yet" — apps
     # built with earlier SDKs load them fine, so this is a migration tracker,
