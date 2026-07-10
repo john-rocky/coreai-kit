@@ -21,6 +21,25 @@ for try await event in chat.streamResponse(to: "Hello!") {
 
 Models download automatically from the Hugging Face Hub on first use — no Python required.
 
+## Works with Apple's FoundationModels API
+
+`KitLanguageModel` plugs any catalog chat model into the system `LanguageModelSession` —
+the same FoundationModels API you use for Apple's built-in model — and adds what the stock
+`CoreAILanguageModel` adapter lacks: **tool calling** (ChatML/Hermes models) and
+**guided generation** (sequential engines).
+
+```swift
+import FoundationModels
+import CoreAIKit
+
+let model = try await KitLanguageModel(model: .qwen3_0_6B)   // downloads once, then cached
+let session = LanguageModelSession(model: model, tools: [WeatherTool()])
+let answer = try await session.respond(to: "What's the weather in Tokyo?")
+```
+
+Your `Tool` implementations, `@Generable` types, streaming snapshots, and transcripts work
+unchanged. See `Examples/FMToolDemo` and `Examples/GuidedDemo`.
+
 ## What's inside
 
 | Product | What it gives you |
@@ -40,6 +59,10 @@ Models download automatically from the Hugging Face Hub on first use — no Pyth
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
 - `Examples/DocChat` — on-device RAG over your notes: embeddings + retrieval tool + local LLM (`swift run`)
 - `Examples/SpotlightChat` — local RAG with Apple's `SpotlightSearchTool` (WWDC26) behind your own model (`swift run`)
+- `Examples/SpotlightApp` — the "ask your notes" RAG chat as a real SwiftUI app (iPhone + Mac), behind your own model
+- `Examples/VisualIntel` — your own CLIP / RF-DETR behind the system **Visual Intelligence** search (iOS camera / iPad+Mac screenshot)
+- `Examples/SiriAsk` — ask your local model from **Siri** (App Intents + onscreen awareness + risk-based confirmation; ≥4B)
+- `Examples/VLChat` — local **VLM** image chat (Qwen3-VL) via the `KitVisionModel` vision executor (iPhone + Mac)
 
 See `docs/GETTING_STARTED.md`.
 
