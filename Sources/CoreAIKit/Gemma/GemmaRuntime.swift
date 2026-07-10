@@ -156,17 +156,21 @@ public final class GemmaRuntime: @unchecked Sendable {
 
     /// Owned tables need jetsam headroom for the copy itself plus the rest of a
     /// generation peak (~2.1 GB beyond the tables for E2B: file-backed weights + KV +
-    /// engine scratch, measured on device). `os_proc_available_memory` is 0 where no
-    /// jetsam accounting applies (macOS) — owned is always safe there.
+    /// engine scratch, measured on device). No jetsam accounting applies on macOS
+    /// (`os_proc_available_memory` is iOS-only there) — owned is always safe.
     private static func shouldOwnTables(totalBytes: Int) -> Bool {
         switch ProcessInfo.processInfo.environment["COREAI_GEMMA_TABLES"] {
         case "owned": return true
         case "mapped": return false
         default: break
         }
+        #if os(iOS)
         let available = os_proc_available_memory()
         if available == 0 { return true }
         return Int64(available) - Int64(totalBytes) > 2_600_000_000
+        #else
+        return true
+        #endif
     }
 
     /// Reads a PLE table file into an owned `storageModeShared` `MTLBuffer`. Dirty
