@@ -21,11 +21,19 @@ jobs:
         run: |
           swift build
           swift test
-      - name: End-to-end catalog gate (pinned download → GPU generate)
+      - name: E2E catalog gate — next-SDK strict path (red = bundles need b2 re-export)
         # Fetches the live catalog, downloads the pinned qwen3-0.6b bundle (cached
         # across runs), loads it, and generates on the GPU. Serialized on the
         # machine-wide GPU lock — the macOS 27 beta driver panics under parallel
         # GPU load.
+        #
+        # NOTE: built under the Beta 3 SDK, whose CoreAI loader takes the STRICT
+        # versioned-IR path (linked-on-or-after). Exports from coreai-core <1.0.0b2
+        # fail here with "Failed to convert to versioned IR" even though they load
+        # fine in binaries linked against earlier SDKs. Red therefore means "the
+        # published artifact is not next-SDK-ready yet", not "broken for users
+        # today"; it goes green as re-exported (>=1.0.0b2) bundles are published
+        # and their catalog pins bumped.
         run: |
           cd Examples/ChatDemo
           python3 ../../scripts/with-gpu-lock.py -- \
