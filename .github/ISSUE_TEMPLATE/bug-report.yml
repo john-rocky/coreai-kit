@@ -1,0 +1,25 @@
+name: Bug report
+description: Something in CoreAIKit fails — build, download, load, or generation
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Catalog id (if model-related)
+      placeholder: "qwen3.5-2b"
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Device, OS build, Xcode version, CoreAIKit version
+      placeholder: "iPhone 17 Pro, iOS 27 beta 3, Xcode 27 beta 3, CoreAIKit 0.2.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Steps, expected vs actual, and the full error text / console output
+    validations:
+      required: true

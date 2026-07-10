@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Model request
+    url: https://github.com/john-rocky/coreai-model-zoo/issues/new?template=model-request.yml
+    about: Request a new model (or port it yourself) — model requests live in the zoo repo.
+  - name: Porting & contribution guide
+    url: https://github.com/john-rocky/coreai-model-zoo/blob/main/CONTRIBUTING.md
+    about: How external model ports get accepted, gated, and enrolled in the catalog.
