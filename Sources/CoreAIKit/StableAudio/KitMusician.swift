@@ -28,7 +28,7 @@ public struct KitMusician: Sendable {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         let root = try await store.download(
-            ModelID(entry.repo, path: variant.path), progress: downloadProgress)
+            entry.modelID(path: variant.path), progress: downloadProgress)
         let paths = StableAudioPaths(
             cond: root.appendingPathComponent("sa_cond_fp16b.aimodel"),
             dit: root.appendingPathComponent("sa_dit_fp16.aimodel"),

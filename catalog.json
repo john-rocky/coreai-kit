@@ -5,6 +5,7 @@
       "id": "qwen3-0.6b",
       "name": "Qwen3 0.6B",
       "repo": "mlboydaisuke/qwen3-0.6b-CoreAI-official",
+      "revision": "01382eba92524926c3f5ba101a6a67d0fa741d40",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -22,6 +23,7 @@
       "id": "qwen3-4b",
       "name": "Qwen3 4B",
       "repo": "mlboydaisuke/qwen3-4b-CoreAI-official",
+      "revision": "77402d470fcaa5837924a81cc656ad215ce914ae",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -39,6 +41,7 @@
       "id": "mistral-7b-v0.3",
       "name": "Mistral 7B v0.3",
       "repo": "mlboydaisuke/mistral-7b-v0.3-CoreAI-official",
+      "revision": "5ffdebc3d03c912a9349587e6cc42b4053fd9189",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -51,6 +54,7 @@
       "id": "gemma-3-4b-it",
       "name": "Gemma 3 4B",
       "repo": "mlboydaisuke/gemma-3-4b-it-CoreAI-official",
+      "revision": "6f796475157fbec76aadb3bc662ad2c3ecca5eda",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -63,6 +67,7 @@
       "id": "qwen3.5-0.8b",
       "name": "Qwen3.5 0.8B",
       "repo": "mlboydaisuke/qwen3.5-0.8B-CoreAI",
+      "revision": "34ed8b08946395397c3b01d07d0a532237e71af3",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -81,6 +86,7 @@
       "id": "qwen3.5-2b",
       "name": "Qwen3.5 2B",
       "repo": "mlboydaisuke/qwen3.5-2B-CoreAI",
+      "revision": "b5caa28541397d4b180063962a5e489a584bc0e4",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -99,6 +105,7 @@
       "id": "youtu-llm-2b",
       "name": "Youtu-LLM 2B",
       "repo": "mlboydaisuke/Youtu-LLM-2B-CoreAI",
+      "revision": "4b9af4dc9ab00939a2ad2ae680c9dfb40429c90f",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -117,6 +124,7 @@
       "id": "lfm2.5-1.2b",
       "name": "LFM2.5 1.2B",
       "repo": "mlboydaisuke/LFM2.5-1.2B-CoreAI",
+      "revision": "c85051379867cee70ab77a6b18ce8e442a8c9b51",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -134,6 +142,7 @@
       "id": "granite-4.0-h-1b",
       "name": "Granite 4.0-H 1B",
       "repo": "mlboydaisuke/granite-4.0-h-CoreAI",
+      "revision": "617a02c4936c8cad59c406b571df142bf7b94495",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -151,6 +160,7 @@
       "id": "minicpm5-1b",
       "name": "MiniCPM5 1B",
       "repo": "mlboydaisuke/MiniCPM5-1B-CoreAI",
+      "revision": "337d59a1a0f61006994906915c759ab03843f77b",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -169,6 +179,7 @@
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",
+      "revision": "4a6f7c8ab0f9eeb131a06ca0c0bad7eaf4890a8e",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -187,6 +198,7 @@
       "id": "qwen3-8b",
       "name": "Qwen3 8B",
       "repo": "mlboydaisuke/qwen3-8b-CoreAI-official",
+      "revision": "cecbb0a65a317b549416dea5b7e7e7642ce4d5a4",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -200,6 +212,7 @@
       "id": "gemma-3-12b-it",
       "name": "Gemma 3 12B",
       "repo": "mlboydaisuke/gemma-3-12b-it-CoreAI-official",
+      "revision": "8c12bebb3401844c83fd57c9ffdcd5a690dda595",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -212,6 +225,7 @@
       "id": "qwen3.6-35b-a3b",
       "name": "Qwen3.6-35B-A3B (MoE)",
       "repo": "mlboydaisuke/Qwen3.6-35B-A3B-CoreAI",
+      "revision": "445f96345f3cc7844659a2279da89b0d87059440",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -226,6 +240,7 @@
       "id": "qwen3.6-27b",
       "name": "Qwen3.6-27B (dense)",
       "repo": "mlboydaisuke/Qwen3.6-27B-CoreAI",
+      "revision": "fc04c3c8e84b6bfbd08f7673a56830765e5a54a4",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -240,6 +255,7 @@
       "id": "glm-4.7-flash",
       "name": "GLM-4.7-Flash (MoE+MLA)",
       "repo": "mlboydaisuke/GLM-4.7-Flash-CoreAI",
+      "revision": "4b2475b0f6ebf5ae776cafa4ec47e2fde9fd5483",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -254,6 +270,7 @@
       "id": "lfm2.5-8b-a1b",
       "name": "LFM2.5-8B-A1B (MoE)",
       "repo": "mlboydaisuke/LFM2.5-8B-A1B-CoreAI",
+      "revision": "dae5add3345f047b578e4c39ccce2cc8d38eeb3c",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -267,6 +284,7 @@
       "id": "gemma-4-12b",
       "name": "Gemma 4 12B",
       "repo": "mlboydaisuke/Gemma-4-12B-CoreAI",
+      "revision": "feff92c54c9fbadd4721da0e617214212a498e5a",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -280,6 +298,7 @@
       "id": "gemma-4-31b",
       "name": "Gemma 4 31B",
       "repo": "mlboydaisuke/Gemma-4-31B-CoreAI",
+      "revision": "c80f188d8e8ad8f8b0aee6acfda8b378294e202d",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -293,6 +312,7 @@
       "id": "gemma-4-e2b",
       "name": "Gemma 4 E2B",
       "repo": "mlboydaisuke/gemma-4-E2B-CoreAI",
+      "revision": "92ab927568a37fdd3c8b4d46f3c4685804f08e46",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -310,6 +330,7 @@
       "id": "gemma-4-e4b",
       "name": "Gemma 4 E4B",
       "repo": "mlboydaisuke/gemma-4-E4B-CoreAI",
+      "revision": "480fc1d9bbbd15d7e81e4d0a68d5efdee6eb4c2b",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -323,6 +344,7 @@
       "id": "qwen3-vl-2b",
       "name": "Qwen3-VL 2B",
       "repo": "mlboydaisuke/Qwen3-VL-2B-CoreAI",
+      "revision": "6c4f7940259140e8a416c5898fb15de529e86496",
       "kind": "vlm",
       "variants": {
         "macos": {
@@ -339,6 +361,7 @@
       "id": "qwen3-vl-4b",
       "name": "Qwen3-VL 4B",
       "repo": "mlboydaisuke/Qwen3-VL-4B-CoreAI",
+      "revision": "1a34e094773d1ed5eb86e85673614ec5697919ee",
       "kind": "vlm",
       "variants": {
         "macos": {
@@ -355,6 +378,7 @@
       "id": "qwen3-vl-8b",
       "name": "Qwen3-VL 8B",
       "repo": "mlboydaisuke/Qwen3-VL-8B-CoreAI",
+      "revision": "60724b3d1a23b93fa744cbfade153beb3d89c160",
       "kind": "vlm",
       "variants": {
         "macos": {
@@ -367,6 +391,7 @@
       "id": "holo2-4b",
       "name": "Holo2 4B",
       "repo": "mlboydaisuke/Holo2-4B-CoreAI",
+      "revision": "100f2303bf1ba014ccbc0ea2fb66b886b9d9b8d4",
       "kind": "vlm",
       "variants": {
         "macos": {
@@ -383,6 +408,7 @@
       "id": "minicpm-v-4.6",
       "name": "MiniCPM-V 4.6",
       "repo": "mlboydaisuke/MiniCPM-V-4.6-CoreAI",
+      "revision": "51a2c606fb3e3961f06ad1e9bcd6c5a1427d8334",
       "kind": "vlm",
       "variants": {
         "macos": {
@@ -399,6 +425,7 @@
       "id": "voxcpm-0.5b",
       "name": "VoxCPM 0.5B",
       "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",
+      "revision": "6bd06e4c064f72aa9a0ddfe3234a7d04e58735d6",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -415,6 +442,7 @@
       "id": "kokoro-82m",
       "name": "Kokoro 82M",
       "repo": "mlboydaisuke/Kokoro-82M-CoreAI",
+      "revision": "37ddda1eee70d8436511c11799fdcd5309bacf81",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -427,6 +455,7 @@
       "id": "voxcpm2-2b",
       "name": "VoxCPM2 2B",
       "repo": "mlboydaisuke/VoxCPM2-CoreAI",
+      "revision": "0cbf395f0108f76c7eceb704a63b8c08d555eb61",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -443,6 +472,7 @@
       "id": "stable-audio-open-small",
       "name": "Stable Audio Open Small",
       "repo": "mlboydaisuke/Stable-Audio-Open-Small-CoreAI",
+      "revision": "ac57a07d0f1b44af0cd57712bf4483750c807b6e",
       "kind": "music",
       "variants": {
         "macos": {
@@ -455,6 +485,7 @@
       "id": "qwen2.5-omni-3b-audio",
       "name": "Qwen2.5-Omni 3B Audio",
       "repo": "mlboydaisuke/Qwen2.5-Omni-3B-Audio-CoreAI",
+      "revision": "0f0fdc89263b558b9a50c9b6860cc0075523ffc8",
       "kind": "audio",
       "variants": {
         "macos": {
@@ -467,6 +498,7 @@
       "id": "vjepa2-vitl-ssv2",
       "name": "V-JEPA 2 ViT-L (SSv2)",
       "repo": "mlboydaisuke/VJEPA2-ViTL-SSv2-CoreAI",
+      "revision": "e289b145a95d4ba59e00cd20fa87436913e1fee6",
       "kind": "video",
       "variants": {
         "macos": {
@@ -483,6 +515,7 @@
       "id": "unlimited-ocr",
       "name": "Unlimited-OCR",
       "repo": "mlboydaisuke/Unlimited-OCR-CoreAI",
+      "revision": "7fe60bfe9ec7fe8016db7d5564fcbc8234b2e7cc",
       "kind": "ocr",
       "variants": {
         "macos": {
@@ -492,9 +525,44 @@
       }
     },
     {
+      "id": "mineru2.5-pro",
+      "name": "MinerU2.5-Pro",
+      "repo": "mlboydaisuke/MinerU2.5-Pro-CoreAI",
+      "revision": "8cd4d57e1ec2f05550bbdfe3cad559f0c02588ba",
+      "kind": "ocr",
+      "variants": {
+        "macos": {
+          "path": "",
+          "sizeMB": 1980
+        },
+        "ios": {
+          "path": "",
+          "sizeMB": 1980
+        }
+      }
+    },
+    {
+      "id": "glm-ocr",
+      "name": "GLM-OCR",
+      "repo": "mlboydaisuke/GLM-OCR-CoreAI",
+      "revision": "dbf163b8f6c9952d536b95a0992ceee4827856a9",
+      "kind": "ocr",
+      "variants": {
+        "macos": {
+          "path": "",
+          "sizeMB": 1600
+        },
+        "ios": {
+          "path": "",
+          "sizeMB": 1600
+        }
+      }
+    },
+    {
       "id": "llada-8b",
       "name": "LLaDA-8B (diffusion)",
       "repo": "mlboydaisuke/LLaDA-8B-dLLM-CoreAI",
+      "revision": "90b119e0f1ef8cc904a4f01871be4904772c965e",
       "kind": "dllm",
       "variants": {
         "macos": {
@@ -507,6 +575,7 @@
       "id": "whisper-large-v3-turbo",
       "name": "Whisper large-v3-turbo",
       "repo": "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official",
+      "revision": "dc309164a791e838809e5dc0395844a5df9f440e",
       "kind": "asr",
       "variants": {
         "macos": {
@@ -523,6 +592,7 @@
       "id": "qwen3-asr-1.7b",
       "name": "Qwen3-ASR 1.7B",
       "repo": "mlboydaisuke/Qwen3-ASR-1.7B-CoreAI",
+      "revision": "853dab46fbc1af33b9c800738d26d6f35cddf4b7",
       "kind": "asr",
       "variants": {
         "macos": {
@@ -535,6 +605,7 @@
       "id": "parakeet-tdt-0.6b-v3",
       "name": "Parakeet-TDT 0.6B v3",
       "repo": "mlboydaisuke/Parakeet-TDT-0.6B-CoreAI",
+      "revision": "48d9e3187c1bb479fdc52fbe6bb5f979d6a92705",
       "kind": "asr",
       "variants": {
         "macos": {
@@ -547,6 +618,7 @@
       "id": "nemotron-3.5-asr-streaming-0.6b",
       "name": "Nemotron 3.5 ASR Streaming 0.6B",
       "repo": "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI",
+      "revision": "bf300805e1fde25a225f7390e63e69f53e626fc1",
       "kind": "asr",
       "variants": {
         "macos": {
@@ -563,6 +635,7 @@
       "id": "sortformer-diar-v2",
       "name": "Streaming Sortformer v2 (4-spk)",
       "repo": "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI",
+      "revision": "97ba41eff02610d74a2348b2ef13e69610dbbb30",
       "kind": "diarization",
       "variants": {
         "macos": {
@@ -579,6 +652,7 @@
       "id": "clip-vit-b32",
       "name": "CLIP ViT-B/32",
       "repo": "mlboydaisuke/clip-vit-base-patch32-CoreAI-official",
+      "revision": "5ea27812e9dbd85e1a4c2baf0bab3c0ffc8c829d",
       "kind": "imageText",
       "variants": {
         "macos": {
@@ -595,6 +669,7 @@
       "id": "depth-anything-3-small",
       "name": "Depth Anything 3 Small",
       "repo": "mlboydaisuke/Depth-Anything-3-CoreAI",
+      "revision": "d60a4971a6fd0303ab1430934664cb59e9f92b11",
       "kind": "depth",
       "variants": {
         "macos": {
@@ -611,6 +686,7 @@
       "id": "embeddinggemma-300m",
       "name": "EmbeddingGemma 300m",
       "repo": "mlboydaisuke/embeddinggemma-300m-CoreAI",
+      "revision": "3ff69a4afd4496510ed235afd3a766ea8af30d7b",
       "kind": "textEmbedding",
       "variants": {
         "macos": {
@@ -627,6 +703,7 @@
       "id": "colmodernvbert",
       "name": "ColModernVBERT",
       "repo": "mlboydaisuke/ColModernVBERT-CoreAI",
+      "revision": "c3866b2cfbc7228f11caf5b010b767453309d776",
       "kind": "retrieval",
       "variants": {
         "macos": {
@@ -643,6 +720,7 @@
       "id": "yolox-s",
       "name": "YOLOX-S",
       "repo": "mlboydaisuke/YOLOX-CoreAI",
+      "revision": "3fde452a753487f58e80d176fe170f3921ea4f86",
       "kind": "detection",
       "variants": {
         "macos": {
@@ -659,6 +737,7 @@
       "id": "rf-detr",
       "name": "RF-DETR (nano)",
       "repo": "mlboydaisuke/RF-DETR-CoreAI",
+      "revision": "2db240872456748838cdaa1bf3f49f11c3de2e4d",
       "kind": "detection",
       "variants": {
         "macos": {
@@ -675,6 +754,7 @@
       "id": "adcsr-x4",
       "name": "AdcSR ×4 Super-Resolution",
       "repo": "mlboydaisuke/AdcSR-CoreAI",
+      "revision": "44430712e3609590fb0721e6ae7c8b5d0b5aa6b7",
       "kind": "superResolution",
       "variants": {
         "macos": {
@@ -691,6 +771,7 @@
       "id": "timesfm-2.5-200m",
       "name": "TimesFM 2.5 200M",
       "repo": "mlboydaisuke/TimesFM-2.5-200M-CoreAI",
+      "revision": "48b5abb74799158fc93a86ed48208a29c8e3f473",
       "kind": "forecasting",
       "variants": {
         "macos": {
@@ -701,7 +782,8 @@
           "path": "ios",
           "sizeMB": 883
         }
-      }
+      },
+      "engine": "static-shape"
     }
   ]
 }

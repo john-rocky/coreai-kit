@@ -55,17 +55,13 @@ public final class KitForecaster: @unchecked Sendable {   // immutable (only `le
         computeUnits: GraphModel.ComputeUnits = .gpu,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
-        guard id == "timesfm-2.5-200m" else {
+        // The entry's platform variants carry the split: macOS = the JIT `.aimodel` at the
+        // repo root, iOS = the AOT `.aimodelc` in the `ios/` subtree (the on-device JIT is
+        // avoided).
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .forecasting)
+        guard entry.id == "timesfm-2.5-200m", let model = entry.modelID else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
-        // macOS loads the JIT `.aimodel` at the repo root; iOS loads the AOT `.aimodelc` from the
-        // `ios/` subtree (the on-device JIT is avoided).
-        #if os(iOS)
-        let path = "ios"
-        #else
-        let path = "timesfm_2p5_200m_ctx2048_fp16.aimodel"
-        #endif
-        let model = ModelID("mlboydaisuke/TimesFM-2.5-200M-CoreAI", path: path)
         let root = try await store.download(model, progress: downloadProgress)
         try await self.init(bundleAt: root, computeUnits: computeUnits)
     }

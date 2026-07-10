@@ -45,6 +45,14 @@ public struct ASRModelID: Sendable, Hashable {
     static let byCatalogID: [String: ASRModelID] = [
         "qwen3-asr-1.7b": .qwen3ASR1_7B
     ]
+
+    /// A copy with both sub-bundle ids pinned to a Hub revision (nil = unchanged), so a
+    /// catalog entry's pin covers the decoder and its paired AuT encoder alike.
+    func pinned(_ revision: String?) -> ASRModelID {
+        guard let revision else { return self }
+        return ASRModelID(
+            decoder: decoder.pinned(revision), encoder: encoder.pinned(revision), arch: arch)
+    }
 }
 
 /// A Core AI Qwen3-ASR bundle. Primary use is the direct `transcribe()`; `LanguageModel`
@@ -67,17 +75,20 @@ public struct KitASRModel: LanguageModel {
     /// let asr = try await KitASRModel(catalog: "qwen3-asr-1.7b")
     /// ```
     ///
-    /// Resolves the repo, decoder/encoder pair, and geometry internally (no network needed
-    /// for the lookup), then downloads if needed.
+    /// Resolves the decoder/encoder pair and geometry from the preset table, and the
+    /// platform availability + revision pin from the live catalog (built-in snapshot
+    /// offline), then downloads if needed.
     public init(
         catalog id: String,
         store: ModelStore = .default,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
-        guard let model = ASRModelID.byCatalogID[id] else {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .asr)
+        guard let model = ASRModelID.byCatalogID[entry.id] else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
-        try await self.init(model: model, store: store, downloadProgress: downloadProgress)
+        try await self.init(
+            model: model.pinned(entry.revision), store: store, downloadProgress: downloadProgress)
     }
 
     /// Downloads the decoder + encoder bundles from the Hub (if needed) and loads them.

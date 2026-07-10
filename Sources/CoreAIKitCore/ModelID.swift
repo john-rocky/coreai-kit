@@ -30,6 +30,14 @@ public struct ModelID: Hashable, Sendable {
 
     /// Directory under a store root where this model is cached.
     var cacheSubpath: String { "\(repo)/\(revision)/\(resolvedPath)" }
+
+    /// A copy of this id pinned to `revision` (a Hub commit hash) — the same bundle,
+    /// addressed immutably. `nil` leaves the id unchanged, so callers can pass a catalog
+    /// entry's optional pin straight through.
+    public func pinned(_ revision: String?) -> ModelID {
+        guard let revision else { return self }
+        return ModelID(repo, path: path, revision: revision)
+    }
 }
 
 // MARK: - Starter catalog

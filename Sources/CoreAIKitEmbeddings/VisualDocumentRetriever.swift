@@ -158,6 +158,8 @@ public final class VisualDocumentRetriever: @unchecked Sendable {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         try await self.init(
+            queryModel: ModelID.colModernVBERTQuery.pinned(entry.revision),
+            docModel: ModelID.colModernVBERTDoc.pinned(entry.revision),
             store: store, computeUnits: computeUnits, downloadProgress: downloadProgress)
     }
 

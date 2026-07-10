@@ -55,13 +55,13 @@ public final class KitDocReader: @unchecked Sendable {
     ) async throws {
         let entry = try await ModelCatalog.entry(forID: id, expecting: .ocr)
         let vision = try await store.download(
-            ModelID(entry.repo, path: "vision"), progress: downloadProgress)
+            entry.modelID(path: "vision"), progress: downloadProgress)
         let decoder = try await store.download(
-            ModelID(entry.repo, path: "decoder"), progress: downloadProgress)
+            entry.modelID(path: "decoder"), progress: downloadProgress)
         let assets = try await store.download(
-            ModelID(entry.repo, path: "assets"), progress: downloadProgress)
+            entry.modelID(path: "assets"), progress: downloadProgress)
         let tokenizer = try await store.download(
-            ModelID(entry.repo, path: "tokenizer"), progress: downloadProgress)
+            entry.modelID(path: "tokenizer"), progress: downloadProgress)
         try await self.init(
             visionDir: vision, decoderDir: decoder, assetsDir: assets, tokenizerDir: tokenizer)
     }

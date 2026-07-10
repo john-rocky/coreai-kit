@@ -38,6 +38,13 @@ public struct WhisperModelID: Sendable, Hashable {
     static let byCatalogID: [String: WhisperModelID] = [
         "whisper-large-v3-turbo": .largeV3Turbo
     ]
+
+    /// A copy with the graph id pinned to a Hub revision (nil = unchanged).
+    func pinned(_ revision: String?) -> WhisperModelID {
+        guard let revision else { return self }
+        return WhisperModelID(
+            model: model.pinned(revision), aimodelName: aimodelName, arch: arch)
+    }
 }
 
 /// A Core AI Whisper transcription bundle. Primary use is the direct `transcribe()`.
@@ -52,19 +59,21 @@ public struct KitWhisperModel: Sendable {
     /// let whisper = try await KitWhisperModel(catalog: "whisper-large-v3-turbo")
     /// ```
     ///
-    /// Resolves the repo, platform variant, and graph geometry internally (no network needed
-    /// for the lookup), then downloads if needed.
+    /// Resolves the graph geometry from the preset table, and the platform availability +
+    /// revision pin from the live catalog (built-in snapshot offline), then downloads if
+    /// needed.
     public init(
         catalog id: String,
         store: ModelStore = .default,
         computeUnits: GraphModel.ComputeUnits = .gpu,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
-        guard let model = WhisperModelID.byCatalogID[id] else {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .asr)
+        guard let model = WhisperModelID.byCatalogID[entry.id] else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         try await self.init(
-            model: model, store: store, computeUnits: computeUnits,
+            model: model.pinned(entry.revision), store: store, computeUnits: computeUnits,
             downloadProgress: downloadProgress)
     }
 

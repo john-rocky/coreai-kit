@@ -98,6 +98,14 @@ public struct VLModelID: Sendable, Hashable {
         "holo2-4b": .holo2_4B,
         "minicpm-v-4.6": .miniCPMV46,
     ]
+
+    /// A copy with both sub-bundle ids pinned to a Hub revision (nil = unchanged), so a
+    /// catalog entry's pin covers the decoder and its paired vision tower alike.
+    public func pinned(_ revision: String?) -> VLModelID {
+        guard let revision else { return self }
+        return VLModelID(
+            decoder: decoder.pinned(revision), vision: vision.pinned(revision), arch: arch)
+    }
 }
 
 /// A Core AI VL bundle as a `LanguageModelSession` provider.
@@ -139,7 +147,8 @@ public struct KitVisionModel: LanguageModel {
         guard let model = VLModelID.byCatalogID[entry.id] else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
-        try await self.init(model: model, store: store, downloadProgress: downloadProgress)
+        try await self.init(
+            model: model.pinned(entry.revision), store: store, downloadProgress: downloadProgress)
     }
 
     /// Downloads the decoder + vision bundles from the Hub (if needed) and loads them.

@@ -203,7 +203,7 @@ public actor KitDiarizer {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         let root = try await store.download(
-            ModelID(entry.repo, path: variant.path), progress: downloadProgress)
+            entry.modelID(path: variant.path), progress: downloadProgress)
         try await self.init(bundleAt: root, computeUnits: computeUnits, id: entry.id)
     }
 

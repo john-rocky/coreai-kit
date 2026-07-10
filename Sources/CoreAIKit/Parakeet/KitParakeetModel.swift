@@ -69,12 +69,13 @@ public final class KitParakeetModel: @unchecked Sendable {
         computeUnits: GraphModel.ComputeUnits = .gpu,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
-        guard id == "parakeet-tdt-0.6b-v3" else {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .asr)
+        guard entry.id == "parakeet-tdt-0.6b-v3" else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         try await self.init(
-            model: .parakeetTDT, store: store, computeUnits: computeUnits,
-            downloadProgress: downloadProgress)
+            model: ModelID.parakeetTDT.pinned(entry.revision), store: store,
+            computeUnits: computeUnits, downloadProgress: downloadProgress)
     }
 
     /// Downloads the Parakeet bundle from the Hub (if needed) and loads it.

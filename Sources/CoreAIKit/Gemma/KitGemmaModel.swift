@@ -77,6 +77,14 @@ public struct GemmaModelID: Sendable, Hashable {
         "gemma-4-e2b": .gemma4E2B,
         "gemma-4-e4b": .gemma4E4B,
     ]
+
+    /// A copy with both subtree ids pinned to a Hub revision (nil = unchanged), so a
+    /// catalog entry's pin covers the decoder and its paired PLE tables alike.
+    public func pinned(_ revision: String?) -> GemmaModelID {
+        guard let revision else { return self }
+        return GemmaModelID(
+            decoder: decoder.pinned(revision), tables: tables.pinned(revision), arch: arch)
+    }
 }
 
 /// A Core AI Gemma 4 bundle as a `LanguageModelSession` provider.

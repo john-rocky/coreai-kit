@@ -87,7 +87,7 @@ public actor ChatSession {
         // static table inputs the stock load path leaves unbound — resolve both subtrees
         // and load through GemmaRuntime instead (the same id→driving-class dispatch as
         // KitSpeaker's kokoro). The catalog entry above still gates platform availability.
-        if let gemma = GemmaModelID.byCatalogID[entry.id] {
+        if let gemma = GemmaModelID.byCatalogID[entry.id]?.pinned(entry.revision) {
             let decoderURL = try await store.download(gemma.decoder, progress: downloadProgress)
             let tablesURL = try await store.download(gemma.tables, progress: downloadProgress)
             let start = SuspendingClock.now

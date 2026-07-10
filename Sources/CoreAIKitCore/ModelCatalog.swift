@@ -61,6 +61,11 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     public let id: String
     public let name: String
     public let repo: String
+    /// Hub commit hash this entry is pinned to. When set, every bundle the entry resolves
+    /// (including multi-subtree models) downloads from exactly this revision — the artifact
+    /// that was verified — so a later push to the repo can't change what apps receive until
+    /// the pin is deliberately bumped. `nil` (older catalogs) falls back to `main`.
+    public let revision: String?
     public let kind: Kind
     /// Keyed by platform: "macos" / "ios". A missing key = not published there.
     public let variants: [String: Variant]
@@ -73,12 +78,13 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     public let engine: String?
 
     public init(
-        id: String, name: String, repo: String, kind: Kind,
+        id: String, name: String, repo: String, revision: String? = nil, kind: Kind,
         variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil
     ) {
         self.id = id
         self.name = name
         self.repo = repo
+        self.revision = revision
         self.kind = kind
         self.variants = variants
         self.thinking = thinking
@@ -98,7 +104,14 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
 
     /// `ModelID` for this platform, or nil if the model is not published here.
     public var modelID: ModelID? {
-        variant.map { ModelID(repo, path: $0.path) }
+        variant.map { modelID(path: $0.path) }
+    }
+
+    /// A `ModelID` for an arbitrary subtree of this entry's repo, carrying the entry's
+    /// revision pin. Multi-bundle models (VL towers, TTS glue, OCR assets) resolve their
+    /// sibling paths through this so every part downloads from the same pinned revision.
+    public func modelID(path: String) -> ModelID {
+        ModelID(repo, path: path, revision: revision ?? "main")
     }
 }
 
@@ -501,6 +514,16 @@ public struct ModelCatalog: Sendable, Codable {
                 // `KitParakeetModel`. macOS-only: the published iPhone numbers rode an AOT
                 // encoder this repo doesn't carry yet.
                 variants: ["macos": .init(path: "", sizeMB: 1290)]),
+            // Streaming ASR (cache-aware FastConformer + pure-RNNT, 40 locales, any-length
+            // audio) driven by `KitNemotronModel`; platform subtrees like Whisper — `ios/`
+            // carries the AOT h18p conformer halves (the device JIT is avoided).
+            CatalogEntry(
+                id: "nemotron-3.5-asr-streaming-0.6b", name: "Nemotron 3.5 ASR Streaming 0.6B",
+                repo: "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI", kind: .asr,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 1340),
+                    "ios": .init(path: "ios", sizeMB: 2460),
+                ]),
             // ── Speaker diarization: clip → who spoke when (up to 4 speakers, 80 ms frames).
             //    Flat repo, one graph per platform: the variant path names the JIT .aimodel
             //    (macOS) / AOT h18p .aimodelc (iOS) directly, so each platform downloads only

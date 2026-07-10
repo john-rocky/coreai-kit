@@ -50,13 +50,13 @@ public struct KitSpeaker: Sendable {
         // dir, no tokenizer subtree (G2P rides the glue) — so it resolves its own subtrees.
         if entry.id == "kokoro-82m" {
             let predictor = try await store.download(
-                ModelID(entry.repo, path: "kokoro_predictor.aimodel"), progress: downloadProgress)
+                entry.modelID(path: "kokoro_predictor.aimodel"), progress: downloadProgress)
             let prosody = try await store.download(
-                ModelID(entry.repo, path: "kokoro_prosody.aimodel"), progress: downloadProgress)
+                entry.modelID(path: "kokoro_prosody.aimodel"), progress: downloadProgress)
             let vocoder = try await store.download(
-                ModelID(entry.repo, path: "kokoro_vocoder.aimodel"), progress: downloadProgress)
+                entry.modelID(path: "kokoro_vocoder.aimodel"), progress: downloadProgress)
             let glue = try await store.download(
-                ModelID(entry.repo, path: "kokoro_host_glue"), progress: downloadProgress)
+                entry.modelID(path: "kokoro_host_glue"), progress: downloadProgress)
             self.engine = .kokoro(
                 try await KokoroTTS(
                     predictorAt: predictor, prosodyAt: prosody, vocoderAt: vocoder,
@@ -72,11 +72,11 @@ public struct KitSpeaker: Sendable {
         default: throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         let platform = try await store.download(
-            ModelID(entry.repo, path: variant.path), progress: downloadProgress)
+            entry.modelID(path: variant.path), progress: downloadProgress)
         let tokenizer = try await store.download(
-            ModelID(entry.repo, path: "tokenizer"), progress: downloadProgress)
+            entry.modelID(path: "tokenizer"), progress: downloadProgress)
         let glue = try await store.download(
-            ModelID(entry.repo, path: glueName), progress: downloadProgress)
+            entry.modelID(path: glueName), progress: downloadProgress)
         switch entry.id {
         case "voxcpm-0.5b":
             #if os(iOS)

@@ -6,20 +6,28 @@ final class ModelCatalogTests: XCTestCase {
     func testDecodesCatalogJSON() throws {
         let json = """
             {"version": 1, "models": [
-              {"id": "x", "name": "X", "repo": "org/repo", "kind": "chat",
+              {"id": "x", "name": "X", "repo": "org/repo", "revision": "abc123",
+               "kind": "chat",
                "variants": {"macos": {"path": "macos", "sizeMB": 10}},
-               "thinking": true}
+               "thinking": true},
+              {"id": "y", "name": "Y", "repo": "org/legacy", "kind": "chat",
+               "variants": {"macos": {"path": "macos"}}}
             ]}
             """
         let catalog = try JSONDecoder().decode(ModelCatalog.self, from: Data(json.utf8))
         XCTAssertEqual(catalog.version, 1)
-        XCTAssertEqual(catalog.models.count, 1)
+        XCTAssertEqual(catalog.models.count, 2)
         let entry = catalog.models[0]
         XCTAssertEqual(entry.kind, .chat)
         XCTAssertEqual(entry.thinking, true)
+        XCTAssertEqual(entry.revision, "abc123")
         #if os(macOS)
-        XCTAssertEqual(entry.modelID, ModelID("org/repo", path: "macos"))
+        // The pin rides into every ModelID the entry resolves; an unpinned (older)
+        // catalog falls back to `main`.
+        XCTAssertEqual(entry.modelID, ModelID("org/repo", path: "macos", revision: "abc123"))
+        XCTAssertEqual(entry.modelID(path: "extra"), ModelID("org/repo", path: "extra", revision: "abc123"))
         XCTAssertEqual(entry.variant?.sizeMB, 10)
+        XCTAssertEqual(catalog.models[1].modelID, ModelID("org/legacy", path: "macos"))
         #else
         XCTAssertNil(entry.modelID)  // no ios variant published
         #endif
@@ -49,12 +57,18 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertTrue(chat.allSatisfy { $0.kind == .chat && $0.modelID != nil })
 
         let asr = ModelCatalog.builtin.available(.asr)
-        // Whisper publishes both platform variants; the JIT-only ASR bundles are macOS-only.
+        // Whisper + Nemotron publish both platform variants; the JIT-only ASR bundles are
+        // macOS-only.
         #if os(macOS)
         XCTAssertEqual(
-            asr.map(\.id), ["whisper-large-v3-turbo", "qwen3-asr-1.7b", "parakeet-tdt-0.6b-v3"])
+            asr.map(\.id),
+            [
+                "whisper-large-v3-turbo", "qwen3-asr-1.7b", "parakeet-tdt-0.6b-v3",
+                "nemotron-3.5-asr-streaming-0.6b",
+            ])
         #else
-        XCTAssertEqual(asr.map(\.id), ["whisper-large-v3-turbo"])
+        XCTAssertEqual(
+            asr.map(\.id), ["whisper-large-v3-turbo", "nemotron-3.5-asr-streaming-0.6b"])
         #endif
 
         // rf-detr regression: "detection" used to decode to .unknown, hiding the entry.
@@ -68,7 +82,10 @@ final class ModelCatalogTests: XCTestCase {
     }
 
     func testBuiltinMatchesShippedCatalogFile() throws {
-        // Keep the builtin snapshot in sync with catalog.json at the repo root.
+        // Keep the builtin snapshot in sync with catalog.json at the repo root. The shipped
+        // file carries revision pins (scripts/pin-catalog.py); the builtin snapshot stays
+        // unpinned — it is the offline fallback, and the live catalog is where pins are
+        // maintained — so compare modulo `revision`.
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // CoreAIKitTests
             .deletingLastPathComponent()  // Tests
@@ -76,6 +93,21 @@ final class ModelCatalogTests: XCTestCase {
         let data = try Data(contentsOf: root.appendingPathComponent("catalog.json"))
         let shipped = try JSONDecoder().decode(ModelCatalog.self, from: data)
         XCTAssertEqual(shipped.version, ModelCatalog.builtin.version)
-        XCTAssertEqual(shipped.models, ModelCatalog.builtin.models)
+        // Every shipped entry must be pinned — an unpinned entry means a repo was added
+        // without running scripts/pin-catalog.py.
+        for entry in shipped.models {
+            XCTAssertNotNil(entry.revision, "catalog.json entry '\(entry.id)' has no revision pin")
+        }
+        let unpinned = shipped.models.map { entry in
+            CatalogEntry(
+                id: entry.id, name: entry.name, repo: entry.repo, kind: entry.kind,
+                variants: entry.variants, thinking: entry.thinking, engine: entry.engine)
+        }
+        XCTAssertEqual(unpinned.map(\.id), ModelCatalog.builtin.models.map(\.id))
+        for (shippedEntry, builtinEntry) in zip(unpinned, ModelCatalog.builtin.models) {
+            XCTAssertEqual(
+                shippedEntry, builtinEntry,
+                "catalog.json/builtin drift at '\(shippedEntry.id)'")
+        }
     }
 }
