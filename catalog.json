@@ -157,6 +157,25 @@
       "engine": "pipelined"
     },
     {
+      "id": "nemotron-3-nano-4b",
+      "name": "Nemotron-3-Nano 4B",
+      "repo": "mlboydaisuke/Nemotron-3-Nano-4B-CoreAI",
+      "revision": "9d4032d8d4f446f5cf628fe54d716e7a4a3a6628",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/nemotron_3_nano_4b_decode_int8hu",
+          "sizeMB": 4626
+        },
+        "ios": {
+          "path": "ios-h18p/nemotron_3_nano_4b_decode_int8hu",
+          "sizeMB": 4626
+        }
+      },
+      "thinking": true,
+      "engine": "pipelined"
+    },
+    {
       "id": "minicpm5-1b",
       "name": "MiniCPM5 1B",
       "repo": "mlboydaisuke/MiniCPM5-1B-CoreAI",

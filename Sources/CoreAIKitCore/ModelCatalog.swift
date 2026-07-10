@@ -258,6 +258,18 @@ public struct ModelCatalog: Sendable, Codable {
                 ],
                 engine: "pipelined"),
             CatalogEntry(
+                id: "nemotron-3-nano-4b", name: "Nemotron-3-Nano 4B",
+                repo: "mlboydaisuke/Nemotron-3-Nano-4B-CoreAI", kind: .chat,
+                variants: [
+                    // A 4B graph cannot specialize on-device, so iOS ships the AOT h18p
+                    // bundle; the Mac takes the JIT one. Same int8hu weights either way.
+                    "macos": .init(
+                        path: "gpu-pipelined/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
+                    "ios": .init(
+                        path: "ios-h18p/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
+                ],
+                thinking: true, engine: "pipelined"),
+            CatalogEntry(
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
                 variants: [
