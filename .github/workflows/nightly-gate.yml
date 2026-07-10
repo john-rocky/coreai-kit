@@ -1,0 +1,34 @@
+name: Nightly device gate
+
+on:
+  schedule:
+    - cron: "0 18 * * *" # 03:00 JST
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.3.app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build + unit tests
+        run: |
+          swift build
+          swift test
+      - name: End-to-end catalog gate (pinned download → GPU generate)
+        # Fetches the live catalog, downloads the pinned qwen3-0.6b bundle (cached
+        # across runs), loads it, and generates on the GPU. Serialized on the
+        # machine-wide GPU lock — the macOS 27 beta driver panics under parallel
+        # GPU load.
+        run: |
+          cd Examples/ChatDemo
+          python3 ../../scripts/with-gpu-lock.py -- \
+            swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
+            | tee /tmp/nightly-gate.out
+          test -s /tmp/nightly-gate.out

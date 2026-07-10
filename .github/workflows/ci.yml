@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    # Self-hosted: the CoreAI framework needs macOS 27 beta, which no hosted runner
+    # image carries. DEVELOPER_DIR must name an Xcode whose SDK matches the installed
+    # OS build, or the test bundle fails to dlopen FoundationModels.
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.3.app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build
+      - name: Unit tests
+        run: swift test
+      - name: Catalog pins present
+        run: python3 scripts/pin-catalog.py --check

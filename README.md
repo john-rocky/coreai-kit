@@ -1,5 +1,9 @@
 # CoreAIKit
 
+[![CI](https://github.com/john-rocky/coreai-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/ci.yml)
+[![Nightly device gate](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml)
+[![Release](https://img.shields.io/github/v/tag/john-rocky/coreai-kit?label=release)](https://github.com/john-rocky/coreai-kit/releases)
+
 Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 beta) in a few lines of Swift.
 
 > Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta
@@ -42,6 +46,12 @@ See `docs/GETTING_STARTED.md`.
 
 - macOS 27 beta / iOS 27 beta, Xcode 27 beta
 - Models run fully on device
+
+## Versioning & stability
+
+Tagged releases, SemVer, a pinned model catalog (each entry carries the verified
+Hugging Face revision), and CI + a nightly end-to-end gate on macOS 27 beta. See
+[`docs/STABILITY.md`](docs/STABILITY.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
