@@ -160,7 +160,7 @@
       "id": "nemotron-3-nano-4b",
       "name": "Nemotron-3-Nano 4B",
       "repo": "mlboydaisuke/Nemotron-3-Nano-4B-CoreAI",
-      "revision": "9d4032d8d4f446f5cf628fe54d716e7a4a3a6628",
+      "revision": "aec2d5e07e4acafebf07ab801d6297d7d9c0738f",
       "kind": "chat",
       "variants": {
         "macos": {
