@@ -9,6 +9,10 @@ concurrency:
   group: next-sdk-gate
   cancel-in-progress: false
 
+permissions:
+  contents: write
+  issues: write
+
 jobs:
   gate:
     # Tracks whether the PUBLISHED model artifacts load under the NEXT SDK
@@ -18,23 +22,61 @@ jobs:
     #   "expected AICode versioned location" -> "Failed to convert to
     #   versioned IR" -> LLVM ERROR (process crash). (FB23666783, 2026-07-10.)
     #
-    # RED here means "published bundles are not next-SDK-ready yet" — apps
-    # built with earlier SDKs load them fine, so this is a migration tracker,
-    # not a user-facing breakage. It goes green when either (a) Apple ships a
-    # legacy-IR compatibility path in a later beta, or (b) the zoo is
-    # re-exported with coreai-core >=1.0.0b2 and the catalog pins are bumped.
+    # "pre-b2 rejected" means "published bundles are not next-SDK-ready yet" —
+    # apps built with earlier SDKs load them fine, so this is a migration
+    # tracker, not a user-facing breakage. It flips to "compatible" when either
+    # (a) Apple ships a legacy-IR compatibility path in a later beta, or
+    # (b) the zoo is re-exported with coreai-core >=1.0.0b2 and the catalog
+    # pins are bumped.
+    #
+    # The run itself stays green in steady state — the status lives as a badge
+    # JSON on the `gate-status` branch, and a STATE FLIP opens an issue. That
+    # way a known-migrating state doesn't send a failure mail every night, and
+    # the moment the state changes (e.g. a beta fixes FB23666783) is loud.
     runs-on: [self-hosted, macOS]
     timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.3.app
     steps:
       - uses: actions/checkout@v4
-      - name: E2E catalog gate (pinned download → GPU generate, beta 3 SDK)
+      - name: Probe a pinned catalog model under the beta 3 SDK loader
+        id: probe
         # Serialized on the machine-wide GPU lock — the macOS 27 beta driver
         # panics under parallel GPU load.
         run: |
           cd Examples/ChatDemo
-          python3 ../../scripts/with-gpu-lock.py -- \
-            swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
-            | tee /tmp/next-sdk-gate.out
-          test -s /tmp/next-sdk-gate.out
+          if python3 ../../scripts/with-gpu-lock.py -- \
+              swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
+              | tee /tmp/next-sdk-gate.out \
+            && test -s /tmp/next-sdk-gate.out; then
+            echo "status=ready" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=not-ready" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish status badge, open an issue on state change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STATUS="${{ steps.probe.outputs.status }}"
+          if [ "$STATUS" = "ready" ]; then
+            MSG="compatible"; COLOR="brightgreen"
+          else
+            MSG="pre-b2 rejected (FB23666783)"; COLOR="red"
+          fi
+          FILE=$(gh api "repos/${{ github.repository }}/contents/next-sdk.json?ref=gate-status" 2>/dev/null || true)
+          PREV_MSG=$(printf '%s' "$FILE" | python3 -c 'import base64,json,sys; d=json.load(sys.stdin); print(json.loads(base64.b64decode(d["content"]))["message"])' 2>/dev/null || echo "")
+          SHA=$(printf '%s' "$FILE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])' 2>/dev/null || echo "")
+          if [ "$PREV_MSG" = "$MSG" ]; then
+            echo "state unchanged: $MSG"
+            exit 0
+          fi
+          NEW=$(MSG="$MSG" COLOR="$COLOR" python3 -c 'import json,os; print(json.dumps({"schemaVersion":1,"label":"next-SDK models","message":os.environ["MSG"],"color":os.environ["COLOR"]}))')
+          gh api -X PUT "repos/${{ github.repository }}/contents/next-sdk.json" \
+            -f branch=gate-status \
+            -f message="next-sdk status: $MSG" \
+            -f content="$(printf '%s' "$NEW" | base64)" \
+            ${SHA:+-f sha=$SHA}
+          BODY=$(printf 'The strict (beta 3 SDK) loader probe changed state: **%s -> %s**.\n\nRun: %s\nContext: FB23666783 — pre-b2 `.aimodel` exports are rejected by the versioned-IR loader.\nIf this flipped to *compatible* on a new beta, verify whether Apple shipped a legacy-IR path; if it flipped back to *rejected*, a re-export or OS change regressed.' \
+            "${PREV_MSG:-unknown}" "$MSG" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          gh issue create --title "Next-SDK model gate: ${PREV_MSG:-unknown} -> $MSG" --body "$BODY"
