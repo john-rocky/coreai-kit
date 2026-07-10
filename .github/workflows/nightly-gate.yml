@@ -1,4 +1,4 @@
-name: Nightly device gate
+name: Nightly gate
 
 on:
   schedule:
@@ -11,32 +11,20 @@ concurrency:
 
 jobs:
   gate:
+    # Nightly health: the package builds, the hermetic tests pass, and every
+    # catalog entry still carries a valid revision pin. The end-to-end
+    # download→generate check lives in next-sdk-gate.yml — it exercises the
+    # strict next-SDK loader path and is tracked separately so its red (a
+    # migration tracker, not a user-facing breakage) doesn't mask this gate.
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.3.app
     steps:
       - uses: actions/checkout@v4
-      - name: Build + unit tests
-        run: |
-          swift build
-          swift test
-      - name: E2E catalog gate — next-SDK strict path (red = bundles need b2 re-export)
-        # Fetches the live catalog, downloads the pinned qwen3-0.6b bundle (cached
-        # across runs), loads it, and generates on the GPU. Serialized on the
-        # machine-wide GPU lock — the macOS 27 beta driver panics under parallel
-        # GPU load.
-        #
-        # NOTE: built under the Beta 3 SDK, whose CoreAI loader takes the STRICT
-        # versioned-IR path (linked-on-or-after). Exports from coreai-core <1.0.0b2
-        # fail here with "Failed to convert to versioned IR" even though they load
-        # fine in binaries linked against earlier SDKs. Red therefore means "the
-        # published artifact is not next-SDK-ready yet", not "broken for users
-        # today"; it goes green as re-exported (>=1.0.0b2) bundles are published
-        # and their catalog pins bumped.
-        run: |
-          cd Examples/ChatDemo
-          python3 ../../scripts/with-gpu-lock.py -- \
-            swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
-            | tee /tmp/nightly-gate.out
-          test -s /tmp/nightly-gate.out
+      - name: Build
+        run: swift build
+      - name: Unit tests
+        run: swift test
+      - name: Catalog pins present
+        run: python3 scripts/pin-catalog.py --check

@@ -1,0 +1,40 @@
+name: Next-SDK model gate
+
+on:
+  schedule:
+    - cron: "30 18 * * *" # 03:30 JST, after the nightly gate
+  workflow_dispatch:
+
+concurrency:
+  group: next-sdk-gate
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    # Tracks whether the PUBLISHED model artifacts load under the NEXT SDK
+    # generation. Binaries linked against the Xcode 27 beta 3+ SDK take the
+    # CoreAI loader's strict versioned-IR path, which rejects every bundle
+    # exported with coreai-core <1.0.0b2:
+    #   "expected AICode versioned location" -> "Failed to convert to
+    #   versioned IR" -> LLVM ERROR (process crash). (FB filed 2026-07-10.)
+    #
+    # RED here means "published bundles are not next-SDK-ready yet" — apps
+    # built with earlier SDKs load them fine, so this is a migration tracker,
+    # not a user-facing breakage. It goes green when either (a) Apple ships a
+    # legacy-IR compatibility path in a later beta, or (b) the zoo is
+    # re-exported with coreai-core >=1.0.0b2 and the catalog pins are bumped.
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.3.app
+    steps:
+      - uses: actions/checkout@v4
+      - name: E2E catalog gate (pinned download → GPU generate, beta 3 SDK)
+        # Serialized on the machine-wide GPU lock — the macOS 27 beta driver
+        # panics under parallel GPU load.
+        run: |
+          cd Examples/ChatDemo
+          python3 ../../scripts/with-gpu-lock.py -- \
+            swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
+            | tee /tmp/next-sdk-gate.out
+          test -s /tmp/next-sdk-gate.out

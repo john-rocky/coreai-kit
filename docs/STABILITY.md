@@ -44,6 +44,11 @@ offline fallback) is a public contract:
 Every model in the catalog is verified on real hardware (Apple silicon Mac and, where
 published, iPhone) before its pin lands — parity against the reference
 implementation and measured tokens/sec, recorded in the
-[model zoo](https://github.com/john-rocky/coreai-model-zoo). CI builds and tests
-every push on macOS 27 beta; a nightly gate downloads a pinned model from the live
-catalog and generates on the GPU end-to-end.
+[model zoo](https://github.com/john-rocky/coreai-model-zoo). Three CI surfaces:
+
+- **CI** — build + tests + pin check on every push (macOS 27 beta, self-hosted).
+- **Nightly gate** — the same, every night, plus catalog-pin integrity against the Hub.
+- **Next-SDK model gate** — nightly end-to-end check (pinned download → GPU generate)
+  under the *next* SDK generation's strict loader. Red here tracks the beta-toolchain
+  migration (artifacts not yet re-exported for the new IR format) — apps built with
+  current SDKs are unaffected. Filed with Apple; see the workflow file for details.

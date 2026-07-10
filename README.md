@@ -1,7 +1,8 @@
 # CoreAIKit
 
 [![CI](https://github.com/john-rocky/coreai-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/ci.yml)
-[![Nightly device gate](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml)
+[![Nightly gate](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml)
+[![Next-SDK model gate](https://github.com/john-rocky/coreai-kit/actions/workflows/next-sdk-gate.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/next-sdk-gate.yml)
 [![Release](https://img.shields.io/github/v/tag/john-rocky/coreai-kit?label=release)](https://github.com/john-rocky/coreai-kit/releases)
 
 Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 beta) in a few lines of Swift.
