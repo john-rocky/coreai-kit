@@ -289,7 +289,7 @@
       "id": "lfm2.5-8b-a1b",
       "name": "LFM2.5-8B-A1B (MoE)",
       "repo": "mlboydaisuke/LFM2.5-8B-A1B-CoreAI",
-      "revision": "dae5add3345f047b578e4c39ccce2cc8d38eeb3c",
+      "revision": "1e494ef6dd5c499e18d5c1730ddf4bda76b9e039",
       "kind": "chat",
       "variants": {
         "macos": {
