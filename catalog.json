@@ -67,16 +67,16 @@
       "id": "qwen3.5-0.8b",
       "name": "Qwen3.5 0.8B",
       "repo": "mlboydaisuke/qwen3.5-0.8B-CoreAI",
-      "revision": "34ed8b08946395397c3b01d07d0a532237e71af3",
+      "revision": "1b8c0203c0f317027db508e97372c589afaace7b",
       "kind": "chat",
       "variants": {
         "macos": {
-          "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym",
-          "sizeMB": 1300
+          "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym",
+          "sizeMB": 1276
         },
         "ios": {
-          "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym",
-          "sizeMB": 1300
+          "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym",
+          "sizeMB": 1276
         }
       },
       "thinking": true,
@@ -86,16 +86,16 @@
       "id": "qwen3.5-2b",
       "name": "Qwen3.5 2B",
       "repo": "mlboydaisuke/qwen3.5-2B-CoreAI",
-      "revision": "b5caa28541397d4b180063962a5e489a584bc0e4",
+      "revision": "3aa6c97d9545b9f7de6307b953a81db38cb660af",
       "kind": "chat",
       "variants": {
         "macos": {
-          "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym",
-          "sizeMB": 2900
+          "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym",
+          "sizeMB": 2905
         },
         "ios": {
-          "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym",
-          "sizeMB": 2900
+          "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym",
+          "sizeMB": 2905
         }
       },
       "thinking": true,
@@ -105,16 +105,16 @@
       "id": "youtu-llm-2b",
       "name": "Youtu-LLM 2B",
       "repo": "mlboydaisuke/Youtu-LLM-2B-CoreAI",
-      "revision": "4b9af4dc9ab00939a2ad2ae680c9dfb40429c90f",
+      "revision": "74351b0c55fa621ea3fb2670dd3d239de067cd94",
       "kind": "chat",
       "variants": {
         "macos": {
-          "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa",
-          "sizeMB": 2200
+          "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa",
+          "sizeMB": 2058
         },
         "ios": {
-          "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa",
-          "sizeMB": 2200
+          "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa",
+          "sizeMB": 2058
         }
       },
       "thinking": true,
@@ -124,16 +124,16 @@
       "id": "lfm2.5-1.2b",
       "name": "LFM2.5 1.2B",
       "repo": "mlboydaisuke/LFM2.5-1.2B-CoreAI",
-      "revision": "c85051379867cee70ab77a6b18ce8e442a8c9b51",
+      "revision": "8dc37422e5ace08e7c6ae56048c129813e4e0a56",
       "kind": "chat",
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-          "sizeMB": 1702
+          "sizeMB": 1623
         },
         "ios": {
           "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-          "sizeMB": 1702
+          "sizeMB": 1623
         }
       },
       "engine": "pipelined"
@@ -142,16 +142,16 @@
       "id": "granite-4.0-h-1b",
       "name": "Granite 4.0-H 1B",
       "repo": "mlboydaisuke/granite-4.0-h-CoreAI",
-      "revision": "617a02c4936c8cad59c406b571df142bf7b94495",
+      "revision": "e0c884d19ecb9f90407904adcf629732fc8e6e38",
       "kind": "chat",
       "variants": {
         "macos": {
           "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8lin",
-          "sizeMB": 1706
+          "sizeMB": 1630
         },
         "ios": {
           "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8hu_block32_sym",
-          "sizeMB": 1872
+          "sizeMB": 1786
         }
       },
       "engine": "pipelined"
@@ -198,16 +198,16 @@
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",
-      "revision": "4a6f7c8ab0f9eeb131a06ca0c0bad7eaf4890a8e",
+      "revision": "b2efbe7b01a8a92ecd43c19c4d5cae15b0601879",
       "kind": "chat",
       "variants": {
         "macos": {
           "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-          "sizeMB": 3900
+          "sizeMB": 4387
         },
         "ios": {
           "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-          "sizeMB": 3900
+          "sizeMB": 4387
         }
       },
       "thinking": true,
@@ -344,6 +344,23 @@
         }
       },
       "engine": "pipelined"
+    },
+    {
+      "id": "gemma-4-e2b-metal",
+      "name": "Gemma 4 E2B raw-Metal",
+      "repo": "mlboydaisuke/gemma-4-E2B-metal",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "gemma4_e2b_raw_metal",
+          "sizeMB": 2115
+        },
+        "ios": {
+          "path": "gemma4_e2b_raw_metal",
+          "sizeMB": 2115
+        }
+      },
+      "engine": "raw-metal"
     },
     {
       "id": "gemma-4-e4b",
