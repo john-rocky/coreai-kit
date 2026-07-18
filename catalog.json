@@ -259,7 +259,7 @@
       "id": "qwen3.6-27b",
       "name": "Qwen3.6-27B (dense)",
       "repo": "mlboydaisuke/Qwen3.6-27B-CoreAI",
-      "revision": "fc04c3c8e84b6bfbd08f7673a56830765e5a54a4",
+      "revision": "e745d8f071e1730c91473ae38ffbe449bc1c0645",
       "kind": "chat",
       "variants": {
         "macos": {
