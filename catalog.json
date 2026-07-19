@@ -380,7 +380,7 @@
       "id": "qwen3-vl-2b",
       "name": "Qwen3-VL 2B",
       "repo": "mlboydaisuke/Qwen3-VL-2B-CoreAI",
-      "revision": "6c4f7940259140e8a416c5898fb15de529e86496",
+      "revision": "00ea47b018ebdaa439e4b8f583138369660c1396",
       "kind": "vlm",
       "variants": {
         "macos": {
