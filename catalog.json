@@ -478,7 +478,7 @@
       "id": "kokoro-82m",
       "name": "Kokoro 82M",
       "repo": "mlboydaisuke/Kokoro-82M-CoreAI",
-      "revision": "37ddda1eee70d8436511c11799fdcd5309bacf81",
+      "revision": "556dda7f7c041bac3f64acb3a320847f4bc34fb3",
       "kind": "tts",
       "variants": {
         "macos": {
