@@ -160,7 +160,7 @@
       "id": "nemotron-3-nano-4b",
       "name": "Nemotron-3-Nano 4B",
       "repo": "mlboydaisuke/Nemotron-3-Nano-4B-CoreAI",
-      "revision": "aec2d5e07e4acafebf07ab801d6297d7d9c0738f",
+      "revision": "0f9e01aa8d3f569be4b067a67ff7681591c235c4",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -274,7 +274,7 @@
       "id": "glm-4.7-flash",
       "name": "GLM-4.7-Flash (MoE+MLA)",
       "repo": "mlboydaisuke/GLM-4.7-Flash-CoreAI",
-      "revision": "4b2475b0f6ebf5ae776cafa4ec47e2fde9fd5483",
+      "revision": "e40bf6f8aa7fdc55d7037d45fd274f19382baaff",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -444,7 +444,7 @@
       "id": "minicpm-v-4.6",
       "name": "MiniCPM-V 4.6",
       "repo": "mlboydaisuke/MiniCPM-V-4.6-CoreAI",
-      "revision": "51a2c606fb3e3961f06ad1e9bcd6c5a1427d8334",
+      "revision": "620d96c0f2ff277dad838ea0e219c102acefcd9d",
       "kind": "vlm",
       "variants": {
         "macos": {
@@ -461,7 +461,7 @@
       "id": "voxcpm-0.5b",
       "name": "VoxCPM 0.5B",
       "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",
-      "revision": "6bd06e4c064f72aa9a0ddfe3234a7d04e58735d6",
+      "revision": "aa73966ad8bc93d67889d681117e68c59393727c",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -491,7 +491,7 @@
       "id": "voxcpm2-2b",
       "name": "VoxCPM2 2B",
       "repo": "mlboydaisuke/VoxCPM2-CoreAI",
-      "revision": "0cbf395f0108f76c7eceb704a63b8c08d555eb61",
+      "revision": "e03d15d1866e09cf1636480d911bb74a50210c6a",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -508,7 +508,7 @@
       "id": "stable-audio-open-small",
       "name": "Stable Audio Open Small",
       "repo": "mlboydaisuke/Stable-Audio-Open-Small-CoreAI",
-      "revision": "ac57a07d0f1b44af0cd57712bf4483750c807b6e",
+      "revision": "c52f04a8207ebe0e5bba4582a7dac7737e6a9127",
       "kind": "music",
       "variants": {
         "macos": {
@@ -534,7 +534,7 @@
       "id": "vjepa2-vitl-ssv2",
       "name": "V-JEPA 2 ViT-L (SSv2)",
       "repo": "mlboydaisuke/VJEPA2-ViTL-SSv2-CoreAI",
-      "revision": "e289b145a95d4ba59e00cd20fa87436913e1fee6",
+      "revision": "89fed71311d8c5f18e18f848197f0c8abe25cf94",
       "kind": "video",
       "variants": {
         "macos": {
@@ -654,7 +654,7 @@
       "id": "nemotron-3.5-asr-streaming-0.6b",
       "name": "Nemotron 3.5 ASR Streaming 0.6B",
       "repo": "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI",
-      "revision": "bf300805e1fde25a225f7390e63e69f53e626fc1",
+      "revision": "3900f995653d7541e196f320c148775fe1662f9e",
       "kind": "asr",
       "variants": {
         "macos": {
@@ -671,7 +671,7 @@
       "id": "sortformer-diar-v2",
       "name": "Streaming Sortformer v2 (4-spk)",
       "repo": "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI",
-      "revision": "97ba41eff02610d74a2348b2ef13e69610dbbb30",
+      "revision": "bd063df510a0354714a67c2caa91529de8ceda5c",
       "kind": "diarization",
       "variants": {
         "macos": {
@@ -705,7 +705,7 @@
       "id": "depth-anything-3-small",
       "name": "Depth Anything 3 Small",
       "repo": "mlboydaisuke/Depth-Anything-3-CoreAI",
-      "revision": "d60a4971a6fd0303ab1430934664cb59e9f92b11",
+      "revision": "719d8a1ea61644863fcf07690e93fc4ebcc49811",
       "kind": "depth",
       "variants": {
         "macos": {
@@ -739,7 +739,7 @@
       "id": "colmodernvbert",
       "name": "ColModernVBERT",
       "repo": "mlboydaisuke/ColModernVBERT-CoreAI",
-      "revision": "c3866b2cfbc7228f11caf5b010b767453309d776",
+      "revision": "8b1e802cabc8f3980be5fb58d179139c5118a72a",
       "kind": "retrieval",
       "variants": {
         "macos": {
@@ -790,7 +790,7 @@
       "id": "adcsr-x4",
       "name": "AdcSR ×4 Super-Resolution",
       "repo": "mlboydaisuke/AdcSR-CoreAI",
-      "revision": "44430712e3609590fb0721e6ae7c8b5d0b5aa6b7",
+      "revision": "60a65ad223ea89385b0b4c880a306616112d55ce",
       "kind": "superResolution",
       "variants": {
         "macos": {
@@ -807,7 +807,7 @@
       "id": "timesfm-2.5-200m",
       "name": "TimesFM 2.5 200M",
       "repo": "mlboydaisuke/TimesFM-2.5-200M-CoreAI",
-      "revision": "48b5abb74799158fc93a86ed48208a29c8e3f473",
+      "revision": "9b5300026f96d1799a0dd1439a07e378a72e2b46",
       "kind": "forecasting",
       "variants": {
         "macos": {
