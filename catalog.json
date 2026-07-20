@@ -564,7 +564,7 @@
       "id": "mineru2.5-pro",
       "name": "MinerU2.5-Pro",
       "repo": "mlboydaisuke/MinerU2.5-Pro-CoreAI",
-      "revision": "8cd4d57e1ec2f05550bbdfe3cad559f0c02588ba",
+      "revision": "ff454af73b7ba95da3bfd8df3c40d08fdb98521e",
       "kind": "ocr",
       "variants": {
         "macos": {
@@ -641,7 +641,7 @@
       "id": "parakeet-tdt-0.6b-v3",
       "name": "Parakeet-TDT 0.6B v3",
       "repo": "mlboydaisuke/Parakeet-TDT-0.6B-CoreAI",
-      "revision": "48d9e3187c1bb479fdc52fbe6bb5f979d6a92705",
+      "revision": "9532c145c12e82e10c2e486e7dada1d7722c5764",
       "kind": "asr",
       "variants": {
         "macos": {
