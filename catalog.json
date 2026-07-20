@@ -427,7 +427,7 @@
       "id": "holo2-4b",
       "name": "Holo2 4B",
       "repo": "mlboydaisuke/Holo2-4B-CoreAI",
-      "revision": "100f2303bf1ba014ccbc0ea2fb66b886b9d9b8d4",
+      "revision": "0352dffb183be16da16a1a1a3fb957a4c2da5c6f",
       "kind": "vlm",
       "variants": {
         "macos": {
