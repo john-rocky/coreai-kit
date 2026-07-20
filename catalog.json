@@ -179,7 +179,7 @@
       "id": "minicpm5-1b",
       "name": "MiniCPM5 1B",
       "repo": "mlboydaisuke/MiniCPM5-1B-CoreAI",
-      "revision": "337d59a1a0f61006994906915c759ab03843f77b",
+      "revision": "5ad650fdb0ce51207c7bd9ed4585c6154a7c1fb8",
       "kind": "chat",
       "variants": {
         "macos": {
