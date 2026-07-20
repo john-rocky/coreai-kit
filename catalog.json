@@ -581,7 +581,7 @@
       "id": "glm-ocr",
       "name": "GLM-OCR",
       "repo": "mlboydaisuke/GLM-OCR-CoreAI",
-      "revision": "dbf163b8f6c9952d536b95a0992ceee4827856a9",
+      "revision": "cb88cd8e5e3a730d5be1f4b56b319621c25fcca7",
       "kind": "ocr",
       "variants": {
         "macos": {
@@ -598,7 +598,7 @@
       "id": "llada-8b",
       "name": "LLaDA-8B (diffusion)",
       "repo": "mlboydaisuke/LLaDA-8B-dLLM-CoreAI",
-      "revision": "90b119e0f1ef8cc904a4f01871be4904772c965e",
+      "revision": "25c94549f6a8298798818db23cfbff8ccddaecd8",
       "kind": "dllm",
       "variants": {
         "macos": {
@@ -628,7 +628,7 @@
       "id": "qwen3-asr-1.7b",
       "name": "Qwen3-ASR 1.7B",
       "repo": "mlboydaisuke/Qwen3-ASR-1.7B-CoreAI",
-      "revision": "853dab46fbc1af33b9c800738d26d6f35cddf4b7",
+      "revision": "11b7087289d5f7bd33d5c5cf79ba06044d0e3a51",
       "kind": "asr",
       "variants": {
         "macos": {
@@ -722,7 +722,7 @@
       "id": "embeddinggemma-300m",
       "name": "EmbeddingGemma 300m",
       "repo": "mlboydaisuke/embeddinggemma-300m-CoreAI",
-      "revision": "3ff69a4afd4496510ed235afd3a766ea8af30d7b",
+      "revision": "d9a60a18d384484a8dab809b3070b82fb41458ce",
       "kind": "textEmbedding",
       "variants": {
         "macos": {
@@ -756,7 +756,7 @@
       "id": "yolox-s",
       "name": "YOLOX-S",
       "repo": "mlboydaisuke/YOLOX-CoreAI",
-      "revision": "3fde452a753487f58e80d176fe170f3921ea4f86",
+      "revision": "a617a1e6aeee9ef30abb007f9215450377f7c5e2",
       "kind": "detection",
       "variants": {
         "macos": {
