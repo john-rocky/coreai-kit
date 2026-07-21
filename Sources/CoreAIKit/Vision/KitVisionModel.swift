@@ -117,7 +117,8 @@ public struct KitVisionModel: LanguageModel {
     let profile: OutputProfile
 
     public var capabilities: LanguageModelCapabilities {
-        var capabilities: [LanguageModelCapabilities.Capability] = []
+        // Advertise image input; the framework may gate attachments on this in future betas.
+        var capabilities: [LanguageModelCapabilities.Capability] = [.vision]
         // Qwen3-VL is a thinking model; reasoning streams as `.reasoning`. Tool calling and
         // guided generation are not wired for the VL path in v1.
         if profile.rules.contains(where: { $0.kind == .thinking }) {
