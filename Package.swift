@@ -14,6 +14,8 @@ let package = Package(
         .library(name: "CoreAIKitEmbeddings", targets: ["CoreAIKitEmbeddings"]),
         // SwiftUI components: model picker, chat transcript, stats bar.
         .library(name: "CoreAIKitUI", targets: ["CoreAIKitUI"]),
+        // Anchored ops (summarize/extract) over catalog models — the stable task-level API.
+        .library(name: "CoreAIOps", targets: ["CoreAIOps"]),
     ],
     dependencies: [
         // Patched community fork of apple/coreai-models — adds hybrid/SSM bundle support to
@@ -62,6 +64,10 @@ let package = Package(
         ),
         .target(
             name: "CoreAIKitUI",
+            dependencies: ["CoreAIKit"]
+        ),
+        .target(
+            name: "CoreAIOps",
             dependencies: ["CoreAIKit"]
         ),
         .testTarget(
