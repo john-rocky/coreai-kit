@@ -207,9 +207,9 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/qwen3.5-0.8B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym", sizeMB: 1300),
+                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
                     "ios": .init(
-                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_perchan_sym", sizeMB: 1300),
+                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -217,9 +217,9 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/qwen3.5-2B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym", sizeMB: 2900),
+                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym", sizeMB: 2905),
                     "ios": .init(
-                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_perchan_sym", sizeMB: 2900),
+                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym", sizeMB: 2905),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -227,9 +227,9 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/Youtu-LLM-2B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa", sizeMB: 2200),
+                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa", sizeMB: 2058),
                     "ios": .init(
-                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_msdpa", sizeMB: 2200),
+                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa", sizeMB: 2058),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -238,10 +238,10 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-                        sizeMB: 1702),
+                        sizeMB: 1623),
                     "ios": .init(
                         path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-                        sizeMB: 1702),
+                        sizeMB: 1623),
                 ],
                 engine: "pipelined"),
             CatalogEntry(
@@ -251,10 +251,10 @@ public struct ModelCatalog: Sendable, Codable {
                     // Split ship: Mac ships int8lin (136.5 tok/s), the device ships the
                     // untied-int8-head variant (+17–21% decode on iPhone).
                     "macos": .init(
-                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1706),
+                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1630),
                     "ios": .init(
                         path: "gpu-pipelined/granite_4_0_h_1b_decode_int8hu_block32_sym",
-                        sizeMB: 1872),
+                        sizeMB: 1786),
                 ],
                 engine: "pipelined"),
             CatalogEntry(
@@ -283,10 +283,10 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-                        sizeMB: 3900),
+                        sizeMB: 4387),
                     "ios": .init(
                         path: "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-                        sizeMB: 3900),
+                        sizeMB: 4387),
                 ],
                 thinking: true, engine: "pipelined"),
             // ── More official-recipe chat (stock runtime, macOS) ──
