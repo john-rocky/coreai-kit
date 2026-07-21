@@ -231,7 +231,7 @@
       "id": "gemma-3-12b-it",
       "name": "Gemma 3 12B",
       "repo": "mlboydaisuke/gemma-3-12b-it-CoreAI-official",
-      "revision": "8c12bebb3401844c83fd57c9ffdcd5a690dda595",
+      "revision": "67978d30fd7fc199cda0759b3371e4b93c3a0613",
       "kind": "chat",
       "variants": {
         "macos": {
