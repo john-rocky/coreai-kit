@@ -67,8 +67,33 @@ let session = LanguageModelSession(model: model, tools: [WeatherTool()])
 let answer = try await session.respond(to: "What's the weather in Tokyo?")
 ```
 
+`KitVisionModel` does the same for vision-language models — attach an image to the prompt:
+
+```swift
+let vlm = try await KitVisionModel(catalog: "qwen3-vl-2b")   // decoder + vision tower
+let session = LanguageModelSession(model: vlm)
+let answer = try await session.respond(to: Prompt {
+    "What is in this photo?"
+    Attachment(cgImage)
+})
+```
+
 Your `Tool` implementations, `@Generable` types, streaming snapshots, and transcripts work
-unchanged. See `Examples/FMToolDemo` and `Examples/GuidedDemo`.
+unchanged. See `Examples/FMToolDemo`, `Examples/GuidedDemo`, and `Examples/VLChat`.
+
+What each provider honestly advertises:
+
+| | `KitLanguageModel` (text) | `KitVisionModel` (VL) |
+|---|---|---|
+| Tool calling | ChatML/Hermes models — the qwen3 family (LFM's pythonic dialect is not parsed) | not in v1, by design |
+| Reasoning | thinking models stream `.reasoning` | Qwen3-VL thinks by default |
+| Guided generation | sequential engines only (`engineVariant: .sequential`) | not in v1, by design |
+| Vision | — | one image per session; every turn re-prefills the full prompt (the vision encode is reused while the image is unchanged) |
+
+Compared with Apple's stock `CoreAILanguageModel` adapter, this provider adds tool
+calling, per-turn usage events (including `Usage.Input.cachedTokenCount`), and an
+append-only KV fast path that reuses the previous turn's cache instead of re-prefilling
+the whole transcript.
 
 ## What's inside
 
@@ -78,6 +103,7 @@ unchanged. See `Examples/FMToolDemo` and `Examples/GuidedDemo`.
 | `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, image preprocessing |
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
+| `CoreAIOps` | Anchored task-level ops — `CoreAI.summarize`, `CoreAI.extract` (typed by `@Generable`) — that resolve a catalog model behind a stable API |
 
 ## Examples
 
@@ -87,6 +113,7 @@ Text & chat
 - `Examples/DiffuseChat` — diffusion LLM chat: watch LLaDA-8B denoise all tokens in parallel (Mac)
 - `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
+- `Examples/OpsDemo` — task-level ops: `CoreAI.summarize` / `CoreAI.extract`, no sessions or prompts in app code (`swift run`)
 - `Examples/InfoExtract` — schema-driven extraction / PII redaction with GLiNER2 (iPhone + Mac)
 
 Vision
