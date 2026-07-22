@@ -59,9 +59,19 @@ extension ModelID {
     public static let mistral_7B = ModelID("mlboydaisuke/mistral-7b-v0.3-CoreAI-official")
     /// Gemma 3 4B instruction-tuned. macOS only.
     public static let gemma3_4B = ModelID("mlboydaisuke/gemma-3-4b-it-CoreAI-official")
+    // Revisions of the two repos whose assets were re-uploaded in place by the 0.4.1 recovery
+    // (the 0.4.0 debug-location format the OS 27 beta 2+ compiler rejects). `ModelStore` caches
+    // under `<repo>/<revision>/<path>` and only checks for presence, so an unpinned preset
+    // ("main") that an app downloaded before the fix would keep serving the broken bundle
+    // forever. Pinning moves the cache path, which forces the fixed asset down. Bump these
+    // alongside catalog.json when the repos are re-exported.
+    private static let rfdetrRevision = "d059657852216f473516d5f437d0f9848fa95ca0"
+    private static let clipRevision = "01a6965ddfa33a11d7a4bd299077c2672c0a72cc"
+
     /// CLIP ViT-B/32 joint image+text encoder (fp16). Same bundle on both platforms.
     public static let clipViTB32 = ModelID(
-        "mlboydaisuke/clip-vit-base-patch32-CoreAI-official", path: "model")
+        "mlboydaisuke/clip-vit-base-patch32-CoreAI-official", path: "model",
+        revision: clipRevision)
     /// Depth Anything 3 (small, fp16 — 54 MB monocular depth). Same bundle on both platforms.
     public static let depthAnything3Small = ModelID(
         "mlboydaisuke/Depth-Anything-3-CoreAI", path: "small/da3-small_float16.aimodel")
@@ -78,34 +88,44 @@ extension ModelID {
         "mlboydaisuke/Qwen3-Reranker-0.6B-CoreAI", path: "")
     /// RF-DETR object detection, nano 384px (Apache-2.0, fp32, no NMS). Same bundle on both platforms.
     public static let rfdetrNano = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-nano_float32.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-nano_float32.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR object detection, small 512px (Apache-2.0, fp32, no NMS).
     public static let rfdetrSmall = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-small_float32.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-small_float32.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR object detection, medium 576px (Apache-2.0, fp32, no NMS).
     public static let rfdetrMedium = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-medium_float32.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-medium_float32.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR object detection, large 704px (Apache-2.0, fp32, no NMS).
     public static let rfdetrLarge = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-large_float32.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-large_float32.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR nano split deployment: ViT backbone (pair with `rfdetrNanoHead`).
     public static let rfdetrNanoBackbone = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-nano_backbone.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-nano_backbone.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR nano split deployment: deformable head.
     public static let rfdetrNanoHead = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-nano_head.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-nano_head.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR medium split deployment: ViT backbone (pair with `rfdetrMediumHead`).
     public static let rfdetrMediumBackbone = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-medium_backbone.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-medium_backbone.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR medium split deployment: deformable head.
     public static let rfdetrMediumHead = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-medium_head.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "split/rfdetr-medium_head.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR-Seg nano 312px instance segmentation (Apache-2.0, fp32, no NMS).
     public static let rfdetrSegNano = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-nano_float32.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-nano_float32.aimodel",
+        revision: rfdetrRevision)
     /// RF-DETR-Seg medium 432px instance segmentation (Apache-2.0, fp32, no NMS).
     public static let rfdetrSegMedium = ModelID(
-        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-medium_float32.aimodel")
+        "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-seg-medium_float32.aimodel",
+        revision: rfdetrRevision)
     /// YOLOX-S 640px single-stage anchor-free detector (Megvii, Apache-2.0, fp32). Unlike the
     /// DETR family this is a dense detector — `YOLOXDetector` does the obj·cls threshold +
     /// per-class NMS host-side. Same bundle on both platforms. (Upload pending: until the repo

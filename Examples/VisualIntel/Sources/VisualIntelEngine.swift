@@ -73,7 +73,9 @@ final class VisualIntelEngine: @unchecked Sendable {
             if let detectorTask { return detectorTask }
             // nano (384px, 103 MB) is the lightest variant — the right default for a query that
             // may run in a memory-constrained background launch. Swap to .rfdetrMedium for
-            // accuracy if the device budget allows.
+            // accuracy if the device budget allows. The preset carries a revision pin, so this
+            // resolves to the recovered (OS 27 beta 2+ loadable) asset rather than whatever an
+            // earlier install already cached under "main".
             let t = Task { try await ObjectDetector(model: .rfdetrNano, computeUnits: .gpu) }
             detectorTask = t
             return t
