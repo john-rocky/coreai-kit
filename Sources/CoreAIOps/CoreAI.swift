@@ -6,12 +6,23 @@
 // without breaking callers.
 //
 // ```swift
-// let tldr = try await CoreAI.summarize(article, style: .bullets)
-// let invoice = try await CoreAI.extract(email, as: Invoice.self)   // Invoice: @Generable
+// let text = try await CoreAI.transcribe(voiceMemoURL)               // speech -> text
+// let tldr = try await CoreAI.summarize(text, style: .bullets)
+// let todo = try await CoreAI.extract(text, as: ActionItems.self)    // @Generable-typed
+// let en   = try await CoreAI.translate(text, to: .english)
+// let neat = try await CoreAI.proofread(text)
 // ```
 //
-// v1 runs every op on the sequential engine: `extract`'s guided generation needs per-step
-// logits, and sharing one engine keeps a single copy of the weights resident for both ops.
+// Every op rides `ChatSession`: its incremental detokenizer survives the raw-byte
+// tokens long CJK output can contain, which the FM executor's current decode hold does
+// not (a long Japanese translation starves the event stream and the turn ends with no
+// response). `extract` shapes the reply with the `@Generable` type's generation schema
+// and parses it through `GeneratedContent(json:)` — measured against grammar-guided
+// decoding on the sequential engine, the schema-shaped prompt on the 4B default is the
+// configuration that held up (guided on 0.6B oscillates between merging and shredding
+// items; 4B cannot load sequentially under the engine's 5s drain watchdog). Loaded
+// models are cached per catalog id for the life of the process, and ops on the same
+// model serialize behind each other.
 
 import CoreAIKit
 import Foundation
@@ -35,58 +46,153 @@ public enum SummaryStyle: String, Sendable, CaseIterable {
     }
 }
 
+/// Target language for `CoreAI.translate`. Use the presets or name any language:
+/// `Language("Swahili")`.
+public struct Language: Sendable, Hashable {
+    /// English name of the language, as spelled in the prompt contract.
+    public let name: String
+
+    public init(_ name: String) { self.name = name }
+
+    public static let english = Language("English")
+    public static let japanese = Language("Japanese")
+    public static let chinese = Language("Simplified Chinese")
+    public static let korean = Language("Korean")
+    public static let spanish = Language("Spanish")
+    public static let french = Language("French")
+    public static let german = Language("German")
+}
+
 /// Per-call knobs for an op. The default resolves the op's default model from the catalog;
-/// `.model("qwen3-4b")` runs the same op on another catalog chat model.
+/// `.model("qwen3-4b")` runs the same op on another catalog model of the same kind.
 public struct OpOptions: Sendable {
-    /// Catalog id of the chat model to run on (nil = the op's default).
+    /// Catalog id of the model to run on (nil = the op's default).
     public var model: String?
 
     public init(model: String? = nil) { self.model = model }
 
-    /// Run the op on this catalog chat model instead of the default.
+    /// Run the op on this catalog model instead of the default.
     public static func model(_ id: String) -> OpOptions { OpOptions(model: id) }
 }
 
 /// Anchored text operations, each a thin prompt contract over a catalog model.
 public enum CoreAI {
-    /// Default model for text ops — small enough to load fast, strong enough for
-    /// summarize/extract. Overridable per call via `options: .model(...)`.
-    public static let defaultModel = "qwen3-0.6b"
+    /// Default model for the free-text ops (summarize/translate/proofread). 4B is the
+    /// quality floor at which every op holds up — 0.6B passes summarize but fails
+    /// translate outright. Drop to `options: .model("qwen3-0.6b")` when speed matters
+    /// more than fidelity.
+    public static let defaultModel = "qwen3-4b"
+
 
     /// Summarizes `text` in the given style. First use downloads and loads the model
     /// (cached afterwards); later calls reuse the loaded engine.
     public static func summarize(
         _ text: String, style: SummaryStyle = .concise, options: OpOptions = OpOptions()
     ) async throws -> String {
-        let model = try await OpModels.shared.model(catalog: options.model ?? defaultModel)
-        let session = LanguageModelSession(
-            model: model,
-            instructions: """
+        try await OpModels.shared.respondText(
+            catalog: options.model ?? defaultModel,
+            prompt: """
                 You summarize text. \(style.instruction) \
                 Do not add preambles, commentary, or questions.
+
+                Summarize the following text:
+
+                \(text)
                 """)
-        let response = try await session.respond(
-            to: "Summarize the following text:\n\n\(text)")
-        return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Extracts a typed value from `text`: the framework derives the schema from the
-    /// `@Generable` type and guided generation constrains decoding to it, so the result
-    /// parses by construction.
+    /// Extracts a typed value from `text`: the `@Generable` type's generation schema
+    /// shapes the reply, and the framework parses it back into the type — same type,
+    /// same `@Guide` descriptions as Apple's `respond(generating:)`.
     public static func extract<Value: Generable>(
         _ text: String, as type: Value.Type = Value.self, options: OpOptions = OpOptions()
     ) async throws -> Value {
-        let model = try await OpModels.shared.model(catalog: options.model ?? defaultModel)
-        let session = LanguageModelSession(
-            model: model,
-            instructions: """
-                You extract structured data from text. Fill every field from the text; \
-                use the closest supported value when a field is not stated verbatim.
+        let raw = try await OpModels.shared.respondText(
+            catalog: options.model ?? defaultModel,
+            prompt: """
+                You extract structured data from text as JSON. Reply with ONLY a JSON \
+                object matching this schema — no code fences, no commentary. Fill every \
+                field from the text; use the closest supported value when a field is \
+                not stated verbatim.
+
+                \(Value.generationSchema)
+
+                Extract the requested data from the following text:
+
+                \(text)
                 """)
-        let response = try await session.respond(
-            to: "Extract the requested data from the following text:\n\n\(text)",
-            generating: Value.self)
-        return response.content
+        let content = try GeneratedContent(json: Self.jsonSlice(of: raw))
+        if let value = try? Value(content) { return value }
+        // Models sometimes nest the object under the schema's root name — unwrap a
+        // single-key wrapper and retry before surfacing the original mismatch.
+        if case .structure(let properties, let orderedKeys) = content.kind,
+            orderedKeys.count == 1, let inner = properties[orderedKeys[0]],
+            let value = try? Value(inner)
+        {
+            return value
+        }
+        return try Value(content)
+    }
+
+    /// The first top-level JSON value in a reply — models wrap JSON in code fences or
+    /// prose no matter how firmly told not to.
+    static func jsonSlice(of text: String) -> String {
+        guard let start = text.firstIndex(where: { $0 == "{" || $0 == "[" }) else {
+            return text
+        }
+        let closer: Character = text[start] == "{" ? "}" : "]"
+        guard let end = text.lastIndex(of: closer), end > start else { return text }
+        return String(text[start...end])
+    }
+
+    /// Default speech-to-text model: multilingual and robust. Overridable per call, e.g.
+    /// `options: .model("parakeet-tdt-0.6b-v3")` for faster English-family transcription.
+    public static let defaultSpeechModel = "whisper-large-v3-turbo"
+
+    /// Transcribes an audio file to plain text. Any audio format the system decodes;
+    /// resampled to 16 kHz mono internally. `language` nil = auto-detect.
+    public static func transcribe(
+        _ audioURL: URL, language: String? = nil, options: OpOptions = OpOptions()
+    ) async throws -> String {
+        let transcriber = try await OpModels.shared.transcriber(
+            catalog: options.model ?? defaultSpeechModel)
+        let samples = try AudioFile.pcm16kMono(audioURL)
+        let transcription = try await transcriber.transcribe(
+            samples: samples, language: language)
+        return transcription.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Translates `text` into the target language, preserving meaning, tone, and formatting.
+    public static func translate(
+        _ text: String, to language: Language, options: OpOptions = OpOptions()
+    ) async throws -> String {
+        try await OpModels.shared.respondText(
+            catalog: options.model ?? defaultModel,
+            prompt: """
+                You translate text into \(language.name). Preserve meaning, tone, and \
+                formatting. Reply with only the translation — no preambles or notes.
+
+                Translate the following text into \(language.name):
+
+                \(text)
+                """)
+    }
+
+    /// Corrects grammar, spelling, and punctuation without changing meaning or language.
+    public static func proofread(
+        _ text: String, options: OpOptions = OpOptions()
+    ) async throws -> String {
+        try await OpModels.shared.respondText(
+            catalog: options.model ?? defaultModel,
+            prompt: """
+                You proofread text: fix grammar, spelling, and punctuation while keeping \
+                the meaning, language, and wording as close to the original as possible. \
+                Reply with only the corrected text.
+
+                Proofread the following text:
+
+                \(text)
+                """)
     }
 }
 
@@ -96,22 +202,68 @@ public enum CoreAI {
 actor OpModels {
     static let shared = OpModels()
 
-    private var loads: [String: Task<KitLanguageModel, Error>] = [:]
+    private var chatLoads: [String: Task<ChatSession, Error>] = [:]
+    private var chatTurns: [String: Task<Void, Never>] = [:]
+    private var transcriberLoads: [String: Task<KitTranscriber, Error>] = [:]
 
-    func model(catalog id: String) async throws -> KitLanguageModel {
-        if let load = loads[id] { return try await load.value }
-        let load = Task<KitLanguageModel, Error> {
-            let entry = try await ModelCatalog.entry(forID: id, expecting: .chat)
-            guard let modelID = entry.modelID else {
-                throw CoreAIKitError.modelNotAvailableOnPlatform(id: id)
+
+    /// One stateless free-text turn: reset the cached `ChatSession`, send the op's full
+    /// prompt (contract + input in one user message — the session's system prompt stays
+    /// empty so every op shares one loaded model), return the trimmed response. Turns on
+    /// the same model serialize behind each other so concurrent ops don't collide on the
+    /// single-generation session.
+    func respondText(catalog id: String, prompt: String) async throws -> String {
+        let chat = try await self.chat(catalog: id)
+        let previous = chatTurns[id]
+        let turn = Task { [previous] in
+            await previous?.value
+            // One retry: a thinking model occasionally spends the whole budget in the
+            // think block and yields an empty answer — a fresh sample usually lands.
+            for attempt in 0..<2 {
+                await chat.reset()
+                var text = try await chat.respond(to: prompt)
+                // A thinking model occasionally skips its opening <think> tag, so the
+                // deliberation leaks into the response ending in a bare closing tag —
+                // keep only what follows the last close.
+                if let close = text.range(of: "</think>", options: .backwards) {
+                    text = String(text[close.upperBound...])
+                }
+                text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty || attempt == 1 { return text }
             }
-            return try await KitLanguageModel(model: modelID, engineVariant: .sequential)
+            return ""
         }
-        loads[id] = load
+        chatTurns[id] = Task { _ = try? await turn.value }
+        return try await turn.value
+    }
+
+    private func chat(catalog id: String) async throws -> ChatSession {
+        if let load = chatLoads[id] { return try await load.value }
+        let load = Task<ChatSession, Error> {
+            var configuration = ChatSession.Configuration()
+            configuration.temperature = 0.7  // greedy makes qwen3 thinking models loop
+            // Thinking counts against this budget and routinely runs 1-2k tokens on a
+            // hard input; a tight cap truncates the turn before the answer starts.
+            configuration.maxResponseTokens = 4096
+            return try await ChatSession(catalog: id, configuration: configuration)
+        }
+        chatLoads[id] = load
         do {
             return try await load.value
         } catch {
-            loads[id] = nil
+            chatLoads[id] = nil
+            throw error
+        }
+    }
+
+    func transcriber(catalog id: String) async throws -> KitTranscriber {
+        if let load = transcriberLoads[id] { return try await load.value }
+        let load = Task<KitTranscriber, Error> { try await KitTranscriber(catalog: id) }
+        transcriberLoads[id] = load
+        do {
+            return try await load.value
+        } catch {
+            transcriberLoads[id] = nil
             throw error
         }
     }

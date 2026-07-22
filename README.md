@@ -103,7 +103,7 @@ the whole transcript.
 | `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, image preprocessing |
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
-| `CoreAIOps` | Anchored task-level ops — `CoreAI.summarize`, `CoreAI.extract` (typed by `@Generable`) — that resolve a catalog model behind a stable API |
+| `CoreAIOps` | Anchored task-level ops — `CoreAI.transcribe`, `.summarize`, `.extract` (typed by `@Generable`), `.translate`, `.proofread` — that resolve a catalog model behind a stable API |
 
 ## Examples
 
@@ -113,7 +113,7 @@ Text & chat
 - `Examples/DiffuseChat` — diffusion LLM chat: watch LLaDA-8B denoise all tokens in parallel (Mac)
 - `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
-- `Examples/OpsDemo` — task-level ops: `CoreAI.summarize` / `CoreAI.extract`, no sessions or prompts in app code (`swift run`)
+- `Examples/OpsDemo` — task-level ops: one voice memo → transcript, summary, typed action items, translation (`swift run`)
 - `Examples/InfoExtract` — schema-driven extraction / PII redaction with GLiNER2 (iPhone + Mac)
 
 Vision
