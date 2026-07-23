@@ -36,6 +36,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case retrieval
         /// Time-series forecasting (TimesFM 2.5): univariate series → point + quantile forecast.
         case forecasting
+        /// Music source separation (Mel-Band RoFormer): song → vocals + instrumental stems.
+        case separation
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -358,6 +360,17 @@ public struct ModelCatalog: Sendable, Codable {
                         sizeMB: 4931),
                 ],
                 engine: "pipelined"),
+            // ── Raw-Metal E2B: the same QAT weights as a hand-written mixed-bit Metal
+            //    decode loop (no .aimodel). One 2.18 GB pack shared by both platforms;
+            //    ChatSession dispatches by this id to Gemma4MetalRuntime. ──
+            CatalogEntry(
+                id: "gemma-4-e2b-metal", name: "Gemma 4 E2B raw-Metal",
+                repo: "mlboydaisuke/gemma-4-E2B-metal", kind: .chat,
+                variants: [
+                    "macos": .init(path: "gemma4_e2b_raw_metal", sizeMB: 2115),
+                    "ios": .init(path: "gemma4_e2b_raw_metal", sizeMB: 2115),
+                ],
+                engine: "raw-metal"),
             CatalogEntry(
                 id: "gemma-4-e4b", name: "Gemma 4 E4B",
                 repo: "mlboydaisuke/gemma-4-E4B-CoreAI", kind: .chat,

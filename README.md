@@ -91,9 +91,10 @@ What each provider honestly advertises:
 | Vision | — | one image per session; every turn re-prefills the full prompt (the vision encode is reused while the image is unchanged) |
 
 Compared with Apple's stock `CoreAILanguageModel` adapter, this provider adds tool
-calling, per-turn usage events (including `Usage.Input.cachedTokenCount`), and an
-append-only KV fast path that reuses the previous turn's cache instead of re-prefilling
-the whole transcript.
+calling, per-turn usage events (including `Usage.Input.cachedTokenCount`), and a KV
+fast path that rewinds to the longest shared prefix with the previous turn
+(`reset(to:)` + the engine's implicit prefix caching) instead of re-prefilling the
+whole transcript — including across a divergence, e.g. a re-rendered transcript.
 
 ## What's inside
 

@@ -1,0 +1,1500 @@
+// Gemma4 E2B mixed-bit RAW-METAL decode loop — WIDE PREFILL kernels (M=8/16).
+//
+// M=8/16 widenings of the gated M=4 verify kernels (gemma4_verify.metal): weights
+// are read ONCE for M tokens. Layouts (same convention as M=4, wider):
+//   X [M, K] half row-major (token m's element k = X[m*K + k]);  C [M, N] half.
+//
+// BIT-EXACTNESS: every output scalar's dot keeps the EXACT M=4 (== S=1) term order —
+//   per 512/256-element k-block: s = ((((0 + t_j0) + t_j1) + ... ) fp32, in j order;
+//   acc = (((0 + s_b0) + s_b1) + ...) fp32, in block order; simd_sum cross-lane
+//   reduction; identical epilogue expressions (sc mul / affine / gelu-tanh).
+// The ONLY change vs the M=4 bodies is loop staging: j is the outer loop and the
+// packed weight words are staged per row (registers hold M/4 float4 accumulators
+// instead of an M/4 * 16 float4 x-stage). Loop interchange re-orders *loads*, not
+// any output's accumulation chain — each token/row pair still receives its terms
+// in the same j-then-block order with the same expression shapes (same contraction
+// decisions under mathMode .safe). Proven by the Mac KV byte-compare + device S1
+// token gates, like every kernel before it.
+//
+// Dispatch (matvecs): threads = [32, N/2], group_size = [32, 8] — IDENTICAL to the
+// M=4 lane; M is internal to the kernel (per-thread accumulator width).
+//
+// Everything else in the wide-prefill lane (embed_gather4 / ple_gather4 /
+// qknorm_rope4 / rmsnorm_glue / flash_sdpa_verify) is grid-parameterized and simply
+// dispatched wider — no new kernels needed there.
+
+#include <metal_stdlib>
+// Same source-level safe-math contract as gemma4_matvec.metal (python fast-math vs
+// Swift .safe must agree bit-for-bit).
+#pragma METAL fp math_mode(safe)
+using namespace metal;
+
+constant uint RP   = 2;    // rows per SIMD-group (same R as the M=4 lane)
+constant uint SGYP = 8;
+constant uint GP   = 64;   // INT4 affine group size
+
+// int8 static activation quant + TRUE-INT8 dot semantics — full contract in
+// gemma4_matvec.metal. Only the INTERCHANGED (_m8/_m16) family carries the aq lane;
+// the staged (_m8s/_m16s) and LUT (_m4l/_m8l) losers keep fp16-only signatures and the
+// engine refuses to select them under actq. s <= 0 bypasses bit-identically.
+inline float fq8(float x, float s) {
+    return s > 0.0f ? s * clamp(metal::rint(x * (1.0f / s)), -128.0f, 127.0f) : x;
+}
+inline float4 qx8v(float4 x, float s) {
+    return s > 0.0f ? clamp(metal::rint(x * (1.0f / s)), -128.0f, 127.0f) : x;
+}
+
+// interleave-4 pack support (see gemma4_matvec.metal / p2b_interleave_pack.py):
+// scalar loads (R=2 straddles il groups); per-row word values unchanged.
+#ifndef IL4
+#define IL4 0
+#endif
+#define QP_WORD(QP, n, kw, w) \
+    (IL4 ? (QP)[((((n) >> 2) * (kw) + (w)) << 2) + ((n) & 3)] : (QP)[(n) * (kw) + (w)])
+
+// ---- INT2 symmetric matvec, M = 4*MV -------------------------------------------------------
+template <uint MV>
+inline void matvec_int2sym_mw(device const half* X, device const uint* QP,
+                              device const float* SC, device half* C,
+                              uint K, uint N, float aqi, float aqo, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 4;
+
+    float4 acc[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) acc[r][v] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        const uint k0 = kb + lane * 16;
+        const uint w0 = (kb >> 4) + lane;
+        uint pk[RP];
+        for (uint r = 0; r < RP; ++r) pk[r] = QP_WORD(QP, base_row + r, kw, w0);
+        float4 s4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) s4[r][v] = float4(0.0f);
+        for (uint j = 0; j < 16; ++j) {
+            const uint k = k0 + j;
+            float4 xv[MV];
+            for (uint v = 0; v < MV; ++v)
+                xv[v] = qx8v(float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                    float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k])), aqi);
+            for (uint r = 0; r < RP; ++r) {
+                uint q = (pk[r] >> (2 * j)) & 0x3;
+                float wv = float(int(q ^ 2u) - 2);
+                for (uint v = 0; v < MV; ++v) s4[r][v] += xv[v] * wv;
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] += s4[r][v];
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float sc = SC[n];
+        const float mul = aqi > 0.0f ? (aqi * sc) : sc;
+        for (uint v = 0; v < MV; ++v) {
+            const float t0 = simd_sum(acc[r][v].x);
+            const float t1 = simd_sum(acc[r][v].y);
+            const float t2 = simd_sum(acc[r][v].z);
+            const float t3 = simd_sum(acc[r][v].w);
+            if (lane == 0) {
+                C[(4 * v) * N + n] = half(fq8(t0 * mul, aqo));
+                C[(4 * v + 1) * N + n] = half(fq8(t1 * mul, aqo));
+                C[(4 * v + 2) * N + n] = half(fq8(t2 * mul, aqo));
+                C[(4 * v + 3) * N + n] = half(fq8(t3 * mul, aqo));
+            }
+        }
+    }
+}
+
+kernel void matvec_int2sym_m8(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    constant float&     aqi [[buffer(6)]],
+    constant float&     aqo [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int2sym_mw<2>(X, QP, SC, C, K, N, aqi, aqo, tid, tgid); }
+
+kernel void matvec_int2sym_m16(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    constant float&     aqi [[buffer(6)]],
+    constant float&     aqo [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int2sym_mw<4>(X, QP, SC, C, K, N, aqi, aqo, tid, tgid); }
+
+// ---- INT4 affine matvec, M = 4*MV ----------------------------------------------------------
+template <uint MV>
+inline void matvec_int4aff_mw(device const half* X, device const uint* QP,
+                              device const half* SC, device const half* BI, device half* C,
+                              uint K, uint N, float aqi, float aqo, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 3;
+    const uint ng = K / GP;
+
+    float4 acc[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) acc[r][v] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        const uint k0 = kb + lane * 8;
+        const uint w0 = (kb >> 3) + lane;
+        const uint grp = k0 / GP;
+        uint pk[RP];
+        float scr[RP], bir[RP];
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            pk[r] = QP_WORD(QP, n, kw, w0);
+            // aq lane: sc=1, bi=-8 -> bare integer code q-8 (row scale in epilogue)
+            scr[r] = 1.0f; bir[r] = -8.0f;
+            if (!(aqi > 0.0f)) {
+                scr[r] = float(SC[n * ng + grp]);
+                bir[r] = float(BI[n * ng + grp]);
+            }
+        }
+        float4 s4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) s4[r][v] = float4(0.0f);
+        for (uint j = 0; j < 8; ++j) {
+            const uint k = k0 + j;
+            float4 xv[MV];
+            for (uint v = 0; v < MV; ++v)
+                xv[v] = qx8v(float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                    float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k])), aqi);
+            for (uint r = 0; r < RP; ++r) {
+                uint q = (pk[r] >> (j * 4)) & 0xf;
+                float wv = scr[r] * float(q) + bir[r];
+                for (uint v = 0; v < MV; ++v) s4[r][v] += xv[v] * wv;
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] += s4[r][v];
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float mul = aqi > 0.0f ? (aqi * float(SC[n * ng])) : 1.0f;
+        for (uint v = 0; v < MV; ++v) {
+            const float t0 = simd_sum(acc[r][v].x);
+            const float t1 = simd_sum(acc[r][v].y);
+            const float t2 = simd_sum(acc[r][v].z);
+            const float t3 = simd_sum(acc[r][v].w);
+            if (lane == 0) {
+                C[(4 * v) * N + n] = half(fq8(t0 * mul, aqo));
+                C[(4 * v + 1) * N + n] = half(fq8(t1 * mul, aqo));
+                C[(4 * v + 2) * N + n] = half(fq8(t2 * mul, aqo));
+                C[(4 * v + 3) * N + n] = half(fq8(t3 * mul, aqo));
+            }
+        }
+    }
+}
+
+kernel void matvec_int4aff_m8(
+    device const half* X   [[buffer(0)]],
+    device const uint* QP  [[buffer(1)]],
+    device const half* SC  [[buffer(2)]],
+    device const half* BI  [[buffer(3)]],
+    device half*       C   [[buffer(4)]],
+    constant uint&     K   [[buffer(5)]],
+    constant uint&     N   [[buffer(6)]],
+    constant float&    aqi [[buffer(7)]],
+    constant float&    aqo [[buffer(8)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int4aff_mw<2>(X, QP, SC, BI, C, K, N, aqi, aqo, tid, tgid); }
+
+kernel void matvec_int4aff_m16(
+    device const half* X   [[buffer(0)]],
+    device const uint* QP  [[buffer(1)]],
+    device const half* SC  [[buffer(2)]],
+    device const half* BI  [[buffer(3)]],
+    device half*       C   [[buffer(4)]],
+    constant uint&     K   [[buffer(5)]],
+    constant uint&     N   [[buffer(6)]],
+    constant float&    aqi [[buffer(7)]],
+    constant float&    aqo [[buffer(8)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int4aff_mw<4>(X, QP, SC, BI, C, K, N, aqi, aqo, tid, tgid); }
+
+// ---- FUSED gate+up+gelu+mul, INT2, M = 4*MV -------------------------------------------------
+template <uint MV>
+inline void gateup_int2sym_mw(device const half* X,
+                              device const uint* QPG, device const float* SCG,
+                              device const uint* QPU, device const float* SCU,
+                              device half* C, uint K, uint N,
+                              float aqi, float aqg, float aqu, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 4;
+
+    float4 accg[RP][MV], accu[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) { accg[r][v] = float4(0.0f); accu[r][v] = float4(0.0f); }
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        const uint k0 = kb + lane * 16;
+        const uint w0 = (kb >> 4) + lane;
+        uint pkg[RP], pku[RP];
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            pkg[r] = QP_WORD(QPG, n, kw, w0);
+            pku[r] = QP_WORD(QPU, n, kw, w0);
+        }
+        float4 sg4[RP][MV], su4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { sg4[r][v] = float4(0.0f); su4[r][v] = float4(0.0f); }
+        for (uint j = 0; j < 16; ++j) {
+            const uint k = k0 + j;
+            float4 xv[MV];
+            for (uint v = 0; v < MV; ++v)
+                xv[v] = qx8v(float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                    float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k])), aqi);
+            for (uint r = 0; r < RP; ++r) {
+                float wg = float(int(((pkg[r] >> (2 * j)) & 0x3) ^ 2u) - 2);
+                float wu = float(int(((pku[r] >> (2 * j)) & 0x3) ^ 2u) - 2);
+                for (uint v = 0; v < MV; ++v) {
+                    sg4[r][v] += xv[v] * wg;
+                    su4[r][v] += xv[v] * wu;
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { accg[r][v] += sg4[r][v]; accu[r][v] += su4[r][v]; }
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float scg = SCG[n];
+        const float scu = SCU[n];
+        const float mulg = aqi > 0.0f ? (aqi * scg) : scg;
+        const float mulu = aqi > 0.0f ? (aqi * scu) : scu;
+        for (uint v = 0; v < MV; ++v) {
+            for (uint m = 0; m < 4; ++m) {
+                float tg = simd_sum(m == 0 ? accg[r][v].x : (m == 1 ? accg[r][v].y : (m == 2 ? accg[r][v].z : accg[r][v].w)));
+                float tu = simd_sum(m == 0 ? accu[r][v].x : (m == 1 ? accu[r][v].y : (m == 2 ? accu[r][v].z : accu[r][v].w)));
+                if (lane == 0) {
+                    float xg = fq8(tg * mulg, aqg);
+                    float gel = 0.5f * xg * (1.0f + metal::precise::tanh(
+                        0.7978845608028654f * (xg + 0.044715f * xg * xg * xg)));
+                    C[(4 * v + m) * N + n] = half(gel * fq8(tu * mulu, aqu));
+                }
+            }
+        }
+    }
+}
+
+kernel void gateup_int2sym_m8(
+    device const half*  X    [[buffer(0)]],
+    device const uint*  QPG  [[buffer(1)]],
+    device const float* SCG  [[buffer(2)]],
+    device const uint*  QPU  [[buffer(3)]],
+    device const float* SCU  [[buffer(4)]],
+    device half*        C    [[buffer(5)]],
+    constant uint&      K    [[buffer(6)]],
+    constant uint&      N    [[buffer(7)]],
+    constant float&     aqi  [[buffer(8)]],
+    constant float&     aqg  [[buffer(9)]],
+    constant float&     aqu  [[buffer(10)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int2sym_mw<2>(X, QPG, SCG, QPU, SCU, C, K, N, aqi, aqg, aqu, tid, tgid); }
+
+kernel void gateup_int2sym_m16(
+    device const half*  X    [[buffer(0)]],
+    device const uint*  QPG  [[buffer(1)]],
+    device const float* SCG  [[buffer(2)]],
+    device const uint*  QPU  [[buffer(3)]],
+    device const float* SCU  [[buffer(4)]],
+    device half*        C    [[buffer(5)]],
+    constant uint&      K    [[buffer(6)]],
+    constant uint&      N    [[buffer(7)]],
+    constant float&     aqi  [[buffer(8)]],
+    constant float&     aqg  [[buffer(9)]],
+    constant float&     aqu  [[buffer(10)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int2sym_mw<4>(X, QPG, SCG, QPU, SCU, C, K, N, aqi, aqg, aqu, tid, tgid); }
+
+// ---- FUSED gate+up+gelu+mul, INT4, M = 4*MV -------------------------------------------------
+template <uint MV>
+inline void gateup_int4aff_mw(device const half* X,
+                              device const uint* QPG, device const half* SCG, device const half* BIG,
+                              device const uint* QPU, device const half* SCU, device const half* BIU,
+                              device half* C, uint K, uint N,
+                              float aqi, float aqg, float aqu, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 3;
+    const uint ng = K / GP;
+
+    float4 accg[RP][MV], accu[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) { accg[r][v] = float4(0.0f); accu[r][v] = float4(0.0f); }
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        const uint k0 = kb + lane * 8;
+        const uint w0 = (kb >> 3) + lane;
+        const uint grp = k0 / GP;
+        uint pkg[RP], pku[RP];
+        float scgr[RP], bigr[RP], scur[RP], biur[RP];
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            pkg[r] = QP_WORD(QPG, n, kw, w0);
+            pku[r] = QP_WORD(QPU, n, kw, w0);
+            // aq lane: sc=1, bi=-8 -> bare integer codes q-8 (row scales in epilogue)
+            scgr[r] = 1.0f; bigr[r] = -8.0f; scur[r] = 1.0f; biur[r] = -8.0f;
+            if (!(aqi > 0.0f)) {
+                scgr[r] = float(SCG[n * ng + grp]); bigr[r] = float(BIG[n * ng + grp]);
+                scur[r] = float(SCU[n * ng + grp]); biur[r] = float(BIU[n * ng + grp]);
+            }
+        }
+        float4 sg4[RP][MV], su4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { sg4[r][v] = float4(0.0f); su4[r][v] = float4(0.0f); }
+        for (uint j = 0; j < 8; ++j) {
+            const uint k = k0 + j;
+            float4 xv[MV];
+            for (uint v = 0; v < MV; ++v)
+                xv[v] = qx8v(float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                    float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k])), aqi);
+            for (uint r = 0; r < RP; ++r) {
+                float wg = scgr[r] * float((pkg[r] >> (j * 4)) & 0xf) + bigr[r];
+                float wu = scur[r] * float((pku[r] >> (j * 4)) & 0xf) + biur[r];
+                for (uint v = 0; v < MV; ++v) {
+                    sg4[r][v] += xv[v] * wg;
+                    su4[r][v] += xv[v] * wu;
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { accg[r][v] += sg4[r][v]; accu[r][v] += su4[r][v]; }
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float mulg = aqi > 0.0f ? (aqi * float(SCG[n * ng])) : 1.0f;
+        const float mulu = aqi > 0.0f ? (aqi * float(SCU[n * ng])) : 1.0f;
+        for (uint v = 0; v < MV; ++v) {
+            for (uint m = 0; m < 4; ++m) {
+                float tg = simd_sum(m == 0 ? accg[r][v].x : (m == 1 ? accg[r][v].y : (m == 2 ? accg[r][v].z : accg[r][v].w)));
+                float tu = simd_sum(m == 0 ? accu[r][v].x : (m == 1 ? accu[r][v].y : (m == 2 ? accu[r][v].z : accu[r][v].w)));
+                if (lane == 0) {
+                    float xg = fq8(tg * mulg, aqg);
+                    float gel = 0.5f * xg * (1.0f + metal::precise::tanh(
+                        0.7978845608028654f * (xg + 0.044715f * xg * xg * xg)));
+                    C[(4 * v + m) * N + n] = half(gel * fq8(tu * mulu, aqu));
+                }
+            }
+        }
+    }
+}
+
+kernel void gateup_int4aff_m8(
+    device const half* X    [[buffer(0)]],
+    device const uint* QPG  [[buffer(1)]],
+    device const half* SCG  [[buffer(2)]],
+    device const half* BIG  [[buffer(3)]],
+    device const uint* QPU  [[buffer(4)]],
+    device const half* SCU  [[buffer(5)]],
+    device const half* BIU  [[buffer(6)]],
+    device half*       C    [[buffer(7)]],
+    constant uint&     K    [[buffer(8)]],
+    constant uint&     N    [[buffer(9)]],
+    constant float&    aqi  [[buffer(10)]],
+    constant float&    aqg  [[buffer(11)]],
+    constant float&    aqu  [[buffer(12)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int4aff_mw<2>(X, QPG, SCG, BIG, QPU, SCU, BIU, C, K, N, aqi, aqg, aqu, tid, tgid); }
+
+kernel void gateup_int4aff_m16(
+    device const half* X    [[buffer(0)]],
+    device const uint* QPG  [[buffer(1)]],
+    device const half* SCG  [[buffer(2)]],
+    device const half* BIG  [[buffer(3)]],
+    device const uint* QPU  [[buffer(4)]],
+    device const half* SCU  [[buffer(5)]],
+    device const half* BIU  [[buffer(6)]],
+    device half*       C    [[buffer(7)]],
+    constant uint&     K    [[buffer(8)]],
+    constant uint&     N    [[buffer(9)]],
+    constant float&    aqi  [[buffer(10)]],
+    constant float&    aqg  [[buffer(11)]],
+    constant float&    aqu  [[buffer(12)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int4aff_mw<4>(X, QPG, SCG, BIG, QPU, SCU, BIU, C, K, N, aqi, aqg, aqu, tid, tgid); }
+
+// ---- INT8 per-row symmetric matvec, M = 4*MV (mode 1 = PLE gate epilogue) --------------------
+// mode 1: C[m*N+n] = half(gelu_tanh(half(tot*sc))) * MUL[m*mstride + moff + n]
+template <uint MV>
+inline void matvec_int8_mw(device const half* X, device const char* W8,
+                           device const float* SC, device const half* MUL, device half* C,
+                           uint K, uint N, uint mode, uint moff, uint mstride,
+                           float aqi, float aqo, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+
+    if (aqi > 0.0f) {
+        // aq lane: int8 x int8 with EXACT int32 accumulate (25M > 2^24 — no fp32 FMA
+        // trick here), one dequant multiply, requant/gelu epilogue as the fp path.
+        int4 acc[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] = int4(0);
+
+        for (uint kb = 0; kb < K; kb += 256) {
+            const uint k0 = kb + lane * 8;
+            for (uint j = 0; j < 8; ++j) {
+                const uint k = k0 + j;
+                int4 xv[MV];
+                for (uint v = 0; v < MV; ++v)
+                    xv[v] = int4(qx8v(float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                             float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k])), aqi));
+                for (uint r = 0; r < RP; ++r) {
+                    int wv = int(W8[(base_row + r) * K + k0 + j]);
+                    for (uint v = 0; v < MV; ++v) acc[r][v] += xv[v] * wv;
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            const float mul = aqi * SC[n];
+            for (uint v = 0; v < MV; ++v) {
+                for (uint m = 0; m < 4; ++m) {
+                    int tot = simd_sum(m == 0 ? acc[r][v].x : (m == 1 ? acc[r][v].y : (m == 2 ? acc[r][v].z : acc[r][v].w)));
+                    if (lane == 0) {
+                        float y = float(tot) * mul;
+                        if (mode == 0) {
+                            C[(4 * v + m) * N + n] = half(fq8(y, aqo));
+                        } else {
+                            half yh = half(fq8(y, aqo));
+                            float xf = float(yh);
+                            float gel = 0.5f * xf * (1.0f + metal::precise::tanh(
+                                0.7978845608028654f * (xf + 0.044715f * xf * xf * xf)));
+                            C[(4 * v + m) * N + n] = half(gel) * MUL[(4 * v + m) * mstride + moff + n];
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    float4 acc[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) acc[r][v] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        const uint k0 = kb + lane * 8;
+        float4 s4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) s4[r][v] = float4(0.0f);
+        for (uint j = 0; j < 8; ++j) {
+            const uint k = k0 + j;
+            float4 xv[MV];
+            for (uint v = 0; v < MV; ++v)
+                xv[v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                               float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+            for (uint r = 0; r < RP; ++r) {
+                float wv = float(int(W8[(base_row + r) * K + k0 + j]));
+                for (uint v = 0; v < MV; ++v) s4[r][v] += xv[v] * wv;
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] += s4[r][v];
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float sc = SC[n];
+        for (uint v = 0; v < MV; ++v) {
+            for (uint m = 0; m < 4; ++m) {
+                float tot = simd_sum(m == 0 ? acc[r][v].x : (m == 1 ? acc[r][v].y : (m == 2 ? acc[r][v].z : acc[r][v].w)));
+                if (lane == 0) {
+                    if (mode == 0) {
+                        C[(4 * v + m) * N + n] = half(fq8(tot * sc, aqo));
+                    } else {
+                        half y = half(fq8(tot * sc, aqo));
+                        float xf = float(y);
+                        float gel = 0.5f * xf * (1.0f + metal::precise::tanh(
+                            0.7978845608028654f * (xf + 0.044715f * xf * xf * xf)));
+                        C[(4 * v + m) * N + n] = half(gel) * MUL[(4 * v + m) * mstride + moff + n];
+                    }
+                }
+            }
+        }
+    }
+}
+
+kernel void matvec_int8_m8(
+    device const half*  X    [[buffer(0)]],
+    device const char*  W8   [[buffer(1)]],
+    device const float* SC   [[buffer(2)]],
+    device const half*  MUL  [[buffer(3)]],
+    device half*        C    [[buffer(4)]],
+    constant uint&      K    [[buffer(5)]],
+    constant uint&      N    [[buffer(6)]],
+    constant uint&      mode [[buffer(7)]],
+    constant uint&      moff [[buffer(8)]],
+    constant uint&      mstride [[buffer(9)]],
+    constant float&     aqi  [[buffer(10)]],
+    constant float&     aqo  [[buffer(11)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int8_mw<2>(X, W8, SC, MUL, C, K, N, mode, moff, mstride, aqi, aqo, tid, tgid); }
+
+kernel void matvec_int8_m16(
+    device const half*  X    [[buffer(0)]],
+    device const char*  W8   [[buffer(1)]],
+    device const float* SC   [[buffer(2)]],
+    device const half*  MUL  [[buffer(3)]],
+    device half*        C    [[buffer(4)]],
+    constant uint&      K    [[buffer(5)]],
+    constant uint&      N    [[buffer(6)]],
+    constant uint&      mode [[buffer(7)]],
+    constant uint&      moff [[buffer(8)]],
+    constant uint&      mstride [[buffer(9)]],
+    constant float&     aqi  [[buffer(10)]],
+    constant float&     aqo  [[buffer(11)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int8_mw<4>(X, W8, SC, MUL, C, K, N, mode, moff, mstride, aqi, aqo, tid, tgid); }
+
+// ================= STAGED variants (_m8s/_m16s) =================
+//
+// Same per-output term order as the interchanged bodies above (and as m4/S=1);
+// the difference is X staging granularity. JC = j-positions staged per sub-chunk:
+// JC == full block (m8s) reproduces the m4 kernels' LITERAL structure (x staged
+// for the whole k-block, then r-loop, j-loop inside) at double vector width;
+// JC < block (m16s, JC=4) stages quarter blocks to cap registers while keeping
+// burst loads. s4 persists across sub-chunks, so each output still accumulates
+// its full block sum in exact j order before acc += s4 — bit-exact by the same
+// argument, proven by the same gates. Rationale: the interchanged bodies issue
+// M scalar X loads per j between FMAs, which exposes DRAM/L1 latency on A19;
+// staging restores memory-level parallelism.
+
+// ---- INT2 symmetric matvec, staged ----------------------------------------------------------
+template <uint MV, uint JC>
+inline void matvec_int2sym_mws(device const half* X, device const uint* QP,
+                               device const float* SC, device half* C,
+                               uint K, uint N, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 4;
+
+    float4 acc[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) acc[r][v] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        const uint k0 = kb + lane * 16;
+        const uint w0 = (kb >> 4) + lane;
+        uint pk[RP];
+        for (uint r = 0; r < RP; ++r) pk[r] = QP_WORD(QP, base_row + r, kw, w0);
+        float4 s4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) s4[r][v] = float4(0.0f);
+        for (uint jc = 0; jc < 16; jc += JC) {
+            float4 xs[JC][MV];
+            for (uint jj = 0; jj < JC; ++jj) {
+                const uint k = k0 + jc + jj;
+                for (uint v = 0; v < MV; ++v)
+                    xs[jj][v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                       float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+            }
+            for (uint r = 0; r < RP; ++r) {
+                for (uint jj = 0; jj < JC; ++jj) {
+                    const uint j = jc + jj;
+                    uint q = (pk[r] >> (2 * j)) & 0x3;
+                    float wv = float(int(q ^ 2u) - 2);
+                    for (uint v = 0; v < MV; ++v) s4[r][v] += xs[jj][v] * wv;
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] += s4[r][v];
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float sc = SC[n];
+        for (uint v = 0; v < MV; ++v) {
+            const float t0 = simd_sum(acc[r][v].x);
+            const float t1 = simd_sum(acc[r][v].y);
+            const float t2 = simd_sum(acc[r][v].z);
+            const float t3 = simd_sum(acc[r][v].w);
+            if (lane == 0) {
+                C[(4 * v) * N + n] = half(t0 * sc);
+                C[(4 * v + 1) * N + n] = half(t1 * sc);
+                C[(4 * v + 2) * N + n] = half(t2 * sc);
+                C[(4 * v + 3) * N + n] = half(t3 * sc);
+            }
+        }
+    }
+}
+
+kernel void matvec_int2sym_m8s(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int2sym_mws<2, 16>(X, QP, SC, C, K, N, tid, tgid); }
+
+kernel void matvec_int2sym_m16s(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int2sym_mws<4, 4>(X, QP, SC, C, K, N, tid, tgid); }
+
+// ---- INT4 affine matvec, staged --------------------------------------------------------------
+template <uint MV, uint JC>
+inline void matvec_int4aff_mws(device const half* X, device const uint* QP,
+                               device const half* SC, device const half* BI, device half* C,
+                               uint K, uint N, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 3;
+    const uint ng = K / GP;
+
+    float4 acc[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) acc[r][v] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        const uint k0 = kb + lane * 8;
+        const uint w0 = (kb >> 3) + lane;
+        const uint grp = k0 / GP;
+        uint pk[RP];
+        float scr[RP], bir[RP];
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            pk[r] = QP_WORD(QP, n, kw, w0);
+            scr[r] = float(SC[n * ng + grp]);
+            bir[r] = float(BI[n * ng + grp]);
+        }
+        float4 s4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) s4[r][v] = float4(0.0f);
+        for (uint jc = 0; jc < 8; jc += JC) {
+            float4 xs[JC][MV];
+            for (uint jj = 0; jj < JC; ++jj) {
+                const uint k = k0 + jc + jj;
+                for (uint v = 0; v < MV; ++v)
+                    xs[jj][v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                       float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+            }
+            for (uint r = 0; r < RP; ++r) {
+                for (uint jj = 0; jj < JC; ++jj) {
+                    const uint j = jc + jj;
+                    uint q = (pk[r] >> (j * 4)) & 0xf;
+                    float wv = scr[r] * float(q) + bir[r];
+                    for (uint v = 0; v < MV; ++v) s4[r][v] += xs[jj][v] * wv;
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] += s4[r][v];
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        for (uint v = 0; v < MV; ++v) {
+            const float t0 = simd_sum(acc[r][v].x);
+            const float t1 = simd_sum(acc[r][v].y);
+            const float t2 = simd_sum(acc[r][v].z);
+            const float t3 = simd_sum(acc[r][v].w);
+            if (lane == 0) {
+                C[(4 * v) * N + n] = half(t0);
+                C[(4 * v + 1) * N + n] = half(t1);
+                C[(4 * v + 2) * N + n] = half(t2);
+                C[(4 * v + 3) * N + n] = half(t3);
+            }
+        }
+    }
+}
+
+kernel void matvec_int4aff_m8s(
+    device const half* X   [[buffer(0)]],
+    device const uint* QP  [[buffer(1)]],
+    device const half* SC  [[buffer(2)]],
+    device const half* BI  [[buffer(3)]],
+    device half*       C   [[buffer(4)]],
+    constant uint&     K   [[buffer(5)]],
+    constant uint&     N   [[buffer(6)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int4aff_mws<2, 8>(X, QP, SC, BI, C, K, N, tid, tgid); }
+
+kernel void matvec_int4aff_m16s(
+    device const half* X   [[buffer(0)]],
+    device const uint* QP  [[buffer(1)]],
+    device const half* SC  [[buffer(2)]],
+    device const half* BI  [[buffer(3)]],
+    device half*       C   [[buffer(4)]],
+    constant uint&     K   [[buffer(5)]],
+    constant uint&     N   [[buffer(6)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int4aff_mws<4, 4>(X, QP, SC, BI, C, K, N, tid, tgid); }
+
+// ---- FUSED gate+up+gelu+mul, INT2, staged ----------------------------------------------------
+template <uint MV, uint JC>
+inline void gateup_int2sym_mws(device const half* X,
+                               device const uint* QPG, device const float* SCG,
+                               device const uint* QPU, device const float* SCU,
+                               device half* C, uint K, uint N, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 4;
+
+    float4 accg[RP][MV], accu[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) { accg[r][v] = float4(0.0f); accu[r][v] = float4(0.0f); }
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        const uint k0 = kb + lane * 16;
+        const uint w0 = (kb >> 4) + lane;
+        uint pkg[RP], pku[RP];
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            pkg[r] = QP_WORD(QPG, n, kw, w0);
+            pku[r] = QP_WORD(QPU, n, kw, w0);
+        }
+        float4 sg4[RP][MV], su4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { sg4[r][v] = float4(0.0f); su4[r][v] = float4(0.0f); }
+        for (uint jc = 0; jc < 16; jc += JC) {
+            float4 xs[JC][MV];
+            for (uint jj = 0; jj < JC; ++jj) {
+                const uint k = k0 + jc + jj;
+                for (uint v = 0; v < MV; ++v)
+                    xs[jj][v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                       float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+            }
+            for (uint r = 0; r < RP; ++r) {
+                for (uint jj = 0; jj < JC; ++jj) {
+                    const uint j = jc + jj;
+                    float wg = float(int(((pkg[r] >> (2 * j)) & 0x3) ^ 2u) - 2);
+                    float wu = float(int(((pku[r] >> (2 * j)) & 0x3) ^ 2u) - 2);
+                    for (uint v = 0; v < MV; ++v) {
+                        sg4[r][v] += xs[jj][v] * wg;
+                        su4[r][v] += xs[jj][v] * wu;
+                    }
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { accg[r][v] += sg4[r][v]; accu[r][v] += su4[r][v]; }
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float scg = SCG[n];
+        const float scu = SCU[n];
+        for (uint v = 0; v < MV; ++v) {
+            for (uint m = 0; m < 4; ++m) {
+                float tg = simd_sum(m == 0 ? accg[r][v].x : (m == 1 ? accg[r][v].y : (m == 2 ? accg[r][v].z : accg[r][v].w)));
+                float tu = simd_sum(m == 0 ? accu[r][v].x : (m == 1 ? accu[r][v].y : (m == 2 ? accu[r][v].z : accu[r][v].w)));
+                if (lane == 0) {
+                    float xg = tg * scg;
+                    float gel = 0.5f * xg * (1.0f + metal::precise::tanh(
+                        0.7978845608028654f * (xg + 0.044715f * xg * xg * xg)));
+                    C[(4 * v + m) * N + n] = half(gel * (tu * scu));
+                }
+            }
+        }
+    }
+}
+
+kernel void gateup_int2sym_m8s(
+    device const half*  X    [[buffer(0)]],
+    device const uint*  QPG  [[buffer(1)]],
+    device const float* SCG  [[buffer(2)]],
+    device const uint*  QPU  [[buffer(3)]],
+    device const float* SCU  [[buffer(4)]],
+    device half*        C    [[buffer(5)]],
+    constant uint&      K    [[buffer(6)]],
+    constant uint&      N    [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int2sym_mws<2, 16>(X, QPG, SCG, QPU, SCU, C, K, N, tid, tgid); }
+
+kernel void gateup_int2sym_m16s(
+    device const half*  X    [[buffer(0)]],
+    device const uint*  QPG  [[buffer(1)]],
+    device const float* SCG  [[buffer(2)]],
+    device const uint*  QPU  [[buffer(3)]],
+    device const float* SCU  [[buffer(4)]],
+    device half*        C    [[buffer(5)]],
+    constant uint&      K    [[buffer(6)]],
+    constant uint&      N    [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int2sym_mws<4, 4>(X, QPG, SCG, QPU, SCU, C, K, N, tid, tgid); }
+
+// ---- FUSED gate+up+gelu+mul, INT4, staged ----------------------------------------------------
+template <uint MV, uint JC>
+inline void gateup_int4aff_mws(device const half* X,
+                               device const uint* QPG, device const half* SCG, device const half* BIG,
+                               device const uint* QPU, device const half* SCU, device const half* BIU,
+                               device half* C, uint K, uint N, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 3;
+    const uint ng = K / GP;
+
+    float4 accg[RP][MV], accu[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) { accg[r][v] = float4(0.0f); accu[r][v] = float4(0.0f); }
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        const uint k0 = kb + lane * 8;
+        const uint w0 = (kb >> 3) + lane;
+        const uint grp = k0 / GP;
+        uint pkg[RP], pku[RP];
+        float scgr[RP], bigr[RP], scur[RP], biur[RP];
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            pkg[r] = QP_WORD(QPG, n, kw, w0);
+            pku[r] = QP_WORD(QPU, n, kw, w0);
+            scgr[r] = float(SCG[n * ng + grp]); bigr[r] = float(BIG[n * ng + grp]);
+            scur[r] = float(SCU[n * ng + grp]); biur[r] = float(BIU[n * ng + grp]);
+        }
+        float4 sg4[RP][MV], su4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { sg4[r][v] = float4(0.0f); su4[r][v] = float4(0.0f); }
+        for (uint jc = 0; jc < 8; jc += JC) {
+            float4 xs[JC][MV];
+            for (uint jj = 0; jj < JC; ++jj) {
+                const uint k = k0 + jc + jj;
+                for (uint v = 0; v < MV; ++v)
+                    xs[jj][v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                       float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+            }
+            for (uint r = 0; r < RP; ++r) {
+                for (uint jj = 0; jj < JC; ++jj) {
+                    const uint j = jc + jj;
+                    float wg = scgr[r] * float((pkg[r] >> (j * 4)) & 0xf) + bigr[r];
+                    float wu = scur[r] * float((pku[r] >> (j * 4)) & 0xf) + biur[r];
+                    for (uint v = 0; v < MV; ++v) {
+                        sg4[r][v] += xs[jj][v] * wg;
+                        su4[r][v] += xs[jj][v] * wu;
+                    }
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { accg[r][v] += sg4[r][v]; accu[r][v] += su4[r][v]; }
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        for (uint v = 0; v < MV; ++v) {
+            for (uint m = 0; m < 4; ++m) {
+                float tg = simd_sum(m == 0 ? accg[r][v].x : (m == 1 ? accg[r][v].y : (m == 2 ? accg[r][v].z : accg[r][v].w)));
+                float tu = simd_sum(m == 0 ? accu[r][v].x : (m == 1 ? accu[r][v].y : (m == 2 ? accu[r][v].z : accu[r][v].w)));
+                if (lane == 0) {
+                    float gel = 0.5f * tg * (1.0f + metal::precise::tanh(
+                        0.7978845608028654f * (tg + 0.044715f * tg * tg * tg)));
+                    C[(4 * v + m) * N + n] = half(gel * tu);
+                }
+            }
+        }
+    }
+}
+
+kernel void gateup_int4aff_m8s(
+    device const half* X    [[buffer(0)]],
+    device const uint* QPG  [[buffer(1)]],
+    device const half* SCG  [[buffer(2)]],
+    device const half* BIG  [[buffer(3)]],
+    device const uint* QPU  [[buffer(4)]],
+    device const half* SCU  [[buffer(5)]],
+    device const half* BIU  [[buffer(6)]],
+    device half*       C    [[buffer(7)]],
+    constant uint&     K    [[buffer(8)]],
+    constant uint&     N    [[buffer(9)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int4aff_mws<2, 8>(X, QPG, SCG, BIG, QPU, SCU, BIU, C, K, N, tid, tgid); }
+
+kernel void gateup_int4aff_m16s(
+    device const half* X    [[buffer(0)]],
+    device const uint* QPG  [[buffer(1)]],
+    device const half* SCG  [[buffer(2)]],
+    device const half* BIG  [[buffer(3)]],
+    device const uint* QPU  [[buffer(4)]],
+    device const half* SCU  [[buffer(5)]],
+    device const half* BIU  [[buffer(6)]],
+    device half*       C    [[buffer(7)]],
+    constant uint&     K    [[buffer(8)]],
+    constant uint&     N    [[buffer(9)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int4aff_mws<4, 4>(X, QPG, SCG, BIG, QPU, SCU, BIU, C, K, N, tid, tgid); }
+
+// ---- INT8 per-row symmetric matvec, staged (mode 1 = PLE gate epilogue) ----------------------
+template <uint MV, uint JC>
+inline void matvec_int8_mws(device const half* X, device const char* W8,
+                            device const float* SC, device const half* MUL, device half* C,
+                            uint K, uint N, uint mode, uint moff, uint mstride,
+                            uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+
+    float4 acc[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) acc[r][v] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        const uint k0 = kb + lane * 8;
+        float4 s4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) s4[r][v] = float4(0.0f);
+        for (uint jc = 0; jc < 8; jc += JC) {
+            float4 xs[JC][MV];
+            for (uint jj = 0; jj < JC; ++jj) {
+                const uint k = k0 + jc + jj;
+                for (uint v = 0; v < MV; ++v)
+                    xs[jj][v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                       float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+            }
+            for (uint r = 0; r < RP; ++r) {
+                for (uint jj = 0; jj < JC; ++jj) {
+                    float wv = float(int(W8[(base_row + r) * K + k0 + jc + jj]));
+                    for (uint v = 0; v < MV; ++v) s4[r][v] += xs[jj][v] * wv;
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] += s4[r][v];
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float sc = SC[n];
+        for (uint v = 0; v < MV; ++v) {
+            for (uint m = 0; m < 4; ++m) {
+                float tot = simd_sum(m == 0 ? acc[r][v].x : (m == 1 ? acc[r][v].y : (m == 2 ? acc[r][v].z : acc[r][v].w)));
+                if (lane == 0) {
+                    if (mode == 0) {
+                        C[(4 * v + m) * N + n] = half(tot * sc);
+                    } else {
+                        half y = half(tot * sc);
+                        float xf = float(y);
+                        float gel = 0.5f * xf * (1.0f + metal::precise::tanh(
+                            0.7978845608028654f * (xf + 0.044715f * xf * xf * xf)));
+                        C[(4 * v + m) * N + n] = half(gel) * MUL[(4 * v + m) * mstride + moff + n];
+                    }
+                }
+            }
+        }
+    }
+}
+
+kernel void matvec_int8_m8s(
+    device const half*  X    [[buffer(0)]],
+    device const char*  W8   [[buffer(1)]],
+    device const float* SC   [[buffer(2)]],
+    device const half*  MUL  [[buffer(3)]],
+    device half*        C    [[buffer(4)]],
+    constant uint&      K    [[buffer(5)]],
+    constant uint&      N    [[buffer(6)]],
+    constant uint&      mode [[buffer(7)]],
+    constant uint&      moff [[buffer(8)]],
+    constant uint&      mstride [[buffer(9)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int8_mws<2, 8>(X, W8, SC, MUL, C, K, N, mode, moff, mstride, tid, tgid); }
+
+kernel void matvec_int8_m16s(
+    device const half*  X    [[buffer(0)]],
+    device const char*  W8   [[buffer(1)]],
+    device const float* SC   [[buffer(2)]],
+    device const half*  MUL  [[buffer(3)]],
+    device half*        C    [[buffer(4)]],
+    constant uint&      K    [[buffer(5)]],
+    constant uint&      N    [[buffer(6)]],
+    constant uint&      mode [[buffer(7)]],
+    constant uint&      moff [[buffer(8)]],
+    constant uint&      mstride [[buffer(9)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int8_mws<4, 4>(X, W8, SC, MUL, C, K, N, mode, moff, mstride, tid, tgid); }
+
+// ================= byte-LUT INT2 variants (_m4l/_m8l) =================
+//
+// Wide-lane port of the S=1 constant-memory byte-LUT int2 decode (A19 ALU relief,
+// see gemma4_matvec.metal): one constant-cache half4 lookup per 4 codes replaces the
+// per-code shift/xor/sub. Products x * c with c in {-2,-1,0,1} are EXACT (half->float
+// convert exact), and the fp32 accumulation order (byte asc, code asc = j order) is
+// unchanged -> bit-exact vs the arithmetic wide kernels and vs m4/S=1. Bodies use the
+// interchanged (register-frugal) structure — A19 prefill measured ALU/register-bound,
+// so LUT + low registers is the A19 lane; Mac keeps the arithmetic interchanged m8.
+// MV=1 gives the m4-width LUT variant (the gated verify m4 kernels stay untouched).
+
+constant half4 PLUT2[256] = {
+    half4(0.0h, 0.0h, 0.0h, 0.0h),
+    half4(1.0h, 0.0h, 0.0h, 0.0h),
+    half4(-2.0h, 0.0h, 0.0h, 0.0h),
+    half4(-1.0h, 0.0h, 0.0h, 0.0h),
+    half4(0.0h, 1.0h, 0.0h, 0.0h),
+    half4(1.0h, 1.0h, 0.0h, 0.0h),
+    half4(-2.0h, 1.0h, 0.0h, 0.0h),
+    half4(-1.0h, 1.0h, 0.0h, 0.0h),
+    half4(0.0h, -2.0h, 0.0h, 0.0h),
+    half4(1.0h, -2.0h, 0.0h, 0.0h),
+    half4(-2.0h, -2.0h, 0.0h, 0.0h),
+    half4(-1.0h, -2.0h, 0.0h, 0.0h),
+    half4(0.0h, -1.0h, 0.0h, 0.0h),
+    half4(1.0h, -1.0h, 0.0h, 0.0h),
+    half4(-2.0h, -1.0h, 0.0h, 0.0h),
+    half4(-1.0h, -1.0h, 0.0h, 0.0h),
+    half4(0.0h, 0.0h, 1.0h, 0.0h),
+    half4(1.0h, 0.0h, 1.0h, 0.0h),
+    half4(-2.0h, 0.0h, 1.0h, 0.0h),
+    half4(-1.0h, 0.0h, 1.0h, 0.0h),
+    half4(0.0h, 1.0h, 1.0h, 0.0h),
+    half4(1.0h, 1.0h, 1.0h, 0.0h),
+    half4(-2.0h, 1.0h, 1.0h, 0.0h),
+    half4(-1.0h, 1.0h, 1.0h, 0.0h),
+    half4(0.0h, -2.0h, 1.0h, 0.0h),
+    half4(1.0h, -2.0h, 1.0h, 0.0h),
+    half4(-2.0h, -2.0h, 1.0h, 0.0h),
+    half4(-1.0h, -2.0h, 1.0h, 0.0h),
+    half4(0.0h, -1.0h, 1.0h, 0.0h),
+    half4(1.0h, -1.0h, 1.0h, 0.0h),
+    half4(-2.0h, -1.0h, 1.0h, 0.0h),
+    half4(-1.0h, -1.0h, 1.0h, 0.0h),
+    half4(0.0h, 0.0h, -2.0h, 0.0h),
+    half4(1.0h, 0.0h, -2.0h, 0.0h),
+    half4(-2.0h, 0.0h, -2.0h, 0.0h),
+    half4(-1.0h, 0.0h, -2.0h, 0.0h),
+    half4(0.0h, 1.0h, -2.0h, 0.0h),
+    half4(1.0h, 1.0h, -2.0h, 0.0h),
+    half4(-2.0h, 1.0h, -2.0h, 0.0h),
+    half4(-1.0h, 1.0h, -2.0h, 0.0h),
+    half4(0.0h, -2.0h, -2.0h, 0.0h),
+    half4(1.0h, -2.0h, -2.0h, 0.0h),
+    half4(-2.0h, -2.0h, -2.0h, 0.0h),
+    half4(-1.0h, -2.0h, -2.0h, 0.0h),
+    half4(0.0h, -1.0h, -2.0h, 0.0h),
+    half4(1.0h, -1.0h, -2.0h, 0.0h),
+    half4(-2.0h, -1.0h, -2.0h, 0.0h),
+    half4(-1.0h, -1.0h, -2.0h, 0.0h),
+    half4(0.0h, 0.0h, -1.0h, 0.0h),
+    half4(1.0h, 0.0h, -1.0h, 0.0h),
+    half4(-2.0h, 0.0h, -1.0h, 0.0h),
+    half4(-1.0h, 0.0h, -1.0h, 0.0h),
+    half4(0.0h, 1.0h, -1.0h, 0.0h),
+    half4(1.0h, 1.0h, -1.0h, 0.0h),
+    half4(-2.0h, 1.0h, -1.0h, 0.0h),
+    half4(-1.0h, 1.0h, -1.0h, 0.0h),
+    half4(0.0h, -2.0h, -1.0h, 0.0h),
+    half4(1.0h, -2.0h, -1.0h, 0.0h),
+    half4(-2.0h, -2.0h, -1.0h, 0.0h),
+    half4(-1.0h, -2.0h, -1.0h, 0.0h),
+    half4(0.0h, -1.0h, -1.0h, 0.0h),
+    half4(1.0h, -1.0h, -1.0h, 0.0h),
+    half4(-2.0h, -1.0h, -1.0h, 0.0h),
+    half4(-1.0h, -1.0h, -1.0h, 0.0h),
+    half4(0.0h, 0.0h, 0.0h, 1.0h),
+    half4(1.0h, 0.0h, 0.0h, 1.0h),
+    half4(-2.0h, 0.0h, 0.0h, 1.0h),
+    half4(-1.0h, 0.0h, 0.0h, 1.0h),
+    half4(0.0h, 1.0h, 0.0h, 1.0h),
+    half4(1.0h, 1.0h, 0.0h, 1.0h),
+    half4(-2.0h, 1.0h, 0.0h, 1.0h),
+    half4(-1.0h, 1.0h, 0.0h, 1.0h),
+    half4(0.0h, -2.0h, 0.0h, 1.0h),
+    half4(1.0h, -2.0h, 0.0h, 1.0h),
+    half4(-2.0h, -2.0h, 0.0h, 1.0h),
+    half4(-1.0h, -2.0h, 0.0h, 1.0h),
+    half4(0.0h, -1.0h, 0.0h, 1.0h),
+    half4(1.0h, -1.0h, 0.0h, 1.0h),
+    half4(-2.0h, -1.0h, 0.0h, 1.0h),
+    half4(-1.0h, -1.0h, 0.0h, 1.0h),
+    half4(0.0h, 0.0h, 1.0h, 1.0h),
+    half4(1.0h, 0.0h, 1.0h, 1.0h),
+    half4(-2.0h, 0.0h, 1.0h, 1.0h),
+    half4(-1.0h, 0.0h, 1.0h, 1.0h),
+    half4(0.0h, 1.0h, 1.0h, 1.0h),
+    half4(1.0h, 1.0h, 1.0h, 1.0h),
+    half4(-2.0h, 1.0h, 1.0h, 1.0h),
+    half4(-1.0h, 1.0h, 1.0h, 1.0h),
+    half4(0.0h, -2.0h, 1.0h, 1.0h),
+    half4(1.0h, -2.0h, 1.0h, 1.0h),
+    half4(-2.0h, -2.0h, 1.0h, 1.0h),
+    half4(-1.0h, -2.0h, 1.0h, 1.0h),
+    half4(0.0h, -1.0h, 1.0h, 1.0h),
+    half4(1.0h, -1.0h, 1.0h, 1.0h),
+    half4(-2.0h, -1.0h, 1.0h, 1.0h),
+    half4(-1.0h, -1.0h, 1.0h, 1.0h),
+    half4(0.0h, 0.0h, -2.0h, 1.0h),
+    half4(1.0h, 0.0h, -2.0h, 1.0h),
+    half4(-2.0h, 0.0h, -2.0h, 1.0h),
+    half4(-1.0h, 0.0h, -2.0h, 1.0h),
+    half4(0.0h, 1.0h, -2.0h, 1.0h),
+    half4(1.0h, 1.0h, -2.0h, 1.0h),
+    half4(-2.0h, 1.0h, -2.0h, 1.0h),
+    half4(-1.0h, 1.0h, -2.0h, 1.0h),
+    half4(0.0h, -2.0h, -2.0h, 1.0h),
+    half4(1.0h, -2.0h, -2.0h, 1.0h),
+    half4(-2.0h, -2.0h, -2.0h, 1.0h),
+    half4(-1.0h, -2.0h, -2.0h, 1.0h),
+    half4(0.0h, -1.0h, -2.0h, 1.0h),
+    half4(1.0h, -1.0h, -2.0h, 1.0h),
+    half4(-2.0h, -1.0h, -2.0h, 1.0h),
+    half4(-1.0h, -1.0h, -2.0h, 1.0h),
+    half4(0.0h, 0.0h, -1.0h, 1.0h),
+    half4(1.0h, 0.0h, -1.0h, 1.0h),
+    half4(-2.0h, 0.0h, -1.0h, 1.0h),
+    half4(-1.0h, 0.0h, -1.0h, 1.0h),
+    half4(0.0h, 1.0h, -1.0h, 1.0h),
+    half4(1.0h, 1.0h, -1.0h, 1.0h),
+    half4(-2.0h, 1.0h, -1.0h, 1.0h),
+    half4(-1.0h, 1.0h, -1.0h, 1.0h),
+    half4(0.0h, -2.0h, -1.0h, 1.0h),
+    half4(1.0h, -2.0h, -1.0h, 1.0h),
+    half4(-2.0h, -2.0h, -1.0h, 1.0h),
+    half4(-1.0h, -2.0h, -1.0h, 1.0h),
+    half4(0.0h, -1.0h, -1.0h, 1.0h),
+    half4(1.0h, -1.0h, -1.0h, 1.0h),
+    half4(-2.0h, -1.0h, -1.0h, 1.0h),
+    half4(-1.0h, -1.0h, -1.0h, 1.0h),
+    half4(0.0h, 0.0h, 0.0h, -2.0h),
+    half4(1.0h, 0.0h, 0.0h, -2.0h),
+    half4(-2.0h, 0.0h, 0.0h, -2.0h),
+    half4(-1.0h, 0.0h, 0.0h, -2.0h),
+    half4(0.0h, 1.0h, 0.0h, -2.0h),
+    half4(1.0h, 1.0h, 0.0h, -2.0h),
+    half4(-2.0h, 1.0h, 0.0h, -2.0h),
+    half4(-1.0h, 1.0h, 0.0h, -2.0h),
+    half4(0.0h, -2.0h, 0.0h, -2.0h),
+    half4(1.0h, -2.0h, 0.0h, -2.0h),
+    half4(-2.0h, -2.0h, 0.0h, -2.0h),
+    half4(-1.0h, -2.0h, 0.0h, -2.0h),
+    half4(0.0h, -1.0h, 0.0h, -2.0h),
+    half4(1.0h, -1.0h, 0.0h, -2.0h),
+    half4(-2.0h, -1.0h, 0.0h, -2.0h),
+    half4(-1.0h, -1.0h, 0.0h, -2.0h),
+    half4(0.0h, 0.0h, 1.0h, -2.0h),
+    half4(1.0h, 0.0h, 1.0h, -2.0h),
+    half4(-2.0h, 0.0h, 1.0h, -2.0h),
+    half4(-1.0h, 0.0h, 1.0h, -2.0h),
+    half4(0.0h, 1.0h, 1.0h, -2.0h),
+    half4(1.0h, 1.0h, 1.0h, -2.0h),
+    half4(-2.0h, 1.0h, 1.0h, -2.0h),
+    half4(-1.0h, 1.0h, 1.0h, -2.0h),
+    half4(0.0h, -2.0h, 1.0h, -2.0h),
+    half4(1.0h, -2.0h, 1.0h, -2.0h),
+    half4(-2.0h, -2.0h, 1.0h, -2.0h),
+    half4(-1.0h, -2.0h, 1.0h, -2.0h),
+    half4(0.0h, -1.0h, 1.0h, -2.0h),
+    half4(1.0h, -1.0h, 1.0h, -2.0h),
+    half4(-2.0h, -1.0h, 1.0h, -2.0h),
+    half4(-1.0h, -1.0h, 1.0h, -2.0h),
+    half4(0.0h, 0.0h, -2.0h, -2.0h),
+    half4(1.0h, 0.0h, -2.0h, -2.0h),
+    half4(-2.0h, 0.0h, -2.0h, -2.0h),
+    half4(-1.0h, 0.0h, -2.0h, -2.0h),
+    half4(0.0h, 1.0h, -2.0h, -2.0h),
+    half4(1.0h, 1.0h, -2.0h, -2.0h),
+    half4(-2.0h, 1.0h, -2.0h, -2.0h),
+    half4(-1.0h, 1.0h, -2.0h, -2.0h),
+    half4(0.0h, -2.0h, -2.0h, -2.0h),
+    half4(1.0h, -2.0h, -2.0h, -2.0h),
+    half4(-2.0h, -2.0h, -2.0h, -2.0h),
+    half4(-1.0h, -2.0h, -2.0h, -2.0h),
+    half4(0.0h, -1.0h, -2.0h, -2.0h),
+    half4(1.0h, -1.0h, -2.0h, -2.0h),
+    half4(-2.0h, -1.0h, -2.0h, -2.0h),
+    half4(-1.0h, -1.0h, -2.0h, -2.0h),
+    half4(0.0h, 0.0h, -1.0h, -2.0h),
+    half4(1.0h, 0.0h, -1.0h, -2.0h),
+    half4(-2.0h, 0.0h, -1.0h, -2.0h),
+    half4(-1.0h, 0.0h, -1.0h, -2.0h),
+    half4(0.0h, 1.0h, -1.0h, -2.0h),
+    half4(1.0h, 1.0h, -1.0h, -2.0h),
+    half4(-2.0h, 1.0h, -1.0h, -2.0h),
+    half4(-1.0h, 1.0h, -1.0h, -2.0h),
+    half4(0.0h, -2.0h, -1.0h, -2.0h),
+    half4(1.0h, -2.0h, -1.0h, -2.0h),
+    half4(-2.0h, -2.0h, -1.0h, -2.0h),
+    half4(-1.0h, -2.0h, -1.0h, -2.0h),
+    half4(0.0h, -1.0h, -1.0h, -2.0h),
+    half4(1.0h, -1.0h, -1.0h, -2.0h),
+    half4(-2.0h, -1.0h, -1.0h, -2.0h),
+    half4(-1.0h, -1.0h, -1.0h, -2.0h),
+    half4(0.0h, 0.0h, 0.0h, -1.0h),
+    half4(1.0h, 0.0h, 0.0h, -1.0h),
+    half4(-2.0h, 0.0h, 0.0h, -1.0h),
+    half4(-1.0h, 0.0h, 0.0h, -1.0h),
+    half4(0.0h, 1.0h, 0.0h, -1.0h),
+    half4(1.0h, 1.0h, 0.0h, -1.0h),
+    half4(-2.0h, 1.0h, 0.0h, -1.0h),
+    half4(-1.0h, 1.0h, 0.0h, -1.0h),
+    half4(0.0h, -2.0h, 0.0h, -1.0h),
+    half4(1.0h, -2.0h, 0.0h, -1.0h),
+    half4(-2.0h, -2.0h, 0.0h, -1.0h),
+    half4(-1.0h, -2.0h, 0.0h, -1.0h),
+    half4(0.0h, -1.0h, 0.0h, -1.0h),
+    half4(1.0h, -1.0h, 0.0h, -1.0h),
+    half4(-2.0h, -1.0h, 0.0h, -1.0h),
+    half4(-1.0h, -1.0h, 0.0h, -1.0h),
+    half4(0.0h, 0.0h, 1.0h, -1.0h),
+    half4(1.0h, 0.0h, 1.0h, -1.0h),
+    half4(-2.0h, 0.0h, 1.0h, -1.0h),
+    half4(-1.0h, 0.0h, 1.0h, -1.0h),
+    half4(0.0h, 1.0h, 1.0h, -1.0h),
+    half4(1.0h, 1.0h, 1.0h, -1.0h),
+    half4(-2.0h, 1.0h, 1.0h, -1.0h),
+    half4(-1.0h, 1.0h, 1.0h, -1.0h),
+    half4(0.0h, -2.0h, 1.0h, -1.0h),
+    half4(1.0h, -2.0h, 1.0h, -1.0h),
+    half4(-2.0h, -2.0h, 1.0h, -1.0h),
+    half4(-1.0h, -2.0h, 1.0h, -1.0h),
+    half4(0.0h, -1.0h, 1.0h, -1.0h),
+    half4(1.0h, -1.0h, 1.0h, -1.0h),
+    half4(-2.0h, -1.0h, 1.0h, -1.0h),
+    half4(-1.0h, -1.0h, 1.0h, -1.0h),
+    half4(0.0h, 0.0h, -2.0h, -1.0h),
+    half4(1.0h, 0.0h, -2.0h, -1.0h),
+    half4(-2.0h, 0.0h, -2.0h, -1.0h),
+    half4(-1.0h, 0.0h, -2.0h, -1.0h),
+    half4(0.0h, 1.0h, -2.0h, -1.0h),
+    half4(1.0h, 1.0h, -2.0h, -1.0h),
+    half4(-2.0h, 1.0h, -2.0h, -1.0h),
+    half4(-1.0h, 1.0h, -2.0h, -1.0h),
+    half4(0.0h, -2.0h, -2.0h, -1.0h),
+    half4(1.0h, -2.0h, -2.0h, -1.0h),
+    half4(-2.0h, -2.0h, -2.0h, -1.0h),
+    half4(-1.0h, -2.0h, -2.0h, -1.0h),
+    half4(0.0h, -1.0h, -2.0h, -1.0h),
+    half4(1.0h, -1.0h, -2.0h, -1.0h),
+    half4(-2.0h, -1.0h, -2.0h, -1.0h),
+    half4(-1.0h, -1.0h, -2.0h, -1.0h),
+    half4(0.0h, 0.0h, -1.0h, -1.0h),
+    half4(1.0h, 0.0h, -1.0h, -1.0h),
+    half4(-2.0h, 0.0h, -1.0h, -1.0h),
+    half4(-1.0h, 0.0h, -1.0h, -1.0h),
+    half4(0.0h, 1.0h, -1.0h, -1.0h),
+    half4(1.0h, 1.0h, -1.0h, -1.0h),
+    half4(-2.0h, 1.0h, -1.0h, -1.0h),
+    half4(-1.0h, 1.0h, -1.0h, -1.0h),
+    half4(0.0h, -2.0h, -1.0h, -1.0h),
+    half4(1.0h, -2.0h, -1.0h, -1.0h),
+    half4(-2.0h, -2.0h, -1.0h, -1.0h),
+    half4(-1.0h, -2.0h, -1.0h, -1.0h),
+    half4(0.0h, -1.0h, -1.0h, -1.0h),
+    half4(1.0h, -1.0h, -1.0h, -1.0h),
+    half4(-2.0h, -1.0h, -1.0h, -1.0h),
+    half4(-1.0h, -1.0h, -1.0h, -1.0h),
+};
+
+template <uint MV>
+inline void matvec_int2sym_mwl(device const half* X, device const uint* QP,
+                               device const float* SC, device half* C,
+                               uint K, uint N, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 4;
+
+    float4 acc[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) acc[r][v] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        const uint k0 = kb + lane * 16;
+        const uint w0 = (kb >> 4) + lane;
+        uchar4 pb[RP];
+        for (uint r = 0; r < RP; ++r)
+            pb[r] = as_type<uchar4>(QP_WORD(QP, base_row + r, kw, w0));
+        float4 s4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) s4[r][v] = float4(0.0f);
+        for (uint b = 0; b < 4; ++b) {
+            half4 pc[RP];
+            for (uint r = 0; r < RP; ++r) pc[r] = PLUT2[pb[r][b]];
+            for (uint j = 0; j < 4; ++j) {
+                const uint k = k0 + 4 * b + j;
+                float4 xv[MV];
+                for (uint v = 0; v < MV; ++v)
+                    xv[v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                   float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+                for (uint r = 0; r < RP; ++r) {
+                    float wv = float(pc[r][j]);
+                    for (uint v = 0; v < MV; ++v) s4[r][v] += xv[v] * wv;
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) acc[r][v] += s4[r][v];
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float sc = SC[n];
+        for (uint v = 0; v < MV; ++v) {
+            const float t0 = simd_sum(acc[r][v].x);
+            const float t1 = simd_sum(acc[r][v].y);
+            const float t2 = simd_sum(acc[r][v].z);
+            const float t3 = simd_sum(acc[r][v].w);
+            if (lane == 0) {
+                C[(4 * v) * N + n] = half(t0 * sc);
+                C[(4 * v + 1) * N + n] = half(t1 * sc);
+                C[(4 * v + 2) * N + n] = half(t2 * sc);
+                C[(4 * v + 3) * N + n] = half(t3 * sc);
+            }
+        }
+    }
+}
+
+kernel void matvec_int2sym_m4l(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int2sym_mwl<1>(X, QP, SC, C, K, N, tid, tgid); }
+
+kernel void matvec_int2sym_m8l(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ matvec_int2sym_mwl<2>(X, QP, SC, C, K, N, tid, tgid); }
+
+template <uint MV>
+inline void gateup_int2sym_mwl(device const half* X,
+                               device const uint* QPG, device const float* SCG,
+                               device const uint* QPU, device const float* SCU,
+                               device half* C, uint K, uint N, uint2 tid, uint2 tgid)
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGYP + sg) * RP;
+    const uint kw = K >> 4;
+
+    float4 accg[RP][MV], accu[RP][MV];
+    for (uint r = 0; r < RP; ++r)
+        for (uint v = 0; v < MV; ++v) { accg[r][v] = float4(0.0f); accu[r][v] = float4(0.0f); }
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        const uint k0 = kb + lane * 16;
+        const uint w0 = (kb >> 4) + lane;
+        uchar4 pbg[RP], pbu[RP];
+        for (uint r = 0; r < RP; ++r) {
+            const uint n = base_row + r;
+            pbg[r] = as_type<uchar4>(QP_WORD(QPG, n, kw, w0));
+            pbu[r] = as_type<uchar4>(QP_WORD(QPU, n, kw, w0));
+        }
+        float4 sg4[RP][MV], su4[RP][MV];
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { sg4[r][v] = float4(0.0f); su4[r][v] = float4(0.0f); }
+        for (uint b = 0; b < 4; ++b) {
+            half4 pcg[RP], pcu[RP];
+            for (uint r = 0; r < RP; ++r) { pcg[r] = PLUT2[pbg[r][b]]; pcu[r] = PLUT2[pbu[r][b]]; }
+            for (uint j = 0; j < 4; ++j) {
+                const uint k = k0 + 4 * b + j;
+                float4 xv[MV];
+                for (uint v = 0; v < MV; ++v)
+                    xv[v] = float4(float(X[(4 * v) * K + k]), float(X[(4 * v + 1) * K + k]),
+                                   float(X[(4 * v + 2) * K + k]), float(X[(4 * v + 3) * K + k]));
+                for (uint r = 0; r < RP; ++r) {
+                    float wg = float(pcg[r][j]);
+                    float wu = float(pcu[r][j]);
+                    for (uint v = 0; v < MV; ++v) {
+                        sg4[r][v] += xv[v] * wg;
+                        su4[r][v] += xv[v] * wu;
+                    }
+                }
+            }
+        }
+        for (uint r = 0; r < RP; ++r)
+            for (uint v = 0; v < MV; ++v) { accg[r][v] += sg4[r][v]; accu[r][v] += su4[r][v]; }
+    }
+    for (uint r = 0; r < RP; ++r) {
+        const uint n = base_row + r;
+        const float scg = SCG[n];
+        const float scu = SCU[n];
+        for (uint v = 0; v < MV; ++v) {
+            for (uint m = 0; m < 4; ++m) {
+                float tg = simd_sum(m == 0 ? accg[r][v].x : (m == 1 ? accg[r][v].y : (m == 2 ? accg[r][v].z : accg[r][v].w)));
+                float tu = simd_sum(m == 0 ? accu[r][v].x : (m == 1 ? accu[r][v].y : (m == 2 ? accu[r][v].z : accu[r][v].w)));
+                if (lane == 0) {
+                    float xg = tg * scg;
+                    float gel = 0.5f * xg * (1.0f + metal::precise::tanh(
+                        0.7978845608028654f * (xg + 0.044715f * xg * xg * xg)));
+                    C[(4 * v + m) * N + n] = half(gel * (tu * scu));
+                }
+            }
+        }
+    }
+}
+
+kernel void gateup_int2sym_m4l(
+    device const half*  X    [[buffer(0)]],
+    device const uint*  QPG  [[buffer(1)]],
+    device const float* SCG  [[buffer(2)]],
+    device const uint*  QPU  [[buffer(3)]],
+    device const float* SCU  [[buffer(4)]],
+    device half*        C    [[buffer(5)]],
+    constant uint&      K    [[buffer(6)]],
+    constant uint&      N    [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int2sym_mwl<1>(X, QPG, SCG, QPU, SCU, C, K, N, tid, tgid); }
+
+kernel void gateup_int2sym_m8l(
+    device const half*  X    [[buffer(0)]],
+    device const uint*  QPG  [[buffer(1)]],
+    device const float* SCG  [[buffer(2)]],
+    device const uint*  QPU  [[buffer(3)]],
+    device const float* SCU  [[buffer(4)]],
+    device half*        C    [[buffer(5)]],
+    constant uint&      K    [[buffer(6)]],
+    constant uint&      N    [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{ gateup_int2sym_mwl<2>(X, QPG, SCG, QPU, SCU, C, K, N, tid, tgid); }

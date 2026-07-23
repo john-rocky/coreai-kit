@@ -71,6 +71,20 @@ struct ModelRuntime: Sendable {
         self.gemma = runtime
     }
 
+    /// Wraps the raw-Metal Gemma 4 E2B runtime (no .aimodel — hand-written kernels over
+    /// the mmap'd mixed-bit pack). Greedy on-GPU argmax ⇒ no logits; prompt rendering is
+    /// the same explicit Gemma 4 turn format as the stock Gemma bundles.
+    init(rawMetal runtime: Gemma4MetalRuntime, loadSeconds: Double) {
+        self.engine = runtime.engine
+        self.tokenizer = runtime.tokenizer
+        self.modelName = runtime.modelName
+        self.vocabSize = runtime.vocabSize
+        self.loadSeconds = loadSeconds
+        self.outputProfile = GemmaArchitecture.gemma4.outputProfile
+        self.promptRenderer = .gemma(.gemma4)
+        self.gemma = nil
+    }
+
     /// Loads a bundle directory (metadata.json + *.aimodel/ + tokenizer/), creating the
     /// engine and tokenizer concurrently — the same path as Apple's CoreAIRunner.
     init(bundleAt url: URL, engineVariant: EngineVariant = .auto) async throws {

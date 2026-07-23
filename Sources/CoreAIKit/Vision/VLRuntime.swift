@@ -217,7 +217,7 @@ public final class VLRuntime: @unchecked Sendable {
     /// (the text-only path, so it does not depend on an attached image).
     func warmup() async throws {
         let seed = tokenizer.encode(text: "Hi").first.map(Int32.init) ?? 1
-        let stream = try engine.generate(
+        let stream = try await engine.generate(
             with: [seed], samplingConfiguration: .greedy,
             inferenceOptions: InferenceOptions(maxTokens: 1))
         for try await _ in stream {}

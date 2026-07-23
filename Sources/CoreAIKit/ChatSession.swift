@@ -15,7 +15,9 @@ import Tokenizers
 /// ```
 ///
 /// The session owns the conversation history and re-renders it through the bundle's chat
-/// template every turn (full-history prefill — the proven official-runtime path). Assistant
+/// template every turn; the engine keeps its KV cache across turns and only the tokens
+/// beyond the longest shared prefix are prefilled (`reset(to:)` + implicit prefix caching —
+/// engines that can't rewind fall back to a full re-prefill, losslessly). Assistant
 /// turns feed back only the final answer; thinking output is surfaced as `.thinking` events
 /// and on `Message.thinking` but never re-prompted. One generation at a time per session.
 public actor ChatSession {
@@ -87,6 +89,18 @@ public actor ChatSession {
         // static table inputs the stock load path leaves unbound — resolve both subtrees
         // and load through GemmaRuntime instead (the same id→driving-class dispatch as
         // KitSpeaker's kokoro). The catalog entry above still gates platform availability.
+        // The raw-Metal Gemma 4 E2B pack (no .aimodel at all): mmap'd mixed-bit weights +
+        // kernels compiled at load, dispatched by id like the Gemma pair below.
+        if entry.id == Gemma4MetalRuntime.catalogID {
+            let packURL = try await store.download(model, progress: downloadProgress)
+            let start = SuspendingClock.now
+            let runtime = try await Gemma4MetalRuntime(packAt: packURL)
+            self.init(
+                runtime: ModelRuntime(
+                    rawMetal: runtime, loadSeconds: ProcessStats.seconds(from: start, to: .now)),
+                configuration: configuration)
+            return
+        }
         if let gemma = GemmaModelID.byCatalogID[entry.id]?.pinned(entry.revision) {
             let decoderURL = try await store.download(gemma.decoder, progress: downloadProgress)
             let tablesURL = try await store.download(gemma.tables, progress: downloadProgress)
@@ -229,15 +243,57 @@ public actor ChatSession {
     /// Compiles the sampler graph and touches the weights (one 1-token generate +
     /// reset), so the first real turn doesn't pay the warm-up. Optional but recommended
     /// right after init, while the UI still shows a loading state.
-    public func prewarm() async throws {
+    ///
+    /// `prefillLength` additionally warms that prefill shape: the first REAL turn whose
+    /// prefill length exceeds every earlier one pays a one-time engine cost at that
+    /// length (shape specialization + logits growth); warming a length ≥ your typical
+    /// prompts moves that cost into the load phase, and covers every shorter prefill.
+    /// Dynamic-shape (GPU) engines only — static-shape (ANE) engines skip it (their
+    /// chunk shapes are AOT-compiled, and an aborted synthetic compile can poison the
+    /// on-device cache), and it is wasted per-token work on S=1 zoo ports (catalog
+    /// hint "pipelined"), so leave it nil there too.
+    public func prewarm(prefillLength: Int? = nil) async throws {
         guard !isGenerating else { return }
         let seed = runtime.tokenizer.encode(text: "Hi").first.map(Int32.init) ?? 1
-        let stream = try runtime.engine.generate(
+        let stream = try await runtime.engine.generate(
             with: [seed],
             samplingConfiguration: .greedy,
             inferenceOptions: InferenceOptions(maxTokens: 1))
         for try await _ in stream {}
         try await runtime.engine.reset()
+        if let prefillLength, prefillLength > 1 {
+            // Static-shape (ANE) engines run fixed AOT-compiled chunk shapes — a
+            // synthetic warm prompt can trigger a device compile that, if it aborts,
+            // POISONS the on-device compile cache (observed: every later load of the
+            // bundle fails with nilError until the model is re-downloaded). Skip; the
+            // warm targets dynamic-shape engines' per-length specialization.
+            if runtime.engine is StaticShapeEngine {
+                kitFMDebug("prewarm(prefillLength:) skipped on the static-shape engine")
+                return
+            }
+            // Best-effort: a warm failure must never fail the session (some engines
+            // reject synthetic prefill shapes) — the first long real turn just pays
+            // the specialization cost instead. Reset either way: a half-warmed engine
+            // must not keep the dummy tokens in its history.
+            do {
+                // Real text, not a repeated sentinel — encode enough and trim to length.
+                var warm: [Int32] = []
+                while warm.count < prefillLength {
+                    warm += runtime.tokenizer
+                        .encode(text: "The quick brown fox jumps over the lazy dog. ")
+                        .map(Int32.init)
+                }
+                warm = Array(warm.prefix(prefillLength))
+                let stream = try await runtime.engine.generate(
+                    with: warm,
+                    samplingConfiguration: .greedy,
+                    inferenceOptions: InferenceOptions(maxTokens: 1))
+                for try await _ in stream {}
+            } catch {
+                kitFMDebug("prewarm(prefillLength: \(prefillLength)) skipped: \(error)")
+            }
+            try await runtime.engine.reset()
+        }
     }
 
     /// Stops the running generation; the stream completes with the partial message.
@@ -251,6 +307,7 @@ public actor ChatSession {
         history = []
         kvTokens = []
         stats.promptTokens = 0
+        stats.cachedPromptTokens = 0
         stats.ttftSeconds = nil
         stats.generatedTokens = 0
         stats.tokensPerSecond = nil
@@ -278,6 +335,7 @@ public actor ChatSession {
         rendered += history.map { ["role": $0.role.rawValue, "content": $0.content] }
 
         stats.ttftSeconds = nil
+        stats.cachedPromptTokens = 0
         stats.generatedTokens = 0
         stats.tokensPerSecond = nil
 
@@ -295,22 +353,27 @@ public actor ChatSession {
             }
             stats.promptTokens = full.count
 
-            // PREFIX REUSE: keep the KV for the longest common prefix with the tokens already
-            // cached and prefill only the divergent tail, instead of re-processing the whole
-            // conversation. `trimKVCache` returns <0 on engines that can't rewind (recurrent/SSM)
-            // or the constrained path below → fall back to reset() + full re-prefill. Lossless.
+            // PREFIX REUSE: rewind the engine to the longest common prefix with the tokens
+            // already cached, then feed the FULL rendered sequence — the engine's implicit
+            // prefix caching prefills only what lies beyond its recorded history.
+            // reset(to:) on the known-good prefix turns a divergence (thinking models drop
+            // the previous turn's <think> block from the re-render) into a pure extension
+            // instead of the engine's divergence full-reset; engines that can't rewind
+            // mid-sequence (recurrent/SSM hybrids) degrade to a full reset internally.
+            // Constrained turns reset fully, as before. Lossless either way.
             let want = schema == nil
                 ? min(Self.commonPrefixLength(full, kvTokens), max(0, full.count - 1))
                 : 0
-            var reused = 0
-            if want > 0 {
-                let r = await runtime.engine.trimKVCache(to: want)
-                if r >= 0 { reused = r } else { try await runtime.engine.reset() }
-            } else {
-                try await runtime.engine.reset()
-            }
-            let feed = runtime.engine.prefixReuseFeedsFullSequence ? full : Array(full[reused...])
-            let promptTokens = feed.map(Int.init)
+            let resetTarget = min(want, runtime.engine.processedTokenCount)
+            let resetStart = SuspendingClock.now
+            try await runtime.engine.reset(to: resetTarget)
+            kitFMDebug(
+                "reset(to: \(resetTarget)) took "
+                    + String(
+                        format: "%.3fs", ProcessStats.seconds(from: resetStart, to: .now))
+                    + " (mirror \(kvTokens.count), prompt \(full.count), "
+                    + "engine had \(runtime.engine.processedTokenCount))")
+            let promptTokens = full.map(Int.init)
             kvTokens = full   // committed generation is appended as it streams below
 
             let sampling =
@@ -319,7 +382,7 @@ public actor ChatSession {
             // Constrained turns swap the decode loop: per-step logits are masked
             // through the schema's grammar before sampling, so output is valid JSON
             // by construction. Both loops share the same streaming result shape.
-            let stream: AsyncThrowingStream<GenerationResult, Error>
+            let stream: any AsyncSequence<GenerationResult, any Error>
             if let schema {
                 stream = ConstrainedLoop.stream(
                     jsonSchema: schema,
@@ -330,7 +393,7 @@ public actor ChatSession {
                     sampling: sampling,
                     maxTokens: configuration.maxResponseTokens)
             } else {
-                stream = DecodingStrategyFactory.create(type: .vanilla).decode(
+                stream = try await DecodingStrategyFactory.create(type: .vanilla).decode(
                     from: .tokens(promptTokens),
                     tokenizer: runtime.tokenizer,
                     inferenceEngine: runtime.engine,
@@ -413,6 +476,9 @@ public actor ChatSession {
                     let now = SuspendingClock.now
                     if stats.ttftSeconds == nil {
                         stats.ttftSeconds = ProcessStats.seconds(from: requestStart, to: now)
+                        // The engine resolved its prefix hit before yielding the first
+                        // token — safe to read here, racy any earlier.
+                        stats.cachedPromptTokens = runtime.engine.lastPrefixHitCount
                     }
                     kvTokens.append(chunk.tokenId)   // track committed generation into the KV mirror
                     stats.generatedTokens += 1

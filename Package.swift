@@ -24,7 +24,13 @@ let package = Package(
         // v0.1.1-zoo adds the D1 engine fix: a consumer that breaks the stream at EOS now stops the
         // pipelined engine (instead of running to maxTokens), so a SECOND consecutive generation no
         // longer collides with the still-running first one ("something went wrong" on turn 2).
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.1.2-zoo"),
+        // v0.2.0-zoo: upstream 0.2.0 (implicit prefix caching / reset(to:) / async
+        // generate / cancel API / pipeline buffer-rotation fix) merged with the zoo
+        // patches (hybrid extra states, chunked prefill via "prefill" fn,
+        // per-token/static inputs, D1 EOS stop), plus the sampler/stream ordering fix
+        // (bogus first token per turn). For local engine work, swap in
+        // .package(path: "../coreai/coreai-models") — branch zoo-0.2 matches this tag.
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.0-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [
@@ -47,6 +53,9 @@ let package = Package(
             resources: [
                 .copy("Audio/Resources/mel_filters.f32"),
                 .copy("Audio/Resources/parakeet_mel_filters_128x257.f32"),
+                // Raw-Metal Gemma 4 kernels + oracle refs (compiled at load by
+                // Gemma4MetalEngine — .txt so nothing tries to precompile them).
+                .copy("Gemma4Metal/g4msl"),
             ]
         ),
         .target(

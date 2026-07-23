@@ -1,12 +1,13 @@
 // KitGemmaExecutor.swift — executor for `KitGemmaModel`: renders the transcript in Gemma 4's
-// turn format, resets the engine, then streams generation. Streaming/detok mirrors
-// `KitExecutor` (UTF-8-safe incremental decode feeding the shared tag parser).
+// turn format and streams generation. Streaming/detok mirrors `KitExecutor` (UTF-8-safe
+// incremental decode feeding the shared tag parser).
 //
-// v1 re-prefills the whole prompt every turn (no append-only KV fast path): correctness first,
-// matching the device-verified Gemma backend, which resets before each generation. The two
-// constant PLE table buffers are bound for the engine's lifetime, so a turn is just
-// reset → feed prompt → stream. The turn ends on `<turn|>` (Gemma's end-of-turn) or the
-// tokenizer's `<eos>`. KV reuse is a follow-up.
+// KV reuse rides the engine's implicit prefix caching: the whole rendered prompt is fed
+// every turn WITHOUT a reset, and the engine prefills only the tokens beyond its recorded
+// history (append-only turns reuse the previous turn's KV; a diverged render full-resets
+// inside the engine — the cost of the old per-turn reset, no worse). The two constant PLE
+// table buffers are bound for the engine's lifetime. The turn ends on `<turn|>` (Gemma's
+// end-of-turn) or the tokenizer's `<eos>`.
 
 import CoreAILanguageModels
 import Foundation
@@ -73,9 +74,11 @@ public struct KitGemmaExecutor: LanguageModelExecutor {
         let rendered = try GemmaPromptRenderer.render(
             transcript: request.transcript, tokenizer: runtime.tokenizer, arch: runtime.arch)
 
-        // 2) Full re-prefill: reset, then feed the whole prompt (pipelined engine, no logits).
+        // 2) Feed the whole rendered prompt with NO reset — the engine's implicit prefix
+        //    caching prefills only the suffix beyond its history (and full-resets itself
+        //    on divergence). generate() also serializes against a still-draining
+        //    previous turn, so no settle bookkeeping is needed here.
         let engine = runtime.engine
-        try await engine.reset()
 
         let maxTokens = request.generationOptions.maximumResponseTokens ?? 512
         let sampling =
@@ -110,7 +113,7 @@ public struct KitGemmaExecutor: LanguageModelExecutor {
         }
 
         do {
-            let stream = try engine.generate(
+            let stream = try await engine.generate(
                 with: rendered.tokens,
                 samplingConfiguration: sampling,
                 inferenceOptions: InferenceOptions(maxTokens: maxTokens))
@@ -148,7 +151,9 @@ public struct KitGemmaExecutor: LanguageModelExecutor {
             "requestID": request.id.uuidString,
         ]
         let usageInput = LanguageModelExecutorGenerationChannel.Usage.Input(
-            totalTokenCount: rendered.tokens.count, cachedTokenCount: 0)
+            totalTokenCount: rendered.tokens.count,
+            // The engine resolved its prefix hit at generate() entry — stable by now.
+            cachedTokenCount: engine.lastPrefixHitCount)
         let usageOutput = LanguageModelExecutorGenerationChannel.Usage.Output(
             totalTokenCount: generatedCount, reasoningTokenCount: reasoningEventCount)
         if sentResponseText || reasoningEventCount == 0 {

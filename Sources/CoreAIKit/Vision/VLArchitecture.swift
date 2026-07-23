@@ -23,6 +23,22 @@ public struct VLArchitecture: Sendable, Hashable {
         case pixels
     }
 
+    /// Pixel normalization applied before patchifying.
+    public enum Normalization: Sendable, Hashable {
+        /// `x/127.5 − 1` → [−1, 1] (Qwen3-VL / MiniCPM-V).
+        case symmetric
+        /// `(x/255 − mean)/std` with CLIP mean/std (Qwen2-VL / MinerU).
+        case clip
+    }
+
+    /// How the source image is fit into the fixed export canvas.
+    public enum Resize: Sendable, Hashable {
+        /// Stretch to fill the canvas, ignoring aspect (Qwen3-VL square grid).
+        case stretch
+        /// Letterbox: preserve aspect, pad the remainder white (document OCR).
+        case aspectFitPad
+    }
+
     /// Text vocabulary size. Image tokens are encoded as extension ids `vocab + slot`, which
     /// the decoder graph gathers from `image_embeds` by `id - vocab`.
     public let vocab: Int32
@@ -39,12 +55,20 @@ public struct VLArchitecture: Sendable, Hashable {
     public let patchDim: Int
     /// `deepstack_embeds` carries this many rows per merged token (3 deepstack layers).
     public let deepstackPerToken: Int
-    /// Square side the image is resized to before patchifying (448).
+    /// Square side the image is resized to before patchifying (448). For a non-square export
+    /// this is the height; see `imageWidth`.
     public let imageSide: Int
+    /// Canvas width the image is fit into before patchifying. Defaults to `imageSide` (square);
+    /// a non-square grid (Qwen2-VL / MinerU) sets it independently. `imageSide` is the height.
+    public let imageWidth: Int
     /// ViT patch side in pixels (16).
     public let patchSize: Int
     /// Temporal patch size; a still frame is duplicated this many times (2).
     public let temporalPatchSize: Int
+    /// Pixel normalization before patchify (`.symmetric` Qwen3-VL / `.clip` Qwen2-VL·MinerU).
+    public let normalization: Normalization
+    /// How the source image is fit into the canvas (`.stretch` / `.aspectFitPad`).
+    public let resize: Resize
 
     // Special tokens (ChatML + optional vision framing). Strings, not ids: the bundle
     // tokenizer maps them, and `imagePad` must be a single token for the splice to work.
@@ -67,6 +91,8 @@ public struct VLArchitecture: Sendable, Hashable {
     public init(
         vocab: Int32, mergedTokens: Int, grid: Int, hidden: Int, patches: Int, patchDim: Int,
         deepstackPerToken: Int, imageSide: Int, patchSize: Int, temporalPatchSize: Int,
+        imageWidth: Int? = nil, normalization: Normalization = .symmetric,
+        resize: Resize = .stretch,
         imStart: String = "<|im_start|>", imEnd: String = "<|im_end|>",
         visionStart: String = "<|vision_start|>", visionEnd: String = "<|vision_end|>",
         imagePad: String = "<|image_pad|>",
@@ -81,8 +107,11 @@ public struct VLArchitecture: Sendable, Hashable {
         self.patchDim = patchDim
         self.deepstackPerToken = deepstackPerToken
         self.imageSide = imageSide
+        self.imageWidth = imageWidth ?? imageSide
         self.patchSize = patchSize
         self.temporalPatchSize = temporalPatchSize
+        self.normalization = normalization
+        self.resize = resize
         self.imStart = imStart
         self.imEnd = imEnd
         self.visionStart = visionStart
@@ -93,11 +122,14 @@ public struct VLArchitecture: Sendable, Hashable {
         self.ropeShifted = ropeShifted
     }
 
+    /// Canvas height (== `imageSide`).
+    public var imageHeight: Int { imageSide }
     /// `image_embeds` element count (`mergedTokens · hidden`).
     public var imageEmbedCount: Int { mergedTokens * hidden }
     /// `deepstack_embeds` element count (`deepstackPerToken · mergedTokens · hidden`).
     public var deepstackEmbedCount: Int { deepstackPerToken * mergedTokens * hidden }
-    /// The rope-shift amount for an attached image (`mergedTokens - grid`).
+    /// The rope-shift amount for an attached image (`mergedTokens - grid`; for a non-square
+    /// grid `grid` is set to `max(gridTall, gridWide)`, matching the decoder's baked geometry).
     public var ropeShiftAmount: Int32 { Int32(mergedTokens - grid) }
 
     /// The Qwen3-VL 448px grid shared by every published size. `hidden` selects the variant.
@@ -127,4 +159,45 @@ public struct VLArchitecture: Sendable, Hashable {
         visionStart: "", visionEnd: "\n",
         visionInput: .pixels, visionOutput: "image_features",
         ropeShifted: false)
+
+    /// MinerU2.5-Pro (stock Qwen2-VL): a Qwen2-VL ViT (`.patches`, no deepstack) + Qwen2-0.5B
+    /// decoder on the rope-shift rider. Fixed **portrait non-square** grid 32×24 merged (768
+    /// tokens) at a 672×896 canvas — the document is letterboxed (aspect-fit + white pad) and
+    /// CLIP-normalized (not `x/127.5−1`). `grid = max(32,24) = 32` gives the rope-shift amount
+    /// `768 − 32 = 736`, matching the decoder's baked `grid_w = 24`. patchDim = 3·2·14·14 = 1176,
+    /// patches = 64·48 = 3072. Prompt with `"Text Recognition:"` (whole-page single pass). The
+    /// S=1 prefill of 768 image tokens is sped up on-device by the `pf64` multifunction bundle
+    /// (static S=64 chunked prefill + S=1 decode), not by cutting tokens.
+    public static let mineru = VLArchitecture(
+        vocab: 151_936, mergedTokens: 768, grid: 32, hidden: 896,
+        patches: 3072, patchDim: 1176, deepstackPerToken: 0,
+        imageSide: 896, patchSize: 14, temporalPatchSize: 2,
+        imageWidth: 672, normalization: .clip, resize: .aspectFitPad,
+        visionInput: .patches, visionOutput: "image_embeds", ropeShifted: true)
+
+    /// MinerU2.5 **layout** grid: a 1036×1036 **square** (37×37 merged = 1369 tokens) with the page
+    /// **stretched** to fill it (matches the reference `layout_image_size`) — the resolution the
+    /// `Layout Detection:` head needs (a 768 portrait grid mis-detects). Boxes come back 0–1 of the
+    /// stretched square, so they map linearly onto the original page (no letterbox inverse). Paired
+    /// with `.mineru` (768) for per-region recognition in the 2-stage `KitMineruReader.readStructured`.
+    public static let mineruLayout = VLArchitecture(
+        vocab: 151_936, mergedTokens: 1369, grid: 37, hidden: 896,
+        patches: 5476, patchDim: 1176, deepstackPerToken: 0,
+        imageSide: 1036, patchSize: 14, temporalPatchSize: 2,
+        imageWidth: 1036, normalization: .clip, resize: .stretch,
+        visionInput: .patches, visionOutput: "image_embeds", ropeShifted: true)
+
+    /// GLM-OCR (zai-org, GLM-4.V small, MIT): a CogViT tower (patch 14, spatial-merge 2, out 1536) +
+    /// a GLM text decoder (hidden 1536, vocab 59 392, sectioned M-RoPE) on the same rope-shift rider.
+    /// Fixed **portrait** grid 32×24 merged (768 tokens) at a 672×896 canvas — letterbox (aspect-fit +
+    /// white pad) + CLIP-normalize, same vision geometry as `.mineru`. The image block is framed with
+    /// GLM's `<|begin_of_image|>`/`<|end_of_image|>` (pad `<|image|>`); the surrounding ChatML differs
+    /// (`[gMASK]<sop><|user|>…<|assistant|>`), so `KitGlmOcrReader` builds the prompt itself.
+    public static let glmOcr = VLArchitecture(
+        vocab: 59_392, mergedTokens: 768, grid: 32, hidden: 1536,
+        patches: 3072, patchDim: 1176, deepstackPerToken: 0,
+        imageSide: 896, patchSize: 14, temporalPatchSize: 2,
+        imageWidth: 672, normalization: .clip, resize: .aspectFitPad,
+        visionStart: "<|begin_of_image|>", visionEnd: "<|end_of_image|>", imagePad: "<|image|>",
+        visionInput: .patches, visionOutput: "image_embeds", ropeShifted: true)
 }

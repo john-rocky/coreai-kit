@@ -75,7 +75,7 @@ public struct KitASRExecutor: LanguageModelExecutor {
         var generatedCount = 0
 
         do {
-            let stream = try engine.generate(
+            let stream = try await engine.generate(
                 with: prompt, samplingConfiguration: .greedy,
                 inferenceOptions: InferenceOptions(maxTokens: maxTokens))
             for try await output in stream {

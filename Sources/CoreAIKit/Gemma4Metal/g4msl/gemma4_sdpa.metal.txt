@@ -1,0 +1,359 @@
+// Gemma4 E2B mixed-bit RAW-METAL decode loop — flash-decode SDPA (P0).
+//
+// Plain MSL (no Core AI DSL): this file is the single source of truth, compiled
+// by BOTH the python parity harness (torch.mps.compile_shader) and the Swift
+// raw runner (MTLLibrary). Math = gemma4_dense_metal_sdpa.py's proven flash
+// decode (one SIMD-group per query head, fp32 online softmax, scale 1.0, no
+// threadgroup memory), generalized to a windowed key range [j0, j0+n).
+//
+//   sliding layer:  j0 = max(0, pos-511), n = pos+1-j0   (window 512, hd 256)
+//   full layer:     j0 = 0,               n = pos+1      (global,     hd 512)
+//
+// Layouts (row-major, contiguous):
+//   Q   [H, hd]    half — post q_norm + RoPE            (H = 8 query heads)
+//   K   [Smax, hd] half — linear cache rows = positions, post k_norm + RoPE
+//   V   [Smax, hd] half — post v_norm (scale-free RMSNorm)
+//   CTX [H, hd]    half — context, head-major (caller reshapes -> o_proj)
+//
+// Single KV head (E2B num_key_value_heads = 1): every query head reads the same
+// K/V rows — no GQA slot arithmetic. Dispatch: threads = [32, H],
+// group_size = [32, H] (each grid row y = one SIMD-group = one query head).
+// ept = hd/32 dims per lane; register arrays sized to hd 512 -> 16.
+//
+// exp is metal::precise::exp EVERYWHERE (matching the file's precise:: rsqrt/cos/sin
+// convention): bare exp() lowers differently under torch.mps.compile_shader (fast
+// math) vs the Swift runner's MTLLibrary (.safe) — measured 1-ulp ctx forks on ~0.05%
+// of lanes (2026-07-18 triage, L9/pos2). Token gates never saw it (argmax margins
+// absorbed 1 ulp); the int8-activation grid makes near-ties common enough to fork.
+
+#include <metal_stdlib>
+// Force safe fp math AT SOURCE LEVEL: torch.mps.compile_shader (python harness) and
+// MTLLibrary+.safe (Swift runner) must produce bit-identical code. The fp16 path was
+// empirically bit-equal under both compilers, but the fq8 activation-quant ALU changed
+// instruction scheduling enough that the fast-math default reassociated the int4/int2
+// dot accumulations (triaged 2026-07-18: G4_AQ_ONLY masks — int8/glue/sdpa exact,
+// every int4/int2 matvec forked). The pragma overrides both compilers' options.
+#pragma METAL fp math_mode(safe)
+using namespace metal;
+
+constant uint MAX_EPT = 16;   // global_head_dim 512 / 32 lanes
+
+// int8 STATIC activation fake-quant (mobile-QAT learned clamp; see gemma4_matvec.metal).
+// Used here for KV-cache STORAGE quant in the fused rope+SDPA kernel: the staged k/v
+// are clamped BEFORE both the cache write and the local consumption, so the math is
+// bit-equal to the unfused path (clamped store -> cache read). s <= 0 bypasses.
+inline float fq8(float x, float s) {
+    // x * (1/s), NOT x/s: an inner-loop divide cost 30% decode (measured 108 vs 140
+    // tok/s); TFLite's own quantize kernels also multiply by the inverse scale. The
+    // uniform 1/s is one IEEE divide per element-batch, identical bits under both
+    // compilers (a bare inner x/s also forked argmax near-ties cross-compiler).
+    return s > 0.0f ? s * clamp(metal::rint(x * (1.0f / s)), -128.0f, 127.0f) : x;
+}
+
+kernel void flash_sdpa_decode(
+    device const half* Q    [[buffer(0)]],
+    device const half* K    [[buffer(1)]],
+    device const half* V    [[buffer(2)]],
+    device half*       CTX  [[buffer(3)]],
+    constant uint&     hd   [[buffer(4)]],
+    constant uint&     j0   [[buffer(5)]],
+    constant uint&     n    [[buffer(6)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    const uint lane = gid.x;          // 0..31 within the SIMD-group
+    const uint h    = gid.y;          // query head
+    const uint ept  = hd / 32;        // dims owned by this lane
+
+    float qx[MAX_EPT];                // this lane's slice of q[h] (scale = 1.0)
+    for (uint i = 0; i < ept; ++i) qx[i] = float(Q[h * hd + lane * ept + i]);
+
+    float o[MAX_EPT];                 // unnormalised output accumulator
+    for (uint i = 0; i < ept; ++i) o[i] = 0.0f;
+    float m = -1e30f;                 // running max score
+    float l = 0.0f;                   // running sum of exp
+
+    for (uint jj = 0; jj < n; ++jj) {
+        const uint j = j0 + jj;       // absolute key row (linear cache)
+        float p = 0.0f;
+        for (uint i = 0; i < ept; ++i)
+            p += qx[i] * float(K[j * hd + lane * ept + i]);
+        float s    = simd_sum(p);     // full q.k_j, broadcast to all lanes
+        float mnew = max(m, s);
+        float corr = metal::precise::exp(m - mnew);   // rescale prior accumulators
+        float e    = metal::precise::exp(s - mnew);   // this key's unnormalised weight
+        l = l * corr + e;
+        for (uint i = 0; i < ept; ++i)
+            o[i] = o[i] * corr + e * float(V[j * hd + lane * ept + i]);
+        m = mnew;
+    }
+    const float inv = 1.0f / l;
+    for (uint i = 0; i < ept; ++i)
+        CTX[h * hd + lane * ept + i] = half(o[i] * inv);
+}
+
+// Higher-occupancy variant (FlashDecoding-style G-way sequence split, the proven
+// gemma4_dense_metal_sdpa OCC pattern + the window). The simple kernel's serial key
+// loop is DRAM-latency-bound (~1.2us/key measured: one threadgroup, nothing to hide
+// the K/V row load latency behind) — it dominated decode at ctx>128. Here G SIMD-groups
+// per head scan strided keys j = j0+g, j0+g+G, ... with independent online-softmax
+// partials; sub-group 0 merges through threadgroup memory. fp32 partials all the way
+// to the single fp16 store — same math, same output class as the simple kernel.
+//
+// Threadgroup memory: so[4096] floats (16 KB) fits BOTH configs exactly:
+//   sliding hd256 * G16 = 4096;  full hd512 * G8 = 4096.
+// Dispatch: threads = [32, G, H], group_size = [32, G, 1] (one threadgroup per head;
+// tgid.z = head). G must satisfy G*hd <= 4096 and G <= 16.
+constant uint MAX_G = 16;
+
+// ---- fused norm/rope + flash-decode (fusion v2, A19 dispatch-tax lane) --------------------
+// Merges (qknorm_rope [+ k-rope + v-norm]) INTO the occ SDPA dispatch. Subgroup 0 of each
+// head's threadgroup recomputes the q-norm+rope for its head (exact qknorm_rope op order:
+// 32-lane ssq, simd_sum, fp32 angle / half cos-sin / half rotate-half); on write layers it
+// also computes this token's k (norm WK + rope) and v (scale-free norm), and the HEAD-0
+// threadgroup writes them into the caches at row pos (no reader of row pos exists in this
+// dispatch — the owning subgroup consumes the LOCAL copy instead, see below).
+//
+// Softmax order proof: key pos is jj = n-1, owned by subgroup (n-1) % G as its LAST
+// strided iterate. The main loop runs to n-1 (haskv) and the owner then applies the local
+// key as an explicit final step — the per-subgroup accumulation sequence is IDENTICAL to
+// flash_sdpa_decode_occ reading the cache, and the staged k/v bits equal the cache bits.
+kernel void flash_sdpa_rope_occ(
+    device const half*  Q     [[buffer(0)]],   // raw q [8, hd] (pre-norm)
+    device const half*  KIN   [[buffer(1)]],   // raw k row (write layers)
+    device const half*  VIN   [[buffer(2)]],   // raw v row (write layers)
+    device const half*  WQ    [[buffer(3)]],   // query_norm
+    device const half*  WK    [[buffer(4)]],   // key_norm (write layers)
+    device const float* INVF  [[buffer(5)]],
+    device half*        K     [[buffer(6)]],   // k cache (written at row pos iff haskv)
+    device half*        V     [[buffer(7)]],   // v cache
+    device half*        CTX   [[buffer(8)]],
+    constant uint&      hd    [[buffer(9)]],
+    constant uint&      j0    [[buffer(10)]],
+    constant uint&      n     [[buffer(11)]],
+    constant uint&      G     [[buffer(12)]],
+    constant uint&      pos   [[buffer(13)]],
+    constant uint&      haskv [[buffer(14)]],
+    constant float&     aqk   [[buffer(15)]],
+    constant float&     aqv   [[buffer(16)]],
+    uint3 tid  [[thread_position_in_threadgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint g    = tid.y;
+    const uint h    = tgid.z;
+    const uint ept  = hd / 32;
+
+    threadgroup half qn_s[512];
+    threadgroup half kr_s[512];
+    threadgroup half vn_s[512];
+
+    if (g == 0) {
+        // q row h: qknorm_rope semantics
+        float ssq = 0.0f;
+        for (uint i = 0; i < ept; ++i) {
+            float x = float(Q[h * hd + lane * ept + i]);
+            ssq += x * x;
+        }
+        const float inv = metal::precise::rsqrt(simd_sum(ssq) / float(hd) + 1e-6f);
+        for (uint i = 0; i < ept; ++i) {
+            const uint d = lane * ept + i;
+            qn_s[d] = half(float(Q[h * hd + d]) * inv) * WQ[d];
+        }
+        const uint half_dim = hd / 2;
+        const uint pairs = half_dim / 32;
+        simdgroup_barrier(mem_flags::mem_threadgroup);
+        half rot[16];                       // pairs <= 8, two outputs each
+        for (uint i = 0; i < pairs; ++i) {
+            const uint d = lane * pairs + i;
+            const float angle = float(pos) * INVF[d];
+            const half c = half(metal::precise::cos(angle));
+            const half s = half(metal::precise::sin(angle));
+            const half x1 = qn_s[d];
+            const half x2 = qn_s[d + half_dim];
+            const half m1 = c * x1;
+            const half m2 = s * x2;
+            const half m3 = s * x1;
+            const half m4 = c * x2;
+            rot[2 * i]     = m1 - m2;
+            rot[2 * i + 1] = m3 + m4;
+        }
+        simdgroup_barrier(mem_flags::mem_threadgroup);
+        for (uint i = 0; i < pairs; ++i) {
+            const uint d = lane * pairs + i;
+            qn_s[d] = rot[2 * i];
+            qn_s[d + half_dim] = rot[2 * i + 1];
+        }
+        if (haskv != 0) {
+            // k row: norm WK + rope (qknorm_rope), staged then optionally cached
+            float ssk = 0.0f;
+            for (uint i = 0; i < ept; ++i) {
+                float x = float(KIN[lane * ept + i]);
+                ssk += x * x;
+            }
+            const float invk = metal::precise::rsqrt(simd_sum(ssk) / float(hd) + 1e-6f);
+            for (uint i = 0; i < ept; ++i) {
+                const uint d = lane * ept + i;
+                kr_s[d] = half(float(KIN[d]) * invk) * WK[d];
+            }
+            simdgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint i = 0; i < pairs; ++i) {
+                const uint d = lane * pairs + i;
+                const float angle = float(pos) * INVF[d];
+                const half c = half(metal::precise::cos(angle));
+                const half s = half(metal::precise::sin(angle));
+                const half x1 = kr_s[d];
+                const half x2 = kr_s[d + half_dim];
+                const half m1 = c * x1;
+                const half m2 = s * x2;
+                const half m3 = s * x1;
+                const half m4 = c * x2;
+                rot[2 * i]     = m1 - m2;
+                rot[2 * i + 1] = m3 + m4;
+            }
+            simdgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint i = 0; i < pairs; ++i) {
+                const uint d = lane * pairs + i;
+                kr_s[d] = half(fq8(float(rot[2 * i]), aqk));
+                kr_s[d + half_dim] = half(fq8(float(rot[2 * i + 1]), aqk));
+            }
+            // v row: scale-free rmsnorm (rmsnorm_glue flags=2, ls=1 semantics)
+            float ssv = 0.0f;
+            for (uint i = 0; i < ept; ++i) {
+                float x = float(VIN[lane * ept + i]);
+                ssv += x * x;
+            }
+            const float invv = metal::precise::rsqrt(simd_sum(ssv) / float(hd) + 1e-6f);
+            for (uint i = 0; i < ept; ++i) {
+                const uint d = lane * ept + i;
+                const half nrm = half(float(VIN[d]) * invv);
+                vn_s[d] = half(fq8(float(nrm), aqv));
+            }
+            if (h == 0) {
+                for (uint i = 0; i < ept; ++i) {
+                    const uint d = lane * ept + i;
+                    K[pos * hd + d] = kr_s[d];
+                    V[pos * hd + d] = vn_s[d];
+                }
+            }
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    float qx[MAX_EPT];
+    for (uint i = 0; i < ept; ++i) qx[i] = float(qn_s[lane * ept + i]);
+
+    float o[MAX_EPT];
+    for (uint i = 0; i < ept; ++i) o[i] = 0.0f;
+    float m = -1e30f, l = 0.0f;
+
+    const uint nLoop = (haskv != 0) ? n - 1 : n;     // key pos handled locally below
+    for (uint jj = g; jj < nLoop; jj += G) {
+        const uint j = j0 + jj;
+        float p = 0.0f;
+        for (uint i = 0; i < ept; ++i)
+            p += qx[i] * float(K[j * hd + lane * ept + i]);
+        float s    = simd_sum(p);
+        float mnew = max(m, s);
+        float corr = metal::precise::exp(m - mnew);
+        float e    = metal::precise::exp(s - mnew);
+        l = l * corr + e;
+        for (uint i = 0; i < ept; ++i)
+            o[i] = o[i] * corr + e * float(V[j * hd + lane * ept + i]);
+        m = mnew;
+    }
+    if (haskv != 0 && g == (n - 1) % G) {            // the owner's final strided iterate
+        float p = 0.0f;
+        for (uint i = 0; i < ept; ++i)
+            p += qx[i] * float(kr_s[lane * ept + i]);
+        float s    = simd_sum(p);
+        float mnew = max(m, s);
+        float corr = metal::precise::exp(m - mnew);
+        float e    = metal::precise::exp(s - mnew);
+        l = l * corr + e;
+        for (uint i = 0; i < ept; ++i)
+            o[i] = o[i] * corr + e * float(vn_s[lane * ept + i]);
+        m = mnew;
+    }
+
+    threadgroup float sm[MAX_G];
+    threadgroup float sl[MAX_G];
+    threadgroup float so[4096];
+    if (lane == 0) { sm[g] = m; sl[g] = l; }
+    for (uint i = 0; i < ept; ++i) so[g * hd + lane * ept + i] = o[i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (g == 0) {
+        float gm = -1e30f;
+        for (uint gg = 0; gg < G; ++gg) gm = max(gm, sm[gg]);
+        float gl = 0.0f;
+        for (uint gg = 0; gg < G; ++gg) gl += sl[gg] * metal::precise::exp(sm[gg] - gm);
+        const float inv = 1.0f / gl;
+        for (uint i = 0; i < ept; ++i) {
+            const uint d = lane * ept + i;
+            float acc = 0.0f;
+            for (uint gg = 0; gg < G; ++gg) acc += so[gg * hd + d] * metal::precise::exp(sm[gg] - gm);
+            CTX[h * hd + d] = half(acc * inv);
+        }
+    }
+}
+
+kernel void flash_sdpa_decode_occ(
+    device const half* Q    [[buffer(0)]],
+    device const half* K    [[buffer(1)]],
+    device const half* V    [[buffer(2)]],
+    device half*       CTX  [[buffer(3)]],
+    constant uint&     hd   [[buffer(4)]],
+    constant uint&     j0   [[buffer(5)]],
+    constant uint&     n    [[buffer(6)]],
+    constant uint&     G    [[buffer(7)]],
+    uint3 tid  [[thread_position_in_threadgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;          // 0..31
+    const uint g    = tid.y;          // 0..G-1: this head's sub-group
+    const uint h    = tgid.z;         // query head (one threadgroup per head)
+    const uint ept  = hd / 32;
+
+    float qx[MAX_EPT];
+    for (uint i = 0; i < ept; ++i) qx[i] = float(Q[h * hd + lane * ept + i]);
+
+    float o[MAX_EPT];
+    for (uint i = 0; i < ept; ++i) o[i] = 0.0f;
+    float m = -1e30f, l = 0.0f;
+
+    for (uint jj = g; jj < n; jj += G) {      // G-way strided key scan
+        const uint j = j0 + jj;
+        float p = 0.0f;
+        for (uint i = 0; i < ept; ++i)
+            p += qx[i] * float(K[j * hd + lane * ept + i]);
+        float s    = simd_sum(p);
+        float mnew = max(m, s);
+        float corr = metal::precise::exp(m - mnew);
+        float e    = metal::precise::exp(s - mnew);
+        l = l * corr + e;
+        for (uint i = 0; i < ept; ++i)
+            o[i] = o[i] * corr + e * float(V[j * hd + lane * ept + i]);
+        m = mnew;
+    }
+
+    threadgroup float sm[MAX_G];
+    threadgroup float sl[MAX_G];
+    threadgroup float so[4096];               // G * hd partial outputs (16 KB)
+    if (lane == 0) { sm[g] = m; sl[g] = l; }
+    for (uint i = 0; i < ept; ++i) so[g * hd + lane * ept + i] = o[i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (g == 0) {                             // sub-group 0 merges the G partials
+        float gm = -1e30f;
+        for (uint gg = 0; gg < G; ++gg) gm = max(gm, sm[gg]);
+        float gl = 0.0f;
+        for (uint gg = 0; gg < G; ++gg) gl += sl[gg] * metal::precise::exp(sm[gg] - gm);
+        const float inv = 1.0f / gl;
+        for (uint i = 0; i < ept; ++i) {
+            const uint d = lane * ept + i;
+            float acc = 0.0f;
+            for (uint gg = 0; gg < G; ++gg) acc += so[gg * hd + d] * metal::precise::exp(sm[gg] - gm);
+            CTX[h * hd + d] = half(acc * inv);
+        }
+    }
+}

@@ -1,0 +1,690 @@
+// Gemma4 E2B mixed-bit RAW-METAL decode loop — S=4 VERIFY kernels (P3).
+//
+// M=4 ports of the proven DSL verify kernels (gemma4_metal_mlp_m4.py, R=2/SGY=8):
+// weights are read ONCE for 4 tokens; x is loaded as float4 across M. Layouts:
+//   X [4, K] half row-major (x4[j][m] = X[m*K + k]);  C [4, N] half row-major.
+//
+// PER-ROW dot order (block loop, code order, fp32 accumulate, epilogue) is IDENTICAL
+// to the M=1 kernels, and the S=4 attention reads the same K/V values the sequential
+// S=1 steps would have written — so the whole verify forward is BIT-IDENTICAL to 4
+// sequential S=1 steps. MTP losslessness is exact equality, not a near-tie argument.
+//
+// Dispatch (matvecs): threads = [32, N/2], group_size = [32, 8].
+
+#include <metal_stdlib>
+// Same source-level safe-math contract as gemma4_matvec.metal: python
+// (torch.mps.compile_shader, fast default) and Swift (MTLLibrary .safe) must produce
+// bit-identical code for the triage taps to be trustworthy.
+#pragma METAL fp math_mode(safe)
+using namespace metal;
+
+constant uint R4   = 2;    // rows per SIMD-group (M=4 variants)
+constant uint SGY4 = 8;
+constant uint G4   = 64;   // INT4 affine group size
+
+// int8 static activation quant + TRUE-INT8 dot semantics — see gemma4_matvec.metal for
+// the full contract. The aq lane quantizes x to INTEGER codes, runs the EXACT integer
+// dot (fp32 FMA for int2/int4 — |acc| < 2^24; int32 for int8 weights), then one
+// epilogue dequant multiply tot * (s_in * s_w_row) + requant. Because exact integer
+// dots are ORDER-INDEPENDENT, the M=4 kernels here are bit-equal to 4 sequential S=1
+// steps BY CONSTRUCTION in the aq lane — only the fp epilogue still relies on the
+// literal-transcription op order. s <= 0 bypasses = the proven fp16 path, bit-identical.
+inline float fq8(float x, float s) {
+    return s > 0.0f ? s * clamp(metal::rint(x * (1.0f / s)), -128.0f, 127.0f) : x;
+}
+inline float qx8(float x, float s) {
+    return s > 0.0f ? clamp(metal::rint(x * (1.0f / s)), -128.0f, 127.0f) : x;
+}
+inline float4 qx8v(float4 x, float s) {
+    return s > 0.0f ? clamp(metal::rint(x * (1.0f / s)), -128.0f, 127.0f) : x;
+}
+
+// interleave-4 pack support (see gemma4_matvec.metal / p2b_interleave_pack.py): the
+// verify kernels read the SAME main-model QP tensors as the S=1 loop, so they must
+// understand the [N/4, kw, 4] word layout. Scalar loads (R=2 straddles il groups);
+// per-row word values unchanged -> the bit-exact verify proof is unaffected.
+#ifndef IL4
+#define IL4 0
+#endif
+#define QP_WORD(QP, n, kw, w) \
+    (IL4 ? (QP)[((((n) >> 2) * (kw) + (w)) << 2) + ((n) & 3)] : (QP)[(n) * (kw) + (w)])
+
+// ---- INT2 symmetric matvec, M=4 ----------------------------------------------------------
+kernel void matvec_int2sym_m4(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    constant float&     aqi [[buffer(6)]],
+    constant float&     aqo [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGY4 + sg) * R4;
+    const uint kw = K >> 4;
+
+    float4 acc[R4];
+    for (uint r = 0; r < R4; ++r) acc[r] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        uint k0 = kb + lane * 16;
+        float4 x4[16];
+        for (uint j = 0; j < 16; ++j) {
+            const uint k = k0 + j;
+            x4[j] = qx8v(float4(float(X[k]), float(X[K + k]),
+                                float(X[2 * K + k]), float(X[3 * K + k])), aqi);
+        }
+        uint w0 = (kb >> 4) + lane;
+        for (uint r = 0; r < R4; ++r) {
+            uint packed = QP_WORD(QP, base_row + r, kw, w0);
+            float4 s4 = float4(0.0f);
+            for (uint j = 0; j < 16; ++j) {
+                uint q = (packed >> (2 * j)) & 0x3;
+                s4 += x4[j] * float(int(q ^ 2u) - 2);
+            }
+            acc[r] += s4;
+        }
+    }
+    for (uint r = 0; r < R4; ++r) {
+        uint n = base_row + r;
+        float sc = SC[n];
+        float mul = aqi > 0.0f ? (aqi * sc) : sc;    // one dequant multiply in aq
+        float t0 = simd_sum(acc[r].x);
+        float t1 = simd_sum(acc[r].y);
+        float t2 = simd_sum(acc[r].z);
+        float t3 = simd_sum(acc[r].w);
+        if (lane == 0) {
+            C[n] = half(fq8(t0 * mul, aqo));
+            C[N + n] = half(fq8(t1 * mul, aqo));
+            C[2 * N + n] = half(fq8(t2 * mul, aqo));
+            C[3 * N + n] = half(fq8(t3 * mul, aqo));
+        }
+    }
+}
+
+// ---- INT4 affine matvec, M=4 -------------------------------------------------------------
+kernel void matvec_int4aff_m4(
+    device const half* X   [[buffer(0)]],
+    device const uint* QP  [[buffer(1)]],
+    device const half* SC  [[buffer(2)]],
+    device const half* BI  [[buffer(3)]],
+    device half*       C   [[buffer(4)]],
+    constant uint&     K   [[buffer(5)]],
+    constant uint&     N   [[buffer(6)]],
+    constant float&    aqi [[buffer(7)]],
+    constant float&    aqo [[buffer(8)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGY4 + sg) * R4;
+    const uint kw = K >> 3;
+    const uint ng = K / G4;
+
+    float4 acc[R4];
+    for (uint r = 0; r < R4; ++r) acc[r] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        uint k0 = kb + lane * 8;
+        float4 x4[8];
+        for (uint j = 0; j < 8; ++j) {
+            const uint k = k0 + j;
+            x4[j] = qx8v(float4(float(X[k]), float(X[K + k]),
+                                float(X[2 * K + k]), float(X[3 * K + k])), aqi);
+        }
+        uint w0 = (kb >> 3) + lane;
+        uint grp = k0 / G4;
+        for (uint r = 0; r < R4; ++r) {
+            uint n = base_row + r;
+            uint packed = QP_WORD(QP, n, kw, w0);
+            // aq lane: sc=1, bi=-8 -> bare integer code q-8 (row scale in epilogue)
+            float sc = 1.0f, bi = -8.0f;
+            if (!(aqi > 0.0f)) {
+                sc = float(SC[n * ng + grp]);
+                bi = float(BI[n * ng + grp]);
+            }
+            float4 s4 = float4(0.0f);
+            for (uint j = 0; j < 8; ++j) {
+                uint q = (packed >> (j * 4)) & 0xf;
+                s4 += x4[j] * (sc * float(q) + bi);
+            }
+            acc[r] += s4;
+        }
+    }
+    for (uint r = 0; r < R4; ++r) {
+        uint n = base_row + r;
+        float mul = aqi > 0.0f ? (aqi * float(SC[n * ng])) : 1.0f;
+        float t0 = simd_sum(acc[r].x);
+        float t1 = simd_sum(acc[r].y);
+        float t2 = simd_sum(acc[r].z);
+        float t3 = simd_sum(acc[r].w);
+        if (lane == 0) {
+            C[n] = half(fq8(t0 * mul, aqo));
+            C[N + n] = half(fq8(t1 * mul, aqo));
+            C[2 * N + n] = half(fq8(t2 * mul, aqo));
+            C[3 * N + n] = half(fq8(t3 * mul, aqo));
+        }
+    }
+}
+
+// ---- M=4, R=1 variants (N=1536: FFN down + attn o) — occupancy fix, bit-exact ---------------
+kernel void matvec_int2sym_m4_r1(
+    device const half*  X   [[buffer(0)]],
+    device const uint*  QP  [[buffer(1)]],
+    device const float* SC  [[buffer(2)]],
+    device half*        C   [[buffer(3)]],
+    constant uint&      K   [[buffer(4)]],
+    constant uint&      N   [[buffer(5)]],
+    constant float&     aqi [[buffer(6)]],
+    constant float&     aqo [[buffer(7)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint n = tgid.y * SGY4 + tid.y;
+    const uint kw = K >> 4;
+    float4 acc = float4(0.0f);
+    for (uint kb = 0; kb < K; kb += 512) {
+        uint k0 = kb + lane * 16;
+        float4 x4[16];
+        for (uint j = 0; j < 16; ++j) {
+            const uint k = k0 + j;
+            x4[j] = qx8v(float4(float(X[k]), float(X[K + k]),
+                                float(X[2 * K + k]), float(X[3 * K + k])), aqi);
+        }
+        uint packed = QP[n * kw + (kb >> 4) + lane];
+        float4 s4 = float4(0.0f);
+        for (uint j = 0; j < 16; ++j) {
+            uint q = (packed >> (2 * j)) & 0x3;
+            s4 += x4[j] * float(int(q ^ 2u) - 2);
+        }
+        acc += s4;
+    }
+    float sc = SC[n];
+    float mul = aqi > 0.0f ? (aqi * sc) : sc;
+    float t0 = simd_sum(acc.x);
+    float t1 = simd_sum(acc.y);
+    float t2 = simd_sum(acc.z);
+    float t3 = simd_sum(acc.w);
+    if (lane == 0) {
+        C[n] = half(fq8(t0 * mul, aqo));
+        C[N + n] = half(fq8(t1 * mul, aqo));
+        C[2 * N + n] = half(fq8(t2 * mul, aqo));
+        C[3 * N + n] = half(fq8(t3 * mul, aqo));
+    }
+}
+
+kernel void matvec_int4aff_m4_r1(
+    device const half* X   [[buffer(0)]],
+    device const uint* QP  [[buffer(1)]],
+    device const half* SC  [[buffer(2)]],
+    device const half* BI  [[buffer(3)]],
+    device half*       C   [[buffer(4)]],
+    constant uint&     K   [[buffer(5)]],
+    constant uint&     N   [[buffer(6)]],
+    constant float&    aqi [[buffer(7)]],
+    constant float&    aqo [[buffer(8)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint n = tgid.y * SGY4 + tid.y;
+    const uint kw = K >> 3;
+    const uint ng = K / G4;
+    float4 acc = float4(0.0f);
+    for (uint kb = 0; kb < K; kb += 256) {
+        uint k0 = kb + lane * 8;
+        float4 x4[8];
+        for (uint j = 0; j < 8; ++j) {
+            const uint k = k0 + j;
+            x4[j] = qx8v(float4(float(X[k]), float(X[K + k]),
+                                float(X[2 * K + k]), float(X[3 * K + k])), aqi);
+        }
+        uint packed = QP[n * kw + (kb >> 3) + lane];
+        uint grp = k0 / G4;
+        // aq lane: sc=1, bi=-8 -> bare integer code q-8 (row scale in epilogue)
+        float sc = 1.0f, bi = -8.0f;
+        if (!(aqi > 0.0f)) {
+            sc = float(SC[n * ng + grp]);
+            bi = float(BI[n * ng + grp]);
+        }
+        float4 s4 = float4(0.0f);
+        for (uint j = 0; j < 8; ++j) {
+            uint q = (packed >> (j * 4)) & 0xf;
+            s4 += x4[j] * (sc * float(q) + bi);
+        }
+        acc += s4;
+    }
+    float mul = aqi > 0.0f ? (aqi * float(SC[n * ng])) : 1.0f;
+    float t0 = simd_sum(acc.x);
+    float t1 = simd_sum(acc.y);
+    float t2 = simd_sum(acc.z);
+    float t3 = simd_sum(acc.w);
+    if (lane == 0) {
+        C[n] = half(fq8(t0 * mul, aqo));
+        C[N + n] = half(fq8(t1 * mul, aqo));
+        C[2 * N + n] = half(fq8(t2 * mul, aqo));
+        C[3 * N + n] = half(fq8(t3 * mul, aqo));
+    }
+}
+
+// ---- FUSED gate+up+gelu+mul, INT2, M=4 -----------------------------------------------------
+kernel void gateup_int2sym_m4(
+    device const half*  X    [[buffer(0)]],
+    device const uint*  QPG  [[buffer(1)]],
+    device const float* SCG  [[buffer(2)]],
+    device const uint*  QPU  [[buffer(3)]],
+    device const float* SCU  [[buffer(4)]],
+    device half*        C    [[buffer(5)]],
+    constant uint&      K    [[buffer(6)]],
+    constant uint&      N    [[buffer(7)]],
+    constant float&     aqi  [[buffer(8)]],
+    constant float&     aqg  [[buffer(9)]],
+    constant float&     aqu  [[buffer(10)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGY4 + sg) * R4;
+    const uint kw = K >> 4;
+
+    float4 accg[R4], accu[R4];
+    for (uint r = 0; r < R4; ++r) { accg[r] = float4(0.0f); accu[r] = float4(0.0f); }
+
+    for (uint kb = 0; kb < K; kb += 512) {
+        uint k0 = kb + lane * 16;
+        float4 x4[16];
+        for (uint j = 0; j < 16; ++j) {
+            const uint k = k0 + j;
+            x4[j] = qx8v(float4(float(X[k]), float(X[K + k]),
+                                float(X[2 * K + k]), float(X[3 * K + k])), aqi);
+        }
+        uint w0 = (kb >> 4) + lane;
+        for (uint r = 0; r < R4; ++r) {
+            uint n = base_row + r;
+            uint pg = QP_WORD(QPG, n, kw, w0);
+            uint pu = QP_WORD(QPU, n, kw, w0);
+            float4 sg4 = float4(0.0f), su4 = float4(0.0f);
+            for (uint j = 0; j < 16; ++j) {
+                sg4 += x4[j] * float(int(((pg >> (2 * j)) & 0x3) ^ 2u) - 2);
+                su4 += x4[j] * float(int(((pu >> (2 * j)) & 0x3) ^ 2u) - 2);
+            }
+            accg[r] += sg4;
+            accu[r] += su4;
+        }
+    }
+    for (uint r = 0; r < R4; ++r) {
+        uint n = base_row + r;
+        float scg = SCG[n];
+        float scu = SCU[n];
+        float mulg = aqi > 0.0f ? (aqi * scg) : scg;
+        float mulu = aqi > 0.0f ? (aqi * scu) : scu;
+        for (uint m = 0; m < 4; ++m) {
+            float tg = simd_sum(m == 0 ? accg[r].x : (m == 1 ? accg[r].y : (m == 2 ? accg[r].z : accg[r].w)));
+            float tu = simd_sum(m == 0 ? accu[r].x : (m == 1 ? accu[r].y : (m == 2 ? accu[r].z : accu[r].w)));
+            if (lane == 0) {
+                float xg = fq8(tg * mulg, aqg);
+                float gel = 0.5f * xg * (1.0f + metal::precise::tanh(
+                    0.7978845608028654f * (xg + 0.044715f * xg * xg * xg)));
+                C[m * N + n] = half(gel * fq8(tu * mulu, aqu));
+            }
+        }
+    }
+}
+
+// ---- FUSED gate+up+gelu+mul, INT4, M=4 -----------------------------------------------------
+kernel void gateup_int4aff_m4(
+    device const half* X    [[buffer(0)]],
+    device const uint* QPG  [[buffer(1)]],
+    device const half* SCG  [[buffer(2)]],
+    device const half* BIG  [[buffer(3)]],
+    device const uint* QPU  [[buffer(4)]],
+    device const half* SCU  [[buffer(5)]],
+    device const half* BIU  [[buffer(6)]],
+    device half*       C    [[buffer(7)]],
+    constant uint&     K    [[buffer(8)]],
+    constant uint&     N    [[buffer(9)]],
+    constant float&    aqi  [[buffer(10)]],
+    constant float&    aqg  [[buffer(11)]],
+    constant float&    aqu  [[buffer(12)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGY4 + sg) * R4;
+    const uint kw = K >> 3;
+    const uint ng = K / G4;
+
+    float4 accg[R4], accu[R4];
+    for (uint r = 0; r < R4; ++r) { accg[r] = float4(0.0f); accu[r] = float4(0.0f); }
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        uint k0 = kb + lane * 8;
+        float4 x4[8];
+        for (uint j = 0; j < 8; ++j) {
+            const uint k = k0 + j;
+            x4[j] = qx8v(float4(float(X[k]), float(X[K + k]),
+                                float(X[2 * K + k]), float(X[3 * K + k])), aqi);
+        }
+        uint w0 = (kb >> 3) + lane;
+        uint grp = k0 / G4;
+        for (uint r = 0; r < R4; ++r) {
+            uint n = base_row + r;
+            uint pg = QP_WORD(QPG, n, kw, w0);
+            uint pu = QP_WORD(QPU, n, kw, w0);
+            // aq lane: sc=1, bi=-8 -> bare integer codes q-8 (row scales in epilogue)
+            float scg = 1.0f, big = -8.0f, scu = 1.0f, biu = -8.0f;
+            if (!(aqi > 0.0f)) {
+                scg = float(SCG[n * ng + grp]); big = float(BIG[n * ng + grp]);
+                scu = float(SCU[n * ng + grp]); biu = float(BIU[n * ng + grp]);
+            }
+            float4 sg4 = float4(0.0f), su4 = float4(0.0f);
+            for (uint j = 0; j < 8; ++j) {
+                float4 x = x4[j];
+                sg4 += x * (scg * float((pg >> (j * 4)) & 0xf) + big);
+                su4 += x * (scu * float((pu >> (j * 4)) & 0xf) + biu);
+            }
+            accg[r] += sg4;
+            accu[r] += su4;
+        }
+    }
+    for (uint r = 0; r < R4; ++r) {
+        uint n = base_row + r;
+        float mulg = aqi > 0.0f ? (aqi * float(SCG[n * ng])) : 1.0f;
+        float mulu = aqi > 0.0f ? (aqi * float(SCU[n * ng])) : 1.0f;
+        for (uint m = 0; m < 4; ++m) {
+            float tg = simd_sum(m == 0 ? accg[r].x : (m == 1 ? accg[r].y : (m == 2 ? accg[r].z : accg[r].w)));
+            float tu = simd_sum(m == 0 ? accu[r].x : (m == 1 ? accu[r].y : (m == 2 ? accu[r].z : accu[r].w)));
+            if (lane == 0) {
+                float xg = fq8(tg * mulg, aqg);
+                float gel = 0.5f * xg * (1.0f + metal::precise::tanh(
+                    0.7978845608028654f * (xg + 0.044715f * xg * xg * xg)));
+                C[m * N + n] = half(gel * fq8(tu * mulu, aqu));
+            }
+        }
+    }
+}
+
+// ---- INT8 per-row symmetric matvec, M=4 (mode 1 = PLE gate epilogue) ------------------------
+// mode 1: C[m*N+n] = half(gelu_tanh(half(tot*sc))) * MUL[m*mstride + moff + n]
+kernel void matvec_int8_m4(
+    device const half*  X    [[buffer(0)]],
+    device const char*  W8   [[buffer(1)]],
+    device const float* SC   [[buffer(2)]],
+    device const half*  MUL  [[buffer(3)]],
+    device half*        C    [[buffer(4)]],
+    constant uint&      K    [[buffer(5)]],
+    constant uint&      N    [[buffer(6)]],
+    constant uint&      mode [[buffer(7)]],
+    constant uint&      moff [[buffer(8)]],
+    constant uint&      mstride [[buffer(9)]],
+    constant float&     aqi  [[buffer(10)]],
+    constant float&     aqo  [[buffer(11)]],
+    uint2 tid  [[thread_position_in_threadgroup]],
+    uint2 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint sg = tid.y;
+    const uint base_row = (tgid.y * SGY4 + sg) * R4;
+
+    if (aqi > 0.0f) {
+        // aq lane: int8 x int8 with EXACT int32 accumulate (25M > 2^24 — no fp32 FMA
+        // trick here), one dequant multiply, requant/gelu epilogue as the fp path.
+        int4 acc[R4];
+        for (uint r = 0; r < R4; ++r) acc[r] = int4(0);
+
+        for (uint kb = 0; kb < K; kb += 256) {
+            uint k0 = kb + lane * 8;
+            int4 x4q[8];
+            for (uint j = 0; j < 8; ++j) {
+                const uint k = k0 + j;
+                x4q[j] = int4(qx8v(float4(float(X[k]), float(X[K + k]),
+                                          float(X[2 * K + k]), float(X[3 * K + k])), aqi));
+            }
+            for (uint r = 0; r < R4; ++r) {
+                uint n = base_row + r;
+                int4 s4 = int4(0);
+                for (uint j = 0; j < 8; ++j)
+                    s4 += x4q[j] * int(W8[n * K + k0 + j]);
+                acc[r] += s4;
+            }
+        }
+        for (uint r = 0; r < R4; ++r) {
+            uint n = base_row + r;
+            float mul = aqi * SC[n];
+            for (uint m = 0; m < 4; ++m) {
+                int tot = simd_sum(m == 0 ? acc[r].x : (m == 1 ? acc[r].y : (m == 2 ? acc[r].z : acc[r].w)));
+                if (lane == 0) {
+                    float y = float(tot) * mul;
+                    if (mode == 0) {
+                        C[m * N + n] = half(fq8(y, aqo));
+                    } else {
+                        half yh = half(fq8(y, aqo));
+                        float xf = float(yh);
+                        float gel = 0.5f * xf * (1.0f + metal::precise::tanh(
+                            0.7978845608028654f * (xf + 0.044715f * xf * xf * xf)));
+                        C[m * N + n] = half(gel) * MUL[m * mstride + moff + n];
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    float4 acc[R4];
+    for (uint r = 0; r < R4; ++r) acc[r] = float4(0.0f);
+
+    for (uint kb = 0; kb < K; kb += 256) {
+        uint k0 = kb + lane * 8;
+        float4 x4[8];
+        for (uint j = 0; j < 8; ++j) {
+            const uint k = k0 + j;
+            x4[j] = float4(float(X[k]), float(X[K + k]),
+                           float(X[2 * K + k]), float(X[3 * K + k]));
+        }
+        for (uint r = 0; r < R4; ++r) {
+            uint n = base_row + r;
+            float4 s4 = float4(0.0f);
+            for (uint j = 0; j < 8; ++j)
+                s4 += x4[j] * float(int(W8[n * K + k0 + j]));
+            acc[r] += s4;
+        }
+    }
+    for (uint r = 0; r < R4; ++r) {
+        uint n = base_row + r;
+        float sc = SC[n];
+        for (uint m = 0; m < 4; ++m) {
+            float tot = simd_sum(m == 0 ? acc[r].x : (m == 1 ? acc[r].y : (m == 2 ? acc[r].z : acc[r].w)));
+            if (lane == 0) {
+                if (mode == 0) {
+                    C[m * N + n] = half(fq8(tot * sc, aqo));
+                } else {
+                    half y = half(fq8(tot * sc, aqo));
+                    float xf = float(y);
+                    float gel = 0.5f * xf * (1.0f + metal::precise::tanh(
+                        0.7978845608028654f * (xf + 0.044715f * xf * xf * xf)));
+                    C[m * N + n] = half(gel) * MUL[m * mstride + moff + n];
+                }
+            }
+        }
+    }
+}
+
+// ---- 4-token embed / PLE gathers (tokens TOKS[pos0..pos0+3]) --------------------------------
+// Dispatch: embed threads = [384, 4]; ple threads = [4480, 4].
+kernel void embed_gather4(
+    device const uchar* PACKED [[buffer(0)]],
+    device const float* SCALE  [[buffer(1)]],
+    device half*        OUT    [[buffer(2)]],
+    device const uint*  TOKS   [[buffer(3)]],
+    constant uint&      pos0   [[buffer(4)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    const uint m = gid.y;
+    const uint tok = TOKS[pos0 + m];
+    const uint b = gid.x;
+    const uchar byte = PACKED[tok * 384 + b];
+    const half s = half(SCALE[tok] * 39.191835884530846f);
+    for (uint j = 0; j < 4; ++j) {
+        const int c = (int((byte >> (2 * j)) & 3) ^ 2) - 2;
+        OUT[m * 1536 + b * 4 + j] = half(c) * s;
+    }
+}
+
+kernel void ple_gather4(
+    device const uchar* PLEP  [[buffer(0)]],
+    device const float* PLESC [[buffer(1)]],
+    device half*        OUT   [[buffer(2)]],
+    device const uint*  TOKS  [[buffer(3)]],
+    constant uint&      pos0  [[buffer(4)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    const uint m = gid.y;
+    const uint tok = TOKS[pos0 + m];
+    const uint b = gid.x;
+    const uint l = b / 128;
+    const uchar byte = PLEP[tok * 4480 + b];
+    const half s = half(PLESC[tok * 35 + l] * 16.0f);
+    int c0 = int(byte & 0xF);  c0 = c0 >= 8 ? c0 - 16 : c0;
+    int c1 = int(byte >> 4);   c1 = c1 >= 8 ? c1 - 16 : c1;
+    OUT[m * 8960 + b * 2]     = half(c0) * s;
+    OUT[m * 8960 + b * 2 + 1] = half(c1) * s;
+}
+
+// ---- fused norm+RoPE for 4 tokens (query rows or K rows into the cache) ---------------------
+// rows = 4 * heads_per_tok; row r's token index m = r / heads_per_tok, RoPE position
+// pos0 + m. K rows (heads_per_tok = 1) write straight into the cache at row pos0 + m.
+// Dispatch: threads = [32, rows], group_size = [32, min(rows, 8)].
+kernel void qknorm_rope4(
+    device const half*  X        [[buffer(0)]],
+    device const half*  W        [[buffer(1)]],
+    device const float* INVF     [[buffer(2)]],
+    device half*        OUT      [[buffer(3)]],
+    constant uint&      hd       [[buffer(4)]],
+    constant uint&      pos0     [[buffer(5)]],
+    constant uint&      hpt      [[buffer(6)]],   // heads per token
+    constant uint&      out_row0 [[buffer(7)]],
+    constant float&     aqs      [[buffer(8)]],   // K-cache storage quant (0 on q rows)
+    uint2 gid [[thread_position_in_grid]])
+{
+    const uint lane = gid.x;
+    const uint r    = gid.y;
+    const uint ept  = hd / 32;
+    const uint pos  = pos0 + r / hpt;
+    threadgroup half staged[8 * 512];
+    const uint sr = r % 8;                       // staging row within the threadgroup
+
+    float ssq = 0.0f;
+    for (uint i = 0; i < ept; ++i) {
+        float x = float(X[r * hd + lane * ept + i]);
+        ssq += x * x;
+    }
+    const float ms  = simd_sum(ssq) / float(hd);
+    const float inv = metal::precise::rsqrt(ms + 1e-6f);
+    for (uint i = 0; i < ept; ++i) {
+        const uint d = lane * ept + i;
+        staged[sr * hd + d] = half(float(X[r * hd + d]) * inv) * W[d];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    const uint half_dim = hd / 2;
+    const uint pairs = half_dim / 32;
+    for (uint i = 0; i < pairs; ++i) {
+        const uint d = lane * pairs + i;
+        const float angle = float(pos) * INVF[d];
+        const half c = half(metal::precise::cos(angle));
+        const half s = half(metal::precise::sin(angle));
+        const half x1 = staged[sr * hd + d];
+        const half x2 = staged[sr * hd + d + half_dim];
+        const half m1 = c * x1;
+        const half m2 = s * x2;
+        const half m3 = s * x1;
+        const half m4 = c * x2;
+        // aqs > 0 only on the K-cache write — same form as gemma4_glue.metal
+        // qknorm_rope (storage quant after k_norm+rope); aqs == 0 is bit-identical
+        // to the bare store (half->float->half roundtrip is exact).
+        OUT[(out_row0 + r) * hd + d] = half(fq8(float(m1 - m2), aqs));
+        OUT[(out_row0 + r) * hd + d + half_dim] = half(fq8(float(m3 + m4), aqs));
+    }
+}
+
+// ---- S=4 flash-decode SDPA (per-query key ranges, occ split) --------------------------------
+// Query (m, h): token m at position pos0+m attends keys [j0_m, pos0+m] where
+// j0_m = max(0, pos0+m+1-window) (window 0 = full). Same online-softmax + G-way split
+// + merge as flash_sdpa_decode_occ — per (m, h) the math is IDENTICAL to the S=1 kernel
+// at that position, so verify attention is bit-identical to sequential decode.
+// Q/CTX [4, H, hd] row-major. Dispatch: threads = [32, G, 4*H], group = [32, G, 1];
+// tgid.z = m * H + h.
+kernel void flash_sdpa_verify(
+    device const half* Q      [[buffer(0)]],
+    device const half* K      [[buffer(1)]],
+    device const half* V      [[buffer(2)]],
+    device half*       CTX    [[buffer(3)]],
+    constant uint&     hd     [[buffer(4)]],
+    constant uint&     pos0   [[buffer(5)]],
+    constant uint&     window [[buffer(6)]],   // 0 = full attention
+    constant uint&     G      [[buffer(7)]],
+    constant uint&     H      [[buffer(8)]],
+    uint3 tid  [[thread_position_in_threadgroup]],
+    uint3 tgid [[threadgroup_position_in_grid]])
+{
+    const uint lane = tid.x;
+    const uint g    = tid.y;
+    const uint m4   = tgid.z / H;             // token index 0..3
+    const uint h    = tgid.z % H;             // query head
+    const uint ept  = hd / 32;
+    const uint pos  = pos0 + m4;
+    const uint j0   = (window > 0 && pos + 1 > window) ? (pos + 1 - window) : 0;
+    const uint n    = pos + 1 - j0;
+    const uint qrow = m4 * H + h;
+
+    float qx[16];
+    for (uint i = 0; i < ept; ++i) qx[i] = float(Q[qrow * hd + lane * ept + i]);
+
+    float o[16];
+    for (uint i = 0; i < ept; ++i) o[i] = 0.0f;
+    float m = -1e30f, l = 0.0f;
+
+    for (uint jj = g; jj < n; jj += G) {
+        const uint j = j0 + jj;
+        float p = 0.0f;
+        for (uint i = 0; i < ept; ++i)
+            p += qx[i] * float(K[j * hd + lane * ept + i]);
+        float s    = simd_sum(p);
+        float mnew = max(m, s);
+        float corr = metal::precise::exp(m - mnew);
+        float e    = metal::precise::exp(s - mnew);
+        l = l * corr + e;
+        for (uint i = 0; i < ept; ++i)
+            o[i] = o[i] * corr + e * float(V[j * hd + lane * ept + i]);
+        m = mnew;
+    }
+
+    threadgroup float sm[16];
+    threadgroup float sl[16];
+    threadgroup float so[4096];
+    if (lane == 0) { sm[g] = m; sl[g] = l; }
+    for (uint i = 0; i < ept; ++i) so[g * hd + lane * ept + i] = o[i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (g == 0) {
+        float gm = -1e30f;
+        for (uint gg = 0; gg < G; ++gg) gm = max(gm, sm[gg]);
+        float gl = 0.0f;
+        for (uint gg = 0; gg < G; ++gg) gl += sl[gg] * metal::precise::exp(sm[gg] - gm);
+        const float inv = 1.0f / gl;
+        for (uint i = 0; i < ept; ++i) {
+            const uint d = lane * ept + i;
+            float acc = 0.0f;
+            for (uint gg = 0; gg < G; ++gg) acc += so[gg * hd + d] * metal::precise::exp(sm[gg] - gm);
+            CTX[qrow * hd + d] = half(acc * inv);
+        }
+    }
+}

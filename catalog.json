@@ -668,6 +668,23 @@
       }
     },
     {
+      "id": "melband-roformer-vocal",
+      "name": "Mel-Band RoFormer (Kim Vocal)",
+      "repo": "mlboydaisuke/MelBandRoformer-Vocal-CoreAI",
+      "revision": "0c7aca92db7341f7be579aa00fa1231442c7cb7c",
+      "kind": "separation",
+      "variants": {
+        "macos": {
+          "path": "mbr_full_fp16.aimodel",
+          "sizeMB": 470
+        },
+        "ios": {
+          "path": "mbr_full_fp16.h18p.aimodelc",
+          "sizeMB": 470
+        }
+      }
+    },
+    {
       "id": "clip-vit-b32",
       "name": "CLIP ViT-B/32",
       "repo": "mlboydaisuke/clip-vit-base-patch32-CoreAI-official",

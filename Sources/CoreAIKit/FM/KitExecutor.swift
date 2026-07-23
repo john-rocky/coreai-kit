@@ -16,20 +16,20 @@ import Tokenizers
 /// kind of entry the turn produced — a usage event of a kind the turn never emits content
 /// for would materialize an empty transcript entry (verified on the 27.0 beta).
 ///
-/// ## KV reuse and the over-generation pump
-/// The engine preserves KV between `generate()` calls and continues from its current
-/// position, so when the new transcript's rendered tokens extend the tokens already in
-/// the cache, only the suffix is prefilled (`Usage.Input.cachedTokenCount` reports the
-/// reuse).
+/// ## KV reuse and the relay pump
+/// The engine preserves KV and its token history between `generate()` calls (implicit
+/// prefix caching). Each turn the executor rewinds to the longest prefix its own mirror
+/// shares with the newly rendered transcript (`reset(to:)`), then feeds the FULL token
+/// list — the engine prefills only the tail (`Usage.Input.cachedTokenCount` reports the
+/// reuse). The explicit rewind also trims the few post-EOS tokens the pipeline may have
+/// consumed after the consumer broke, which would otherwise read as divergence inside
+/// the engine and force a full re-prefill.
 ///
-/// One engine reality shapes this design: breaking out of the token stream (at EOS) does
-/// NOT stop the pipelined engine — it keeps generating to `maxTokens` in the background,
-/// and those post-EOS tokens land in the KV cache. `respond` therefore pumps the engine
-/// stream through a relay task that keeps draining (and recording) tokens after the
-/// consumer stops, and the next `respond` settles that bookkeeping before deciding
-/// whether the cache still matches the transcript. Post-EOS tokens usually diverge from
-/// the next rendered prompt, in which case the executor falls back to reset + full
-/// re-prefill — correctness first.
+/// `respond` still pumps the engine stream through a relay task: the pump owns the
+/// stream, records every token for the KV mirror, and (with the D1 EOS-stop in the
+/// engine) finishes promptly once the consumer stops; the next `respond` settles that
+/// bookkeeping before computing the shared prefix. A mirror in an unknown state (fresh
+/// executor, engine error) settles to nil → `reset(to: 0)` — correctness first.
 public struct KitExecutor: LanguageModelExecutor {
     public typealias Model = KitLanguageModel
 
@@ -96,7 +96,7 @@ public struct KitExecutor: LanguageModelExecutor {
                     _ = try? await previous.value  // engine free before generate
                 }
                 let seed = tokenizer.encode(text: "Hi").first.map(Int32.init) ?? 1
-                let stream = try engine.generate(
+                let stream = try await engine.generate(
                     with: [seed],
                     samplingConfiguration: .greedy,
                     inferenceOptions: InferenceOptions(maxTokens: 1))
@@ -149,29 +149,32 @@ public struct KitExecutor: LanguageModelExecutor {
             supportsHermesTools: supportsHermesTools)
         let promptTokens = rendered.tokens
 
-        // 3) Append-only KV fast path: skip reset and feed only the suffix when the
-        //    rendered prompt extends what's already in the cache.
-        let fed: [Int32]
-        let kvBase: [Int32]
-        if let kv = kvTokens, kv.isEmpty {
-            fed = promptTokens
-            kvBase = []
-        } else if let kv = kvTokens, promptTokens.count > kv.count,
-            promptTokens.starts(with: kv)
-        {
-            fed = Array(promptTokens[kv.count...])
-            kvBase = kv
-            kitFMDebug("KV fast path: reusing \(kv.count) tokens, prefilling \(fed.count)")
+        // 3) KV fast path: rewind the engine to the longest shared prefix, then feed the
+        //    FULL rendered prompt — the engine's implicit prefix caching prefills only the
+        //    tail beyond its recorded history. The explicit reset(to:) trims tokens the
+        //    pipeline consumed after the consumer broke (post-EOS drain) and turns a
+        //    divergence (e.g. a re-rendered transcript) into a pure extension instead of
+        //    the engine's divergence full-reset. nil mirror (fresh executor / prior error)
+        //    → reset(to: 0). Engines that can't rewind (recurrent/SSM) degrade internally.
+        let common: Int
+        if let kv = kvTokens {
+            common = min(
+                Self.commonPrefixLength(kv, promptTokens),
+                max(0, promptTokens.count - 1),
+                engine.processedTokenCount)
         } else {
-            if let kv = kvTokens {
-                kitFMDebug(
-                    "KV diverged (cache \(kv.count) tokens vs prompt \(promptTokens.count)) — reset")
-            }
-            try await engine.reset()
-            fed = promptTokens
-            kvBase = []
+            common = 0
         }
-        let cachedCount = kvBase.count
+        try await engine.reset(to: common)
+        let kvBase = Array(promptTokens[..<common])
+        let fed = Array(promptTokens[common...])
+        if common > 0 {
+            kitFMDebug("KV fast path: reusing \(common) tokens, prefilling \(fed.count)")
+        } else if let kv = kvTokens, !kv.isEmpty {
+            kitFMDebug(
+                "KV diverged (cache \(kv.count) tokens vs prompt \(promptTokens.count)) — reset")
+        }
+        let cachedCount = common
 
         // (WWDC 339 suggests metadata + usage upfront, but a usage-only .response event
         // materializes an EMPTY Response transcript entry when the turn ends in tool
@@ -188,24 +191,30 @@ public struct KitExecutor: LanguageModelExecutor {
                 SamplingConfiguration(temperature: $0)
             } ?? .greedy
 
-        // Engine input contracts differ: the pipelined engine consumes its input as NEW
-        // tokens (feed only the suffix), while logits-capable engines (sequential,
-        // static-shape) take the cumulative token list and skip the already-processed
-        // prefix internally. TurnState bookkeeping uses `fed` (the suffix) either way.
-        let engineInput = engine.supportsLogits ? promptTokens : fed
-
+        // Every engine now takes the full cumulative token list and slices off its cached
+        // prefix internally (implicit prefix caching). TurnState bookkeeping still uses
+        // `fed` (the suffix) to reconstruct the cache mirror.
         let (relay, relayContinuation) = AsyncThrowingStream<Int32, any Error>.makeStream()
         let engine = self.engine
+        let eosForPump = tokenizer.eosTokenId
         let pump = Task {
             var ids: [Int32] = []
             do {
-                let stream = try engine.generate(
-                    with: engineInput,
+                let stream = try await engine.generate(
+                    with: promptTokens,
                     samplingConfiguration: sampling,
                     inferenceOptions: InferenceOptions(maxTokens: maxTokens))
                 for try await output in stream {
                     ids.append(output.tokenId)
                     relayContinuation.yield(output.tokenId)
+                    // Stop at EOS instead of draining to maxTokens. With v0.1.1-zoo's D1, breaking
+                    // the engine stream stops the engine, so the pump finishes promptly; without
+                    // this break the engine over-generates and the NEXT turn's settle() waits on
+                    // that long background drain — which is what made the 2nd consecutive generation
+                    // time out ("something went wrong"). The few-tokens-past-EOS the pipeline may
+                    // still hold only matter for cross-turn KV reuse; an independent next turn
+                    // diverges and resets anyway.
+                    if let eos = eosForPump, Int(output.tokenId) == eos { break }
                 }
                 relayContinuation.finish()
             } catch {
@@ -352,17 +361,23 @@ public struct KitExecutor: LanguageModelExecutor {
             supportsHermesTools: supportsHermesTools)
         let promptTokens = rendered.tokens
 
-        // 3) KV reuse. Logits-capable engines take the cumulative token list and skip
-        //    the processed prefix internally, so reuse just means skipping the reset.
-        let kvBase: [Int32]
-        if let kv = kvTokens, promptTokens.count > kv.count, promptTokens.starts(with: kv) {
-            kvBase = kv
-            kitFMDebug("guided KV fast path: reusing \(kv.count) tokens")
+        // 3) KV reuse: same rewind-then-full-feed contract as the vanilla path (the
+        //    sequential engine's implicit caching skips the processed prefix internally).
+        let common: Int
+        if let kv = kvTokens {
+            common = min(
+                Self.commonPrefixLength(kv, promptTokens),
+                max(0, promptTokens.count - 1),
+                engine.processedTokenCount)
         } else {
-            try await engine.reset()
-            kvBase = []
+            common = 0
         }
-        let fed = Array(promptTokens[kvBase.count...])
+        try await engine.reset(to: common)
+        if common > 0 {
+            kitFMDebug("guided KV fast path: reusing \(common) tokens")
+        }
+        let kvBase = Array(promptTokens[..<common])
+        let fed = Array(promptTokens[common...])
 
         // 4) A `GenerationSchema` JSON-encodes to the JSON schema the grammar compiler
         //    expects (same conversion as Apple's CoreAIExecutor).
@@ -464,6 +479,13 @@ public struct KitExecutor: LanguageModelExecutor {
     }
 
     // MARK: - Tool call parsing
+
+    private static func commonPrefixLength(_ a: [Int32], _ b: [Int32]) -> Int {
+        let n = min(a.count, b.count)
+        var i = 0
+        while i < n, a[i] == b[i] { i += 1 }
+        return i
+    }
 
     struct ParsedToolCall {
         let name: String

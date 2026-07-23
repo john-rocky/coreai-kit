@@ -106,7 +106,7 @@ public struct KitAudioExecutor: LanguageModelExecutor {
         }
 
         do {
-            let stream = try engine.generate(
+            let stream = try await engine.generate(
                 with: rendered.tokens,
                 samplingConfiguration: sampling,
                 inferenceOptions: InferenceOptions(maxTokens: maxTokens))

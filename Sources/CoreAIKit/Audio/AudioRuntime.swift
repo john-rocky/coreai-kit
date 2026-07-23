@@ -184,7 +184,7 @@ public final class AudioRuntime: @unchecked Sendable {
     public func generate(promptIDs: [Int32], maxTokens: Int) async throws -> [Int] {
         try await engine.reset()
         var ids: [Int] = []
-        let stream = try engine.generate(
+        let stream = try await engine.generate(
             with: promptIDs, samplingConfiguration: .greedy,
             inferenceOptions: InferenceOptions(maxTokens: maxTokens))
         for try await output in stream {
@@ -203,7 +203,7 @@ public final class AudioRuntime: @unchecked Sendable {
     /// One real 1-token generate + reset: compiles the sampler graph and touches the weights.
     public func warmup() async throws {
         let seed = tokenizer.encode(text: "Hi").first.map(Int32.init) ?? 1
-        let stream = try engine.generate(
+        let stream = try await engine.generate(
             with: [seed], samplingConfiguration: .greedy,
             inferenceOptions: InferenceOptions(maxTokens: 1))
         for try await _ in stream {}

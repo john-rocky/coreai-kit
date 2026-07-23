@@ -1,0 +1,334 @@
+// Gemma4 E2B mixed-bit RAW-METAL decode loop — elementwise glue kernels (P1).
+//
+// Each kernel replicates the Core AI receiving end's exact fp16 op order
+// (RMSNormImpl: fp32 mean-square -> x*inv fp32 -> fp16 cast -> *w fp16;
+// residual add and layer_scalar in fp16; RoPE cos/sin computed fp32,
+// CAST TO HALF, then half rotate-half arithmetic) so the raw loop's numerics
+// sit in the same near-tie class as the shipped bundles.
+
+#include <metal_stdlib>
+// Force safe fp math AT SOURCE LEVEL: torch.mps.compile_shader (python harness) and
+// MTLLibrary+.safe (Swift runner) must produce bit-identical code. The fp16 path was
+// empirically bit-equal under both compilers, but the fq8 activation-quant ALU changed
+// instruction scheduling enough that the fast-math default reassociated the int4/int2
+// dot accumulations (triaged 2026-07-18: G4_AQ_ONLY masks — int8/glue/sdpa exact,
+// every int4/int2 matvec forked). The pragma overrides both compilers' options.
+#pragma METAL fp math_mode(safe)
+using namespace metal;
+
+constant float RMS_EPS = 1e-6f;
+
+// int8 STATIC activation fake-quant (mobile-QAT learned clamp; see gemma4_matvec.metal).
+// Used here for KV-cache STORAGE quant: K after k_norm+rope, V after value_norm, at the
+// cache write. s <= 0 bypasses bit-identically.
+inline float fq8(float x, float s) {
+    // x * (1/s), NOT x/s: an inner-loop divide cost 30% decode (measured 108 vs 140
+    // tok/s); TFLite's own quantize kernels also multiply by the inverse scale. The
+    // uniform 1/s is one IEEE divide per element-batch, identical bits under both
+    // compilers (a bare inner x/s also forked argmax near-ties cross-compiler).
+    return s > 0.0f ? s * clamp(metal::rint(x * (1.0f / s)), -128.0f, 127.0f) : x;
+}
+
+// ---- RMSNorm + optional residual add + optional layer scalar ----------------------------
+// X [rows, dim] half; W [dim] half; RES [rows, dim] half (read iff flags&1);
+// OUT[(out_row0 + r) * dim + d] = ((flags&1 ? RES : 0) + normed) * ls   (fp16 op order)
+// flags: bit0 = add RES, bit1 = scale-free (skip W).
+// Dispatch: threads = [32, rows], group_size = [32, min(rows, 8)].
+kernel void rmsnorm_glue(
+    device const half* X        [[buffer(0)]],
+    device const half* W        [[buffer(1)]],
+    device const half* RES      [[buffer(2)]],
+    device half*       OUT      [[buffer(3)]],
+    constant uint&     dim      [[buffer(4)]],
+    constant uint&     flags    [[buffer(5)]],
+    constant float&    ls       [[buffer(6)]],
+    constant uint&     out_row0 [[buffer(7)]],
+    constant float&    aqs      [[buffer(8)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    const uint lane = gid.x;                    // 0..31 (one SIMD-group per row)
+    const uint r    = gid.y;
+    const uint ept  = dim / 32;
+
+    float ssq = 0.0f;
+    for (uint i = 0; i < ept; ++i) {
+        float x = float(X[r * dim + lane * ept + i]);
+        ssq += x * x;
+    }
+    const float ms  = simd_sum(ssq) / float(dim);
+    const float inv = metal::precise::rsqrt(ms + RMS_EPS);
+
+    const half lsh = half(ls);
+    for (uint i = 0; i < ept; ++i) {
+        const uint d = lane * ept + i;
+        half nrm = half(float(X[r * dim + d]) * inv);      // fp32 normalize, fp16 cast
+        if (!(flags & 2u)) nrm = nrm * W[d];               // fp16 weight mul
+        if (flags & 1u) nrm = RES[r * dim + d] + nrm;      // fp16 residual add
+        // aqs > 0 only on the V-cache write (storage quant after value_norm)
+        OUT[(out_row0 + r) * dim + d] = half(fq8(float(nrm * lsh), aqs));
+    }
+}
+
+// ---- rotate-half RoPE (q rows in place-or-out; k row straight into the cache) -----------
+// X [rows, hd] half; INVF [hd/2] float (zeros in the tail = identity, full layers);
+// OUT[(out_row0 + r) * hd + ...] = rotated. Composite-faithful: fp32 angle,
+// fp16 cos/sin, fp16 multiply/add. Dispatch: threads = [hd/2, rows].
+kernel void rope_rows(
+    device const half*  X        [[buffer(0)]],
+    device const float* INVF     [[buffer(1)]],
+    device half*        OUT      [[buffer(2)]],
+    constant uint&      hd       [[buffer(3)]],
+    constant uint&      pos      [[buffer(4)]],
+    constant uint&      out_row0 [[buffer(5)]],
+    uint2 gid [[thread_position_in_grid]])
+{
+    const uint d = gid.x;                       // pair index 0..hd/2-1
+    const uint r = gid.y;
+    const uint half_dim = hd / 2;
+
+    const float angle = float(pos) * INVF[d];
+    const half c = half(metal::precise::cos(angle));
+    const half s = half(metal::precise::sin(angle));
+    const half x1 = X[r * hd + d];
+    const half x2 = X[r * hd + d + half_dim];
+    const half m1 = c * x1;
+    const half m2 = s * x2;
+    const half m3 = s * x1;
+    const half m4 = c * x2;
+    OUT[(out_row0 + r) * hd + d] = m1 - m2;
+    OUT[(out_row0 + r) * hd + d + half_dim] = m3 + m4;
+}
+
+// ---- fused per-head RMSNorm + rotate-half RoPE (q rows; k row straight into cache) -------
+// Replaces the (rmsnorm_glue -> rope_rows) pair with ONE dispatch, numerics-identical:
+// the norm uses rmsnorm_glue's exact reduction (32 lanes, contiguous ept, simd_sum) and
+// stages the half-rounded normed row in threadgroup memory; the rope math is rope_rows'
+// exact fp32-angle / half-cos-sin / half-multiply sequence. rows <= 8, hd <= 512.
+// Dispatch: threads = [32, rows], group_size = [32, rows].
+kernel void qknorm_rope(
+    device const half*  X        [[buffer(0)]],
+    device const half*  W        [[buffer(1)]],
+    device const float* INVF     [[buffer(2)]],
+    device half*        OUT      [[buffer(3)]],
+    constant uint&      hd       [[buffer(4)]],
+    constant uint&      pos      [[buffer(5)]],
+    constant uint&      out_row0 [[buffer(6)]],
+    constant float&     aqs      [[buffer(7)]],
+    uint2 tid [[thread_position_in_threadgroup]])
+{
+    const uint lane = tid.x;
+    const uint r    = tid.y;
+    const uint ept  = hd / 32;
+    threadgroup half staged[8 * 512];
+
+    float ssq = 0.0f;
+    for (uint i = 0; i < ept; ++i) {
+        float x = float(X[r * hd + lane * ept + i]);
+        ssq += x * x;
+    }
+    const float ms  = simd_sum(ssq) / float(hd);
+    const float inv = metal::precise::rsqrt(ms + 1e-6f);
+    for (uint i = 0; i < ept; ++i) {
+        const uint d = lane * ept + i;
+        staged[r * hd + d] = half(float(X[r * hd + d]) * inv) * W[d];
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    const uint half_dim = hd / 2;
+    const uint pairs = half_dim / 32;            // pairs per lane (4 or 8)
+    for (uint i = 0; i < pairs; ++i) {
+        const uint d = lane * pairs + i;
+        const float angle = float(pos) * INVF[d];
+        const half c = half(metal::precise::cos(angle));
+        const half s = half(metal::precise::sin(angle));
+        const half x1 = staged[r * hd + d];
+        const half x2 = staged[r * hd + d + half_dim];
+        const half m1 = c * x1;
+        const half m2 = s * x2;
+        const half m3 = s * x1;
+        const half m4 = c * x2;
+        // aqs > 0 only on the K-cache write (storage quant after k_norm+rope)
+        OUT[(out_row0 + r) * hd + d] = half(fq8(float(m1 - m2), aqs));
+        OUT[(out_row0 + r) * hd + d + half_dim] = half(fq8(float(m3 + m4), aqs));
+    }
+}
+
+// ---- fused q-rope + k-rope + v-norm (write layers): ONE dispatch for the whole attn
+// pre-processing tail. Rows 0-7 = q heads (qknorm_rope semantics -> QN), row 8 = k
+// (qknorm_rope -> KC[pos]), row 9 = v (rmsnorm_glue flags=2 scale-free semantics ->
+// VC[pos]). Per-row math identical to the kernels it replaces. Dispatch: [32, 10],
+// group_size [32, 10]. staged sized for hd 512.
+kernel void qkv_norm_rope_v(
+    device const half*  Q    [[buffer(0)]],
+    device const half*  KIN  [[buffer(1)]],
+    device const half*  VIN  [[buffer(2)]],
+    device const half*  WQ   [[buffer(3)]],
+    device const half*  WK   [[buffer(4)]],
+    device const float* INVF [[buffer(5)]],
+    device half*        QN   [[buffer(6)]],
+    device half*        KC   [[buffer(7)]],
+    device half*        VC   [[buffer(8)]],
+    constant uint&      hd   [[buffer(9)]],
+    constant uint&      pos  [[buffer(10)]],
+    constant float&     aqk  [[buffer(11)]],
+    constant float&     aqv  [[buffer(12)]],
+    uint2 tid [[thread_position_in_threadgroup]])
+{
+    const uint lane = tid.x;
+    const uint r    = tid.y;                     // 0-7 q, 8 k, 9 v
+    const uint ept  = hd / 32;
+    threadgroup half staged[10 * 512];
+
+    device const half* X = r < 8 ? Q + r * hd : (r == 8 ? KIN : VIN);
+
+    float ssq = 0.0f;
+    for (uint i = 0; i < ept; ++i) {
+        float x = float(X[lane * ept + i]);
+        ssq += x * x;
+    }
+    const float ms  = simd_sum(ssq) / float(hd);
+    const float inv = metal::precise::rsqrt(ms + 1e-6f);
+    for (uint i = 0; i < ept; ++i) {
+        const uint d = lane * ept + i;
+        half nrm = half(float(X[d]) * inv);
+        if (r < 8) nrm = nrm * WQ[d];
+        else if (r == 8) nrm = nrm * WK[d];      // r == 9: scale-free (flags=2 semantics)
+        staged[r * hd + d] = nrm;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (r == 9) {                                // v: no rope, straight into the cache row
+        for (uint i = 0; i < ept; ++i) {         // (storage quant after value_norm)
+            const uint d = lane * ept + i;
+            VC[pos * hd + d] = half(fq8(float(staged[9 * hd + d]), aqv));
+        }
+        return;
+    }
+    device half* OUT = r < 8 ? QN + r * hd : KC + pos * hd;
+    const float aqs = r < 8 ? 0.0f : aqk;        // K-cache storage quant; q untouched
+    const uint half_dim = hd / 2;
+    const uint pairs = half_dim / 32;
+    for (uint i = 0; i < pairs; ++i) {
+        const uint d = lane * pairs + i;
+        const float angle = float(pos) * INVF[d];
+        const half c = half(metal::precise::cos(angle));
+        const half s = half(metal::precise::sin(angle));
+        const half x1 = staged[r * hd + d];
+        const half x2 = staged[r * hd + d + half_dim];
+        const half m1 = c * x1;
+        const half m2 = s * x2;
+        const half m3 = s * x1;
+        const half m4 = c * x2;
+        OUT[d] = half(fq8(float(m1 - m2), aqs));
+        OUT[d + half_dim] = half(fq8(float(m3 + m4), aqs));
+    }
+}
+
+// ---- packed-INT2 embedding row gather: OUT[1536] = codes * (scale[tok] * sqrt(1536)) ----
+// PACKED [V, 384] uint8 (4 codes/byte, bits[1:0] first, signed); SCALE [V] float.
+// The token id is read from TOKS[pos] ON THE GPU (written by argmax_stage2 for generated
+// tokens, prefilled by the host for prompt tokens) — no CPU roundtrip in the decode loop.
+// Dispatch: threads = [384].
+kernel void embed_gather(
+    device const uchar* PACKED [[buffer(0)]],
+    device const float* SCALE  [[buffer(1)]],
+    device half*        OUT    [[buffer(2)]],
+    device const uint*  TOKS   [[buffer(3)]],
+    constant uint&      pos    [[buffer(4)]],
+    uint gid [[thread_position_in_grid]])
+{
+    const uint tok = TOKS[pos];
+    const uint b = gid;                          // byte index within the row
+    const uchar byte = PACKED[tok * 384 + b];
+    const half s = half(SCALE[tok] * 39.191835884530846f);   // sqrt(1536)
+    for (uint j = 0; j < 4; ++j) {
+        const int c = (int((byte >> (2 * j)) & 3) ^ 2) - 2;  // signed 2-bit
+        OUT[b * 4 + j] = half(c) * s;
+    }
+}
+
+// ---- packed-INT4 PLE row gather: OUT[35*256] = codes * (scale[tok, l] * sqrt(256)) ------
+// PLEP [V, 4480] uint8 (2 codes/byte, low nibble first, signed); PLESC [V, 35] float.
+// Dispatch: threads = [4480].
+kernel void ple_gather(
+    device const uchar* PLEP  [[buffer(0)]],
+    device const float* PLESC [[buffer(1)]],
+    device half*        OUT   [[buffer(2)]],
+    device const uint*  TOKS  [[buffer(3)]],
+    constant uint&      pos   [[buffer(4)]],
+    uint gid [[thread_position_in_grid]])
+{
+    const uint tok = TOKS[pos];
+    const uint b = gid;                          // byte index within the row
+    const uint l = b / 128;                      // table index (256 codes = 128 bytes)
+    const uchar byte = PLEP[tok * 4480 + b];
+    const half s = half(PLESC[tok * 35 + l] * 16.0f);        // sqrt(256)
+    int c0 = int(byte & 0xF);  c0 = c0 >= 8 ? c0 - 16 : c0;
+    int c1 = int(byte >> 4);   c1 = c1 >= 8 ? c1 - 16 : c1;
+    OUT[b * 2]     = half(c0) * s;
+    OUT[b * 2 + 1] = half(c1) * s;
+}
+
+// ---- greedy argmax over the fp16 logits, two-stage, first-max tie-break ------------------
+// Softcap tanh(l/30)*30 is monotonic, so greedy argmax skips it (P5d precedent).
+// Stage 1: each threadgroup (256 threads) reduces 512 consecutive logits to one
+// (val, idx) partial. Stage 2: one threadgroup reduces the partials and writes the
+// winning index into TOKS[pos + 1] — the next step's embed_gather reads it there.
+// Tie-break = LOWER index everywhere (torch.argmax first-max semantics; partials
+// cover increasing index ranges so lower part == lower idx).
+// Dispatch: stage1 threads = [V/2] (= nparts*256), group_size = [256];
+//           stage2 threads = [256], group_size = [256].
+kernel void argmax_stage1(
+    device const half* LOGITS [[buffer(0)]],
+    device float*      PARTV  [[buffer(1)]],
+    device uint*       PARTI  [[buffer(2)]],
+    constant uint&     V      [[buffer(3)]],
+    uint tid  [[thread_position_in_threadgroup]],
+    uint tgid [[threadgroup_position_in_grid]])
+{
+    threadgroup float tv[256];
+    threadgroup uint  ti[256];
+    const uint base = tgid * 512;
+    const uint i0 = base + tid;
+    const uint i1 = base + tid + 256;
+    float v0 = i0 < V ? float(LOGITS[i0]) : -1e30f;
+    float v1 = i1 < V ? float(LOGITS[i1]) : -1e30f;
+    if (v1 > v0) { tv[tid] = v1; ti[tid] = i1; } else { tv[tid] = v0; ti[tid] = i0; }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint s = 128; s > 0; s >>= 1) {
+        if (tid < s) {
+            const float vo = tv[tid + s]; const uint io = ti[tid + s];
+            if (vo > tv[tid] || (vo == tv[tid] && io < ti[tid])) { tv[tid] = vo; ti[tid] = io; }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    if (tid == 0) { PARTV[tgid] = tv[0]; PARTI[tgid] = ti[0]; }
+}
+
+kernel void argmax_stage2(
+    device const float* PARTV  [[buffer(0)]],
+    device const uint*  PARTI  [[buffer(1)]],
+    device uint*        TOKS   [[buffer(2)]],
+    constant uint&      nparts [[buffer(3)]],
+    constant uint&      pos    [[buffer(4)]],
+    uint tid [[thread_position_in_threadgroup]])
+{
+    threadgroup float tv[256];
+    threadgroup uint  ti[256];
+    float best = -1e30f;
+    uint  bi = 0;
+    for (uint p = tid; p < nparts; p += 256) {
+        const float v = PARTV[p];
+        if (v > best || (v == best && PARTI[p] < bi)) { best = v; bi = PARTI[p]; }
+    }
+    tv[tid] = best; ti[tid] = bi;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint s = 128; s > 0; s >>= 1) {
+        if (tid < s) {
+            const float vo = tv[tid + s]; const uint io = ti[tid + s];
+            if (vo > tv[tid] || (vo == tv[tid] && io < ti[tid])) { tv[tid] = vo; ti[tid] = io; }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    if (tid == 0) TOKS[pos + 1] = ti[0];
+}

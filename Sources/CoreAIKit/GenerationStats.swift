@@ -5,6 +5,9 @@ import Foundation
 public struct GenerationStats: Sendable, Equatable {
     public var loadSeconds: Double? = nil
     public var promptTokens: Int = 0
+    /// Leading prompt tokens served from the engine's KV cache this turn (the engine's
+    /// prefix hit count — 0 on engines that reuse internally without reporting).
+    public var cachedPromptTokens: Int = 0
     public var ttftSeconds: Double? = nil
     public var generatedTokens: Int = 0
     /// Decode speed over a 32-token rolling window. The engine bursts at decode start, so a

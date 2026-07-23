@@ -68,6 +68,36 @@ enum FalconBench {
         emit("engine_variant=\(engineVariant.rawValue)")
 
         let env = ProcessInfo.processInfo.environment
+
+        // FALCON_EVICT=<substring>: delete cached model dirs whose repo name contains
+        // the substring, plus Library/Caches, before loading — recovers from a
+        // poisoned on-device compile cache (re-downloads on next load).
+        if let evict = env["FALCON_EVICT"] {
+            let fm = FileManager.default
+            let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            let modelsDir = support.appendingPathComponent("CoreAIKit/models")
+            if let orgs = try? fm.contentsOfDirectory(
+                at: modelsDir, includingPropertiesForKeys: nil)
+            {
+                for org in orgs {
+                    guard let repos = try? fm.contentsOfDirectory(
+                        at: org, includingPropertiesForKeys: nil) else { continue }
+                    for repo in repos
+                    where repo.lastPathComponent.localizedCaseInsensitiveContains(evict) {
+                        try? fm.removeItem(at: repo)
+                        emit("evicted=\(repo.lastPathComponent)")
+                    }
+                }
+            }
+            let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            if let entries = try? fm.contentsOfDirectory(
+                at: caches, includingPropertiesForKeys: nil)
+            {
+                for entry in entries { try? fm.removeItem(at: entry) }
+            }
+            emit("caches_cleared=1")
+        }
+
         // FALCON_CATALOG=<id>: bench a catalog model already in the app's store — the
         // exact load path and artifacts the interactive chat uses — instead of a
         // sideloaded falcon-bench bundle.
@@ -106,43 +136,137 @@ enum FalconBench {
             emit(String(format: "engine_created_and_loaded_in=%.2fs", Date().timeIntervalSince(loadStart)))
             emit("model_name=\(await session.modelName)")
 
-            try await session.prewarm()
-            emit("prewarmed=ok")
+            // FALCON_WARM_PREFILL=<n>: also warm an n-token prefill shape (kills the
+            // first-long-turn TTFT spike on dynamic/static-shape engines).
+            let warmPrefill = Int(env["FALCON_WARM_PREFILL"] ?? "")
+            try await session.prewarm(prefillLength: warmPrefill)
+            emit("prewarmed=ok\(warmPrefill.map { " prefill=\($0)" } ?? "")")
 
             emit("prompt=\(prompt)")
 
-            let reqStart = Date()
-            var firstTokenAt: Date?
-            var answer = ""
-            for try await event in await session.streamResponse(to: prompt) {
-                switch event {
-                case .response(let delta):
-                    if firstTokenAt == nil { firstTokenAt = Date() }
-                    answer += delta
-                case .stats, .complete, .thinking:
-                    break
+            // FALCON_TURNS=N (>1): multi-turn KV-reuse validation. Turn 2+ TTFT staying
+            // flat while prompt_tokens grows is the reuse evidence; cached_prompt_tokens
+            // is the engine's own prefix-hit count (0 = engine reuses without reporting,
+            // or a full re-prefill happened).
+            let turnCount = Int(env["FALCON_TURNS"] ?? "") ?? 1
+            if turnCount > 1 {
+                let followUps = [
+                    "Now compress that explanation into exactly one short sentence.",
+                    "Translate that sentence into Japanese.",
+                    // Deliberately long turn: pushes this turn's prefill length past any
+                    // earlier one, to expose first-time-at-this-length engine costs
+                    // (shape specialization / logits growth) as a TTFT spike.
+                    "Here is some context you should consider carefully before answering. "
+                        + "Light from the sun is composed of many wavelengths, and the "
+                        + "atmosphere is composed of nitrogen, oxygen, argon, and trace "
+                        + "gases, with molecules far smaller than the wavelength of "
+                        + "visible light. Scattering efficiency depends strongly on "
+                        + "wavelength for such small particles, and the human eye has "
+                        + "three cone types with different spectral sensitivities, so "
+                        + "perceived color is not just the physics of scattering but "
+                        + "also the biology of vision. Considering all of this context "
+                        + "together with everything we discussed earlier in this "
+                        + "conversation, explain in two sentences why sunsets appear "
+                        + "red and orange rather than blue.",
+                    "Thanks. In one word, what is the scattering effect called?",
+                ]
+                var turnPrompts = [prompt]
+                for i in 0..<(turnCount - 1) {
+                    turnPrompts.append(followUps[i % followUps.count])
                 }
+                emit("---- MULTI-TURN ----")
+                emit(String(format: "load_seconds=%.2f", await session.stats.loadSeconds ?? -1))
+                for (i, p) in turnPrompts.enumerated() {
+                    let reqStart = Date()
+                    var firstTokenAt: Date?
+                    var answer = ""
+                    var sawThinking = false
+                    for try await event in await session.streamResponse(to: p) {
+                        switch event {
+                        case .response(let delta):
+                            if firstTokenAt == nil { firstTokenAt = Date() }
+                            answer += delta
+                        case .thinking:
+                            if firstTokenAt == nil { firstTokenAt = Date() }
+                            sawThinking = true
+                        case .stats, .complete:
+                            break
+                        }
+                    }
+                    let genEnd = Date()
+                    let stats = await session.stats
+                    let decodeSpan = genEnd.timeIntervalSince(firstTokenAt ?? reqStart)
+                    let gen = stats.generatedTokens
+                    let avg = decodeSpan > 0 ? Double(max(gen - 1, 0)) / decodeSpan : 0
+                    emit(String(
+                        format: "turn=%d prompt_tokens=%d cached_prompt_tokens=%d ttft=%.3f "
+                            + "generated=%d decode_tok_s=%.2f thinking=%@",
+                        i + 1, stats.promptTokens, stats.cachedPromptTokens,
+                        stats.ttftSeconds ?? -1, gen, avg, sawThinking ? "yes" : "no"))
+                    emit("turn\(i + 1)_answer=\(String(answer.prefix(160)))")
+                }
+                emit(String(
+                    format: "peak_footprint_mb=%.1f",
+                    Double(await session.stats.footprintBytes) / 1_048_576.0))
+                emit("status=SUCCESS")
+            } else {
+                let reqStart = Date()
+                var firstTokenAt: Date?
+                var answer = ""
+                for try await event in await session.streamResponse(to: prompt) {
+                    switch event {
+                    case .response(let delta):
+                        if firstTokenAt == nil { firstTokenAt = Date() }
+                        answer += delta
+                    case .stats, .complete, .thinking:
+                        break
+                    }
+                }
+                let genEnd = Date()
+                let stats = await session.stats
+
+                let first = firstTokenAt ?? reqStart
+                let decodeSpan = genEnd.timeIntervalSince(first)
+                let gen = stats.generatedTokens
+                let avgDecode = decodeSpan > 0 ? Double(max(gen - 1, 0)) / decodeSpan : 0
+
+                emit("---- RESULTS ----")
+                emit(String(format: "load_seconds=%.2f", stats.loadSeconds ?? -1))
+                emit("prompt_tokens=\(stats.promptTokens)")
+                emit("cached_prompt_tokens=\(stats.cachedPromptTokens)")
+                emit(String(format: "ttft_seconds=%.3f", stats.ttftSeconds ?? -1))
+                emit("generated_tokens=\(gen)")
+                emit(String(format: "decode_tok_s_avg=%.2f", avgDecode))
+                emit(String(format: "decode_tok_s_rolling32=%.2f", stats.tokensPerSecond ?? -1))
+                emit(String(format: "peak_footprint_mb=%.1f", Double(stats.footprintBytes) / 1_048_576.0))
+                emit("ANSWER_BEGIN")
+                emit(answer)
+                emit("ANSWER_END")
+                emit("status=SUCCESS")
             }
-            let genEnd = Date()
-            let stats = await session.stats
 
-            let first = firstTokenAt ?? reqStart
-            let decodeSpan = genEnd.timeIntervalSince(first)
-            let gen = stats.generatedTokens
-            let avgDecode = decodeSpan > 0 ? Double(max(gen - 1, 0)) / decodeSpan : 0
-
-            emit("---- RESULTS ----")
-            emit(String(format: "load_seconds=%.2f", stats.loadSeconds ?? -1))
-            emit("prompt_tokens=\(stats.promptTokens)")
-            emit(String(format: "ttft_seconds=%.3f", stats.ttftSeconds ?? -1))
-            emit("generated_tokens=\(gen)")
-            emit(String(format: "decode_tok_s_avg=%.2f", avgDecode))
-            emit(String(format: "decode_tok_s_rolling32=%.2f", stats.tokensPerSecond ?? -1))
-            emit(String(format: "peak_footprint_mb=%.1f", Double(stats.footprintBytes) / 1_048_576.0))
-            emit("ANSWER_BEGIN")
-            emit(answer)
-            emit("ANSWER_END")
-            emit("status=SUCCESS")
+            // FALCON_GUIDED=1: schema-constrained turns (sequential engine only). Two
+            // back-to-back guided turns exercise the grammar mask AND the engine's
+            // implicit prefix caching through the cumulative per-step feed.
+            if env["FALCON_GUIDED"] != nil {
+                emit("---- GUIDED ----")
+                let schema = """
+                    {"type":"object","properties":{"name":{"type":"string"},\
+                    "population_millions":{"type":"number"}},\
+                    "required":["name","population_millions"]}
+                    """
+                let json = try await session.respondJSON(
+                    to: "Name one big city and its rough population in millions.",
+                    schema: schema)
+                emit("guided_json=\(json)")
+                let valid = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) != nil
+                emit("guided_valid_json=\(valid ? "yes" : "no")")
+                let json2 = try await session.respondJSON(
+                    to: "Now a different city, same JSON shape.", schema: schema)
+                emit("guided_json2=\(json2)")
+                let valid2 = (try? JSONSerialization.jsonObject(with: Data(json2.utf8))) != nil
+                emit("guided_valid_json2=\(valid2 ? "yes" : "no")")
+            }
         } catch {
             emit("status=FAILURE")
             emit("ERROR: \(String(describing: error))")

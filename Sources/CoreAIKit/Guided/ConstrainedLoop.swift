@@ -52,7 +52,7 @@ enum ConstrainedLoop {
                         try Task.checkCancellation()
 
                         var stepLogits: [LogitsScalarType]? = nil
-                        let stream = try engine.generate(
+                        let stream = try await engine.generate(
                             with: tokens,
                             samplingConfiguration: sampling,
                             inferenceOptions: stepOptions)

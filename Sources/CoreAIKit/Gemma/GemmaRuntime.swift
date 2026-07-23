@@ -145,7 +145,7 @@ public final class GemmaRuntime: @unchecked Sendable {
     /// shape the S=1 graph rejects.
     func warmup() async throws {
         let seed = tokenizer.encode(text: "Hi").first.map(Int32.init) ?? 1
-        let stream = try engine.generate(
+        let stream = try await engine.generate(
             with: [seed], samplingConfiguration: .greedy,
             inferenceOptions: InferenceOptions(maxTokens: 1))
         for try await _ in stream {}

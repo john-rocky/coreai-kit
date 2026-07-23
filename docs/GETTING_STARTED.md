@@ -285,8 +285,17 @@ See `Examples/GuidedDemo` for both paths runnable from the command line.
   loads are seconds.
 - `stats.tokensPerSecond` is a 32-token rolling window — the engine bursts at decode
   start, so a cumulative average would over-read on short replies.
-- Each turn re-prefills the full history (the robust official-runtime path). Long
-  conversations grow TTFT; `reset()` clears it.
+- The engine keeps its KV cache across turns and prefills only the tokens beyond the
+  longest shared prefix with the previous turn (implicit prefix caching + `reset(to:)`
+  rewind), so multi-turn TTFT stays flat. Engines that can't rewind mid-sequence
+  (recurrent/SSM hybrids) fall back to a full re-prefill on divergence — lossless
+  either way. `reset()` clears the conversation and the cache.
+- The first turn whose prefill length exceeds every earlier one pays a one-time engine
+  cost at that length (shape specialization — a 2-4 s TTFT spike on device). On
+  dynamic-shape (GPU) engines, warm it away during loading with
+  `prewarm(prefillLength: 256)` (any length ≥ your typical prompts; covers everything
+  shorter). Static-shape (ANE) engines skip the warm internally, and it is wasted
+  per-token work on S=1 zoo ports (catalog hint "pipelined") — leave it nil there.
 
 ## Roadmap
 
