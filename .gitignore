@@ -5,3 +5,7 @@ xcuserdata/
 .DS_Store
 Examples/**/build/
 Examples/**/Models/
+# Local scratch: run/build logs and _-prefixed scratch dirs never belong in the repo.
+*.log
+Examples/**/_*
+/_*/

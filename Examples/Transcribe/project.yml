@@ -34,7 +34,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.transcribe
-        DEVELOPMENT_TEAM: MFN25KNUGJ
+        # Resolves from your shell: `export DEVELOPMENT_TEAM=XXXXXXXXXX` before `xcodegen generate`,
+        # or leave unset and pick your team in Xcode’s Signing & Capabilities tab.
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Transcribe.entitlements
         SWIFT_VERSION: "6.0"
