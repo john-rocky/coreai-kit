@@ -5,6 +5,25 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
+## [Unreleased]
+
+### Added
+
+- **`KitSeparator`** — music source separation (Mel-Band RoFormer, Kim Vocal): a song in, a
+  vocals stem and an instrumental stem out. `separate(_:)` on a decoded stereo mix or
+  `separate(contentsOf:)` on any file AVFoundation reads. New catalog kind `separation`
+  (`melband-roformer-vocal`). iPhone 17 Pro: an 8 s chunk in 1.23 s (~6.5x real-time).
+- **`KitDialogue`** — multi-speaker / dialogue text-to-speech (VibeVoice-Realtime-0.5B), the first
+  kit API that performs a *script*: `perform("Speaker 1: …\nSpeaker 2: …")` renders each turn from
+  its own voice preset and concatenates them. 25 packaged voices, free text (Qwen2.5 tokenizer +
+  mmapped fp16 embedding table — no torch, no 272 MB read). `KitSpeaker(catalog:)` also accepts
+  the id and speaks one line in the default voice. Pairs with `KitDiarizer` for a
+  generate → diarize loop.
+- `AudioFile.pcmStereo(_:sampleRate:)` — decode any audio file to stereo at a chosen rate (the
+  separation models need the full band, not the 16 kHz speech downmix).
+- `StatefulGraphModel.seedState(keys:values:prefillLength:)` — seed a decode bundle's KV cache from
+  an **external** prefill (a voice prompt, a cached prefix) instead of replaying it.
+
 ## [0.2.0] — 2026-07-10
 
 ### Added

@@ -668,6 +668,23 @@
       }
     },
     {
+      "id": "vibevoice-realtime-0.5b",
+      "name": "VibeVoice-Realtime 0.5B (multi-speaker)",
+      "repo": "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI",
+      "revision": "889897cdc1df88428a3eed24e89f1814e580c033",
+      "kind": "tts",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 1420
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 1420
+        }
+      }
+    },
+    {
       "id": "melband-roformer-vocal",
       "name": "Mel-Band RoFormer (Kim Vocal)",
       "repo": "mlboydaisuke/MelBandRoformer-Vocal-CoreAI",

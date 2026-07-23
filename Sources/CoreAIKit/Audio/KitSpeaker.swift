@@ -28,6 +28,7 @@ public struct KitSpeaker: Sendable {
         case voxcpm(VoxCPMTTS)
         case voxcpm2(VoxCPM2TTS)
         case kokoro(KokoroTTS)
+        case vibevoice(KitDialogue)
     }
 
     private let engine: Engine
@@ -61,6 +62,16 @@ public struct KitSpeaker: Sendable {
                 try await KokoroTTS(
                     predictorAt: predictor, prosodyAt: prosody, vocoderAt: vocoder,
                     glueDir: glue))
+            self.catalogID = entry.id
+            return
+        }
+
+        // VibeVoice is multi-speaker; `KitDialogue` is its full surface (scripts, voice picking).
+        // Reached through KitSpeaker it just speaks one line in the default voice.
+        if entry.id == "vibevoice-realtime-0.5b" {
+            self.engine = .vibevoice(
+                try await KitDialogue(catalog: entry.id, store: store,
+                                      downloadProgress: downloadProgress))
             self.catalogID = entry.id
             return
         }
@@ -111,6 +122,8 @@ public struct KitSpeaker: Sendable {
         case .kokoro(let tts):
             return SpokenAudio(
                 samples: try await tts.synthesize(text), sampleRate: KokoroTTS.sampleRate)
+        case .vibevoice(let dialogue):
+            return try await dialogue.speak(text)
         }
     }
 
@@ -123,6 +136,10 @@ public struct KitSpeaker: Sendable {
         case .voxcpm(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
         case .voxcpm2(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
         case .kokoro(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
+        case .vibevoice(let dialogue):
+            // No incremental decode yet (the acoustic decoder renders a whole window), so this is
+            // one chunk — the API contract (concatenation == synthesize) still holds.
+            await onChunk(try await dialogue.speak(text).samples)
         }
     }
 }

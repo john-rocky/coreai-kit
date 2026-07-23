@@ -561,6 +561,27 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "sortformer_float16.aimodel", sizeMB: 226),
                     "ios": .init(path: "sortformer_float16.h18p.aimodelc", sizeMB: 451),
                 ]),
+            // ── Multi-speaker / dialogue TTS (VibeVoice-Realtime-0.5B): five fp16 graphs in the
+            //    platform dir + `coreai_host/` (voice prefill caches, glue, tokenizer) + the fp16
+            //    embedding table at the repo root. Driven by `KitDialogue`. ──
+            CatalogEntry(
+                id: "vibevoice-realtime-0.5b", name: "VibeVoice-Realtime 0.5B (multi-speaker)",
+                repo: "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI",
+                revision: "889897cdc1df88428a3eed24e89f1814e580c033", kind: .tts,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 1420),
+                    "ios": .init(path: "ios", sizeMB: 1420),
+                ]),
+            // ── Music source separation (Mel-Band RoFormer, Kim Vocal). One graph with STFT +
+            //    iSTFT folded in; the host only frames and overlap-adds. Driven by `KitSeparator`. ──
+            CatalogEntry(
+                id: "melband-roformer-vocal", name: "Mel-Band RoFormer (Kim Vocal)",
+                repo: "mlboydaisuke/MelBandRoformer-Vocal-CoreAI",
+                revision: "0c7aca92db7341f7be579aa00fa1231442c7cb7c", kind: .separation,
+                variants: [
+                    "macos": .init(path: "mbr_full_fp16.aimodel", sizeMB: 470),
+                    "ios": .init(path: "mbr_full_fp16.h18p.aimodelc", sizeMB: 470),
+                ]),
             CatalogEntry(
                 id: "clip-vit-b32", name: "CLIP ViT-B/32",
                 repo: "mlboydaisuke/clip-vit-base-patch32-CoreAI-official", kind: .imageText,

@@ -138,6 +138,10 @@ Audio & speech
 - `Examples/Music` — text→music with Stable Audio Open Small (~12× realtime on iPhone)
 - `Examples/AudioChat` — audio *understanding* — describe sounds, not just transcripts (Qwen2.5-Omni)
 
+Also in the audio surface, without a dedicated example yet: `KitDialogue` (multi-speaker /
+podcast-style TTS — `perform("Speaker 1: …\nSpeaker 2: …")`, VibeVoice-Realtime-0.5B) and
+`KitSeparator` (song → vocals + instrumental stems, Mel-Band RoFormer).
+
 RAG, agents & system integration
 
 - `Examples/DocChat` — on-device RAG over your notes: embeddings + retrieval tool + local LLM (`swift run`)

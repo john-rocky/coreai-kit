@@ -88,6 +88,42 @@ public final class StatefulGraphModel: @unchecked Sendable {
         copyF16(other.valueCache, &valueCache)
     }
 
+    /// Seeds the KV buffers from an **external** prefill cache — the layout every zoo decode bundle
+    /// uses, `(layers, 1, kvHeads, length, headDim)`, scattered into the first `length` positions of
+    /// this model's capacity. That is how a voice-cloning TTS starts from a pre-computed voice prompt
+    /// (VibeVoice's `.pt` presets) or a chat model resumes a cached prefix without replaying it.
+    ///
+    /// `keys`/`values` are row-major fp32 of exactly `layers · kvHeads · length · headDim` elements.
+    public func seedState(keys: [Float], values: [Float], prefillLength length: Int) throws {
+        let shape = keyDescriptor.shape
+        guard shape.count >= 2 else {
+            throw VisionError.unsupportedScalarType("state rank \(shape.count)")
+        }
+        let capacity = shape[shape.count - 2], inner = shape[shape.count - 1]
+        let outer = shape.dropLast(2).reduce(1, *)
+        guard length >= 0, length <= capacity else {
+            throw VisionError.statefulGraphUnsupported(["prefill \(length) > capacity \(capacity)"])
+        }
+        guard keys.count == outer * length * inner, values.count == keys.count else {
+            throw VisionError.statefulGraphUnsupported(
+                ["prefill element count \(keys.count) != \(outer * length * inner)"])
+        }
+        var k = [Float](repeating: 0, count: outer * capacity * inner)
+        var v = k
+        for o in 0..<outer {
+            for p in 0..<length {
+                let src = (o * length + p) * inner, dst = (o * capacity + p) * inner
+                for i in 0..<inner {
+                    k[dst + i] = keys[src + i]
+                    v[dst + i] = values[src + i]
+                }
+            }
+        }
+        resetState()
+        fillF16(&keyCache, k)
+        fillF16(&valueCache, v)
+    }
+
     /// Runs one step; the KV state carries over to the next call.
     public func step(_ inputs: [String: TensorValue]) async throws -> [String: TensorValue] {
         var nd: [String: NDArray] = [:]
@@ -132,4 +168,10 @@ private func zero(_ array: inout NDArray) {
     default:
         break
     }
+}
+
+// Write a Float32 buffer into an fp16 NDArray (state seeding).
+private func fillF16(_ array: inout NDArray, _ values: [Float]) {
+    var v = array.mutableView(as: Float16.self)
+    v.copyElements(fromContentsOf: values.map { Float16($0) })
 }
