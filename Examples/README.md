@@ -1,6 +1,14 @@
 # Examples
 
-Every example app in one place, on two shelves:
+**Start here: [OpsGallery](OpsGallery/)** — all twenty task ops as cards, rendered from
+`CoreAI.Op.allCases`: pick an input, run the one-line call, see the result. The fastest
+way to find out what the kit can do on your own data.
+
+Building any GUI example: `xcodegen generate` (brew install xcodegen), open the
+project, and either pick your team in Signing & Capabilities or
+`export DEVELOPMENT_TEAM=XXXXXXXXXX` before generating — no project hard-codes one.
+
+Every other example app in one place, on two shelves:
 
 - **Model runners** — one app per capability, driven by a **catalog id** (the id on the
   model's card). Try a model here first; each runner keeps its take-home core in

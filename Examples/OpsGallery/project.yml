@@ -1,0 +1,49 @@
+name: OpsGallery
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+# Run config Release: the engine's per-token host work is ~3x slower unoptimized.
+schemes:
+  OpsGallery:
+    build:
+      targets:
+        OpsGallery: all
+    run:
+      config: Release
+
+targets:
+  OpsGallery:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+    dependencies:
+      # One product: CoreAIOps re-exports the model layer.
+      - package: coreai-kit
+        product: CoreAIOps
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.opsgallery
+        # Resolves from your shell: `export DEVELOPMENT_TEAM=XXXXXXXXXX` before `xcodegen generate`,
+        # or leave unset and pick your team in Xcode’s Signing & Capabilities tab.
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        # The 4B text-op default peaks past the iPhone jetsam limit — same as ChatDemo.
+        CODE_SIGN_ENTITLEMENTS: OpsGallery.entitlements
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        # Without a launch screen iOS runs the app letterboxed (black bars top/bottom).
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"

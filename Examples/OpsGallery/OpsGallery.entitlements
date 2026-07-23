@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The 4B default behind the text ops peaks past the default jetsam limit on
+	     iPhone; the increased memory limit is what lets load + generate complete
+	     (same as ChatDemo / AudioChat / SiriAsk). -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>
