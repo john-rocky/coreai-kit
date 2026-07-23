@@ -14,7 +14,9 @@ let package = Package(
         .library(name: "CoreAIKitEmbeddings", targets: ["CoreAIKitEmbeddings"]),
         // SwiftUI components: model picker, chat transcript, stats bar.
         .library(name: "CoreAIKitUI", targets: ["CoreAIKitUI"]),
-        // Anchored ops (summarize/extract) over catalog models — the stable task-level API.
+        // Anchored task ops (text, image, audio, video, search, forecast) over catalog
+        // models — the stable task-level API. Re-exports the model layer, so this one
+        // product + `import CoreAIOps` is the whole quick path.
         .library(name: "CoreAIOps", targets: ["CoreAIOps"]),
     ],
     dependencies: [
@@ -77,7 +79,7 @@ let package = Package(
         ),
         .target(
             name: "CoreAIOps",
-            dependencies: ["CoreAIKit"]
+            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings"]
         ),
         .testTarget(
             name: "CoreAIKitTests",

@@ -20,7 +20,51 @@ then add the `CoreAIKit` product to your target. Or in `Package.swift`:
 .product(name: "CoreAIKit", package: "coreai-kit"),
 ```
 
-## 2. Chat
+## 2. The quick path: task ops
+
+`CoreAIOps` (a separate product in the same package) is the task-level layer: state the
+task and the kit resolves — and caches — a catalog model behind it, like a Vision
+framework request. Every op takes `options: .model("catalog-id")` to override the model
+per call, and because the ops ride the model-level APIs below, outgrowing one is a
+refactor, not a rewrite. Adding this one product is enough — `import CoreAIOps`
+re-exports the model layer (`ChatSession`, `KitDetector`, `TextEmbedder`, …), so no
+snippet in this guide needs a second product or import.
+
+```swift
+import CoreAIOps
+
+let text = try await CoreAI.transcribe(voiceMemoURL)            // speech → text
+let tldr = try await CoreAI.summarize(text, style: .bullets)    // text → summary
+let todo = try await CoreAI.extract(text, as: ActionItems.self) // text → @Generable type
+let ja   = try await CoreAI.translate(text, to: .japanese)
+let safe = try await CoreAI.redact(text)                        // "[PERSON]", "[EMAIL]", …
+
+let cap  = try await CoreAI.caption(photo)                      // image → description
+let dets = try await CoreAI.detect(in: photo)                   // image → [Detection]
+let page = try await CoreAI.read(documentAt: scanURL)           // document → markdown
+let hits = try await CoreAI.search(query, in: paragraphs)       // semantic ranking
+let wave = try await CoreAI.speak(reply)                        // text → speech (PCM)
+```
+
+Twenty ops in all — also `proofread`, `extractEntities`, `transcribeMeeting` (who said
+what), `describeAudio`, `compose` (text → music), `separate` (vocals / instrumental),
+`upscale`, `estimateDepth`, `recognizeAction`, and `forecast` (time series). The
+[Cookbook](COOKBOOK.md) maps every "I want to …" to its snippet; `Examples/OpsDemo`
+runs the core pipeline end to end.
+
+First use of an op downloads its model (cached afterwards). Watch and front-load that
+from one place — no progress parameter on twenty ops:
+
+```swift
+CoreAI.onDownload { print("\($0.currentFile): \(Int($0.fraction * 100))%") }
+try await CoreAI.prepare(.transcribe, .summarize)   // behind your loading UI;
+                                                    // the first real call starts instantly
+```
+
+The rest of this guide is the model-level layer: you pick the model, hold the session,
+and stream.
+
+## 3. Chat
 
 ```swift
 import CoreAIKit
@@ -68,7 +112,7 @@ let chat = try await ChatSession(model: .qwen3_4B) { progress in
 Models cache under `Application Support/CoreAIKit/Models`. Manage them with `ModelStore`
 (`downloadedModels()`, `delete(_:)`, or a custom `ModelStore(directory:)`).
 
-## 3. Starter models
+## 4. Starter models
 
 | Model | `ModelID` | macOS | iOS | Notes |
 |---|---|---|---|---|
@@ -93,7 +137,7 @@ for entry in catalog.available(.chat) {
 Tip: call `try await chat.prewarm()` right after init (while your UI still shows a
 loading state) — it compiles the sampler graph so the first turn starts instantly.
 
-## 4. Use a local bundle
+## 5. Use a local bundle
 
 Already have a bundle exported with Apple's recipes (`coreai.llm.export`)?
 
@@ -103,13 +147,17 @@ let chat = try await ChatSession(bundleAt: URL(fileURLWithPath: "/path/to/bundle
 
 The bundle directory holds `metadata.json`, a `*.aimodel/`, and a `tokenizer/`.
 
-## 5. Run the example app
+## 6. Run the example app
 
 ```bash
 cd Examples/ChatDemo
-xcodegen generate
+xcodegen generate          # brew install xcodegen (once)
 open ChatDemo.xcodeproj
 ```
+
+Signing: the example projects don't hard-code a team. Either pick yours once in
+Xcode's Signing & Capabilities tab, or `export DEVELOPMENT_TEAM=XXXXXXXXXX` (your
+team id) before `xcodegen generate` and every example picks it up.
 
 ## Computer vision: CLIP in five lines
 

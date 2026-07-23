@@ -10,6 +10,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "OpsDemo",
+            // One product, one import: CoreAIOps re-exports the model layer.
             dependencies: [.product(name: "CoreAIOps", package: "coreai-kit")]
         )
     ]

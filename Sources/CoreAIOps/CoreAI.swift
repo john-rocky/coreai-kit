@@ -13,6 +13,11 @@
 // let neat = try await CoreAI.proofread(text)
 // ```
 //
+// The other ops extend `CoreAI` from sibling files: CoreAI+Image (caption / detect /
+// read / upscale / estimateDepth), CoreAI+Audio (transcribeMeeting / describeAudio /
+// compose / separate), CoreAI+Speech (speak), CoreAI+Search (search), CoreAI+Video
+// (recognizeAction), CoreAI+Forecast (forecast), CoreAI+Redact (redact / extractEntities).
+//
 // Every op rides `ChatSession`: its incremental detokenizer survives the raw-byte
 // tokens long CJK output can contain, which the FM executor's current decode hold does
 // not (a long Japanese translation starves the event stream and the turn ends with no
@@ -75,7 +80,8 @@ public struct OpOptions: Sendable {
     public static func model(_ id: String) -> OpOptions { OpOptions(model: id) }
 }
 
-/// Anchored text operations, each a thin prompt contract over a catalog model.
+/// Anchored operations over catalog models. The text ops live here, each a thin prompt
+/// contract; the rest extend this type from the sibling `CoreAI+*` files.
 public enum CoreAI {
     /// Default model for the free-text ops (summarize/translate/proofread). 4B is the
     /// quality floor at which every op holds up — 0.6B passes summarize but fails
@@ -84,7 +90,7 @@ public enum CoreAI {
     public static let defaultModel = "qwen3-4b"
 
 
-    /// Summarizes `text` in the given style. First use downloads and loads the model
+    /// Text → short summary in the given style. First use downloads and loads the model
     /// (cached afterwards); later calls reuse the loaded engine.
     public static func summarize(
         _ text: String, style: SummaryStyle = .concise, options: OpOptions = OpOptions()
@@ -101,9 +107,9 @@ public enum CoreAI {
                 """)
     }
 
-    /// Extracts a typed value from `text`: the `@Generable` type's generation schema
-    /// shapes the reply, and the framework parses it back into the type — same type,
-    /// same `@Guide` descriptions as Apple's `respond(generating:)`.
+    /// Text → typed value: the `@Generable` type's generation schema shapes the reply,
+    /// and the framework parses it back into the type — same type, same `@Guide`
+    /// descriptions as Apple's `respond(generating:)`.
     public static func extract<Value: Generable>(
         _ text: String, as type: Value.Type = Value.self, options: OpOptions = OpOptions()
     ) async throws -> Value {
@@ -149,7 +155,7 @@ public enum CoreAI {
     /// `options: .model("parakeet-tdt-0.6b-v3")` for faster English-family transcription.
     public static let defaultSpeechModel = "whisper-large-v3-turbo"
 
-    /// Transcribes an audio file to plain text. Any audio format the system decodes;
+    /// Audio file → plain-text transcript. Any audio format the system decodes;
     /// resampled to 16 kHz mono internally. `language` nil = auto-detect.
     public static func transcribe(
         _ audioURL: URL, language: String? = nil, options: OpOptions = OpOptions()
@@ -162,7 +168,7 @@ public enum CoreAI {
         return transcription.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Translates `text` into the target language, preserving meaning, tone, and formatting.
+    /// Text → translation into the target language, preserving meaning, tone, and formatting.
     public static func translate(
         _ text: String, to language: Language, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -178,7 +184,8 @@ public enum CoreAI {
                 """)
     }
 
-    /// Corrects grammar, spelling, and punctuation without changing meaning or language.
+    /// Text → corrected text: grammar, spelling, and punctuation fixed without changing
+    /// meaning or language.
     public static func proofread(
         _ text: String, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -237,7 +244,7 @@ actor OpModels {
         return try await turn.value
     }
 
-    private func chat(catalog id: String) async throws -> ChatSession {
+    func chat(catalog id: String) async throws -> ChatSession {
         if let load = chatLoads[id] { return try await load.value }
         let load = Task<ChatSession, Error> {
             var configuration = ChatSession.Configuration()
@@ -245,7 +252,9 @@ actor OpModels {
             // Thinking counts against this budget and routinely runs 1-2k tokens on a
             // hard input; a tight cap truncates the turn before the answer starts.
             configuration.maxResponseTokens = 4096
-            return try await ChatSession(catalog: id, configuration: configuration)
+            return try await ChatSession(
+                catalog: id, configuration: configuration,
+                downloadProgress: OpDownloads.forward)
         }
         chatLoads[id] = load
         do {
@@ -258,7 +267,9 @@ actor OpModels {
 
     func transcriber(catalog id: String) async throws -> KitTranscriber {
         if let load = transcriberLoads[id] { return try await load.value }
-        let load = Task<KitTranscriber, Error> { try await KitTranscriber(catalog: id) }
+        let load = Task<KitTranscriber, Error> {
+            try await KitTranscriber(catalog: id, downloadProgress: OpDownloads.forward)
+        }
         transcriberLoads[id] = load
         do {
             return try await load.value

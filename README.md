@@ -10,6 +10,26 @@ Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 
 > Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta
 > (real device; the CoreAI framework is not in the iOS Simulator SDK).
 
+Two layers, one package. **Task ops** when you want the result in one line — like a
+Vision framework request, the model is resolved (and cached) behind the op:
+
+```swift
+import CoreAIOps
+
+let text  = try await CoreAI.transcribe(voiceMemoURL)   // speech → text (Whisper v3 turbo)
+let tldr  = try await CoreAI.summarize(text)            // also: extract / translate / redact …
+let boxes = try await CoreAI.detect(in: photo)          // [Detection] — RF-DETR, no NMS
+let reply = try await CoreAI.speak(tldr)                // text → speech (PCM + sample rate)
+```
+
+Twenty ops, one shape — the [Cookbook](docs/COOKBOOK.md) maps every "I want to …" to
+its snippet. Adding the one `CoreAIOps` product is enough: it re-exports the model
+layer, so the `import` above also covers everything below. First-use downloads are
+observable process-wide (`CoreAI.onDownload { … }`) and prefetchable behind a loading
+UI (`try await CoreAI.prepare(.transcribe, .caption)`).
+
+**Model-level APIs** when you want control — pick the model, stream, attach tools:
+
 ```swift
 import CoreAIKit
 
@@ -19,24 +39,27 @@ for try await event in chat.streamResponse(to: "Hello!") {
 }
 ```
 
-Models download automatically from the Hugging Face Hub on first use — no Python required.
+The two layers are the same package, so starting with an op and dropping down to
+`ChatSession` or a FoundationModels provider later is a refactor, not a rewrite. Models
+download automatically from the Hugging Face Hub on first use — no Python required.
 
 ## See it running
 
-Real-device captures (iPhone 17 Pro / M4 Max), everything fully on-device. Each cell links to
-the kit example — or zoo app — that runs the same model. (Media lives in
+Real-device captures (iPhone 17 Pro / M4 Max), everything fully on-device. Captions lead
+with the one-line call where a task op covers it; each cell links to the kit example —
+or zoo app — that runs the same model. (Media lives in
 [coreai-assets](https://github.com/john-rocky/coreai-assets), so cloning this repo stays fast.)
 
 | | | |
 |:---:|:---:|:---:|
 | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/chat-youtu.gif" alt="On-device chat" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/transcribe-whisper.gif" alt="Speech-to-text" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/diarize-sortformer.gif" alt="Speaker diarization" width="250"> |
-| Chat — Youtu-LLM-2B<br>[`ChatDemo`](Examples/ChatDemo) | Speech→text — Whisper v3 turbo<br>[`Transcribe`](Examples/Transcribe) | Who-said-what — Sortformer + Parakeet<br>[`Meeting`](Examples/Meeting) |
+| `ChatSession` — chat, Youtu-LLM-2B<br>[`ChatDemo`](Examples/ChatDemo) | `CoreAI.transcribe` — Whisper v3 turbo<br>[`Transcribe`](Examples/Transcribe) | `CoreAI.transcribeMeeting` — Sortformer + Parakeet<br>[`Meeting`](Examples/Meeting) |
 | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/vlm-holo2.gif" alt="Computer-use VLM" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/agent-fastcontext.gif" alt="Repo-exploration agent" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/detect-rfdetr.jpg" alt="Object detection" width="250"> |
-| Screen VLM — Holo2-4B<br>[`VLChat`](Examples/VLChat) | Repo agent — FastContext-4B<br>[zoo `CoreAIChat`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChat) | Detection — RF-DETR nano, no NMS<br>[`DetectCamera`](Examples/DetectCamera) |
+| `KitVisionModel` — screen VLM, Holo2-4B<br>[`VLChat`](Examples/VLChat) | Repo agent — FastContext-4B<br>[zoo `CoreAIChat`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChat) | `CoreAI.detect` — RF-DETR nano, no NMS<br>[`DetectCamera`](Examples/DetectCamera) |
 | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/seg-sam3.jpg" alt="Promptable segmentation" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/depth-da3.jpg" alt="Depth estimation" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/sr-adcsr.jpg" alt="Super-resolution" width="250"> |
-| Segmentation — SAM 3<br>[zoo](https://github.com/john-rocky/coreai-model-zoo) | Depth — Depth Anything 3<br>[`DepthCamera`](Examples/DepthCamera) | 4× super-res — AdcSR<br>[`UpscaleDemo`](Examples/UpscaleDemo) |
+| Segmentation — SAM 3<br>[zoo](https://github.com/john-rocky/coreai-model-zoo) | `CoreAI.estimateDepth` — Depth Anything 3<br>[`DepthCamera`](Examples/DepthCamera) | `CoreAI.upscale` — AdcSR ×4<br>[`UpscaleDemo`](Examples/UpscaleDemo) |
 | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/pii-gliner2.jpg" alt="PII redaction" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/ocr-glm.jpg" alt="Document OCR" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/bitcpm.gif" alt="Ternary LLM" width="250"> |
-| PII redaction — GLiNER2<br>[`InfoExtract`](Examples/InfoExtract) | Doc OCR — GLM-OCR 0.9B, ~4 s/page<br>[`ReadDoc`](Examples/ReadDoc) | 1.58-bit ternary — BitCPM-8B in ~2.1 GB<br>[zoo `CoreAIChat`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChat) |
+| `CoreAI.redact` — PII, GLiNER2<br>[`InfoExtract`](Examples/InfoExtract) | `CoreAI.read` — GLM-OCR 0.9B, ~4 s/page<br>[`ReadDoc`](Examples/ReadDoc) | 1.58-bit ternary — BitCPM-8B in ~2.1 GB<br>[zoo `CoreAIChat`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChat) |
 
 | | |
 |:---:|:---:|
@@ -45,9 +68,9 @@ the kit example — or zoo app — that runs the same model. (Media lives in
 | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/t2v-ltx.gif" alt="Text-to-video" width="390"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/splat-tripo.gif" alt="Photo to 3D gaussian splat" width="390"> |
 | Text→video — LTX-Video 2B<br>[zoo `CoreAIVideo`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIVideo) | Photo→3D splat — TripoSplat<br>[zoo `TripoSplatMac`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/TripoSplatMac) |
 | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/dllm-llada.gif" alt="Diffusion LLM" width="390"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/readdoc-mineru.gif" alt="Document parsing" width="390"> |
-| Diffusion LLM (parallel denoise) — LLaDA-8B<br>[`DiffuseChat`](Examples/DiffuseChat) | Doc→Markdown — MinerU2.5<br>[`ReadDoc`](Examples/ReadDoc) |
+| Diffusion LLM (parallel denoise) — LLaDA-8B<br>[`DiffuseChat`](Examples/DiffuseChat) | `CoreAI.read` — MinerU2.5, doc→Markdown<br>[`ReadDoc`](Examples/ReadDoc) |
 
-<p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/forecast-timesfm.jpg" alt="Time-series forecasting" width="720"><br>Time-series forecasting — TimesFM 2.5, ~25 ms/forecast on iPhone · <a href="Examples/Forecast"><code>Forecast</code></a></p>
+<p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/forecast-timesfm.jpg" alt="Time-series forecasting" width="720"><br><code>CoreAI.forecast</code> — TimesFM 2.5, ~25 ms/forecast on iPhone · <a href="Examples/Forecast"><code>Forecast</code></a></p>
 
 <p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/coder-ornith.gif" alt="Agentic coding on Mac" width="720"><br>Agentic coding — Ornith-1.0-9B on M4 Max · <a href="https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChatMac">zoo <code>CoreAIChatMac</code></a></p>
 
@@ -104,9 +127,14 @@ whole transcript — including across a divergence, e.g. a re-rendered transcrip
 | `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, image preprocessing |
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
-| `CoreAIOps` | Anchored task-level ops — `CoreAI.transcribe`, `.summarize`, `.extract` (typed by `@Generable`), `.translate`, `.proofread` — that resolve a catalog model behind a stable API |
+| `CoreAIOps` | Twenty anchored task-level ops — text (`CoreAI.summarize`, `.extract` typed by `@Generable`, `.translate`, `.proofread`, `.redact`), audio (`.transcribe`, `.transcribeMeeting`, `.describeAudio`, `.speak`, `.compose`, `.separate`), image (`.caption`, `.detect`, `.read`, `.upscale`, `.estimateDepth`), plus `.recognizeAction`, `.search`, `.forecast` — each resolving a catalog model behind a stable API ([Cookbook](docs/COOKBOOK.md)) |
 
 ## Examples
+
+Task ops
+
+- `Examples/OpsGallery` — all twenty ops as cards: pick an input, run the one-line call, see the result (iPhone + Mac)
+- `Examples/OpsDemo` — task-level ops: one voice memo → transcript, summary, typed action items, translation, spoken reply; or one image → caption, detections, OCR (`swift run`)
 
 Text & chat
 
@@ -114,7 +142,6 @@ Text & chat
 - `Examples/DiffuseChat` — diffusion LLM chat: watch LLaDA-8B denoise all tokens in parallel (Mac)
 - `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
-- `Examples/OpsDemo` — task-level ops: one voice memo → transcript, summary, typed action items, translation (`swift run`)
 - `Examples/InfoExtract` — schema-driven extraction / PII redaction with GLiNER2 (iPhone + Mac)
 
 Vision

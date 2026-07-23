@@ -1,10 +1,12 @@
 // OpsDemo — the anchored ops end to end. Point it at a voice memo and one audio file
-// becomes a transcript, a cleaned-up text, a summary, typed action items, and a
-// translation — all on device, no sessions or prompts in app code. Without arguments
-// the text ops run on built-in sample text instead.
+// becomes a transcript, a cleaned-up text, a summary, typed action items, a translation,
+// and a spoken reply; point it at an image and it is captioned, object-detected, and
+// OCR'd — all on device, no sessions or prompts in app code. Without arguments the text
+// and search ops run on built-in sample text instead.
 //
-//   swift run OpsDemo                    # text ops on built-in samples
-//   swift run OpsDemo voice-memo.wav     # full speech -> text pipeline
+//   swift run OpsDemo                    # text + search ops on built-in samples
+//   swift run OpsDemo voice-memo.wav     # full speech -> text -> speech pipeline
+//   swift run OpsDemo photo.jpg          # caption + detect + document OCR
 
 import CoreAIOps
 import Foundation
@@ -42,17 +44,36 @@ let email = """
 
 let typos = "Their going to recieve the package tommorow, weather or not its raining."
 
+let notes = [
+    "Book flights to Sapporo for the snow festival and reserve a hotel near Odori Park.",
+    "The quarterly report needs the updated revenue table before Thursday's review.",
+    "Try the new ramen place by the station — open until 2am on weekends.",
+    "Renew the Apple Developer membership before the certificate expires.",
+]
+
 @main
 enum OpsDemo {
     static func main() async throws {
-        if let path = CommandLine.arguments.dropFirst().first {
-            try await voiceMemoPipeline(URL(fileURLWithPath: path))
-        } else {
+        // One hook covers every op's first-use download (~500 events/file, \r keeps one line).
+        CoreAI.onDownload { progress in
+            print(
+                "\rdownloading \(progress.currentFile) \(Int(progress.fraction * 100))%",
+                terminator: progress.fraction >= 1 ? "\n" : "")
+        }
+        guard let path = CommandLine.arguments.dropFirst().first else {
             try await textOps()
+            return
+        }
+        let url = URL(fileURLWithPath: path)
+        switch url.pathExtension.lowercased() {
+        case "jpg", "jpeg", "png", "heic", "tiff", "webp":
+            try await imagePipeline(url)
+        default:
+            try await voiceMemoPipeline(url)
         }
     }
 
-    /// One voice memo in, five op results out.
+    /// One voice memo in, six op results out — audio at both ends.
     static func voiceMemoPipeline(_ memo: URL) async throws {
         print("> CoreAI.transcribe(memo)")
         let text = try await CoreAI.transcribe(memo)
@@ -73,10 +94,36 @@ enum OpsDemo {
 
         print("> CoreAI.translate(clean, to: .japanese)")
         let japanese = try await CoreAI.translate(clean, to: .japanese)
-        print("[ja] \(japanese)")
+        print("[ja] \(japanese)\n")
+
+        print("> CoreAI.speak(summary)")
+        let audio = try await CoreAI.speak(summary)
+        let out = URL(fileURLWithPath: "speech.wav")
+        try writeWAV(audio, to: out)
+        print("[audio] \(String(format: "%.1f", audio.seconds)) s -> \(out.path)")
     }
 
-    /// The text ops on built-in samples — no audio file needed.
+    /// One image in, three op results out.
+    static func imagePipeline(_ url: URL) async throws {
+        print("> CoreAI.caption(imageAt: url)")
+        let caption = try await CoreAI.caption(imageAt: url)
+        print("[caption] \(caption)\n")
+
+        print("> CoreAI.detect(in: image)")
+        let image = try ImageFile.load(url).cgImage
+        let boxes = try await CoreAI.detect(in: image)
+        for detection in boxes.prefix(8) {
+            print("[object] \(detection.label)  \(String(format: "%.0f%%", detection.score * 100))")
+        }
+        if boxes.isEmpty { print("[object] none above threshold") }
+        print()
+
+        print("> CoreAI.read(documentAt: url)")
+        let markdown = try await CoreAI.read(documentAt: url)
+        print("[read]\n\(markdown)")
+    }
+
+    /// The text + search ops on built-in samples — no audio or image file needed.
     static func textOps() async throws {
         print("> CoreAI.summarize(article, style: .oneLine)")
         let summary = try await CoreAI.summarize(article, style: .oneLine)
@@ -92,6 +139,26 @@ enum OpsDemo {
 
         print("> CoreAI.proofread(typos)")
         let clean = try await CoreAI.proofread(typos)
-        print("[clean] \(clean)")
+        print("[clean] \(clean)\n")
+
+        print("> CoreAI.search(\"What should I plan for the trip?\", in: notes, topK: 2)")
+        for hit in try await CoreAI.search("What should I plan for the trip?", in: notes, topK: 2) {
+            print("[hit] \(String(format: "%.2f", hit.score))  \(hit.document)")
+        }
+    }
+
+    /// Minimal 16-bit PCM mono WAV writer for the `speak` result.
+    static func writeWAV(_ audio: SpokenAudio, to url: URL) throws {
+        var data = Data()
+        func tag(_ s: String) { data.append(contentsOf: Array(s.utf8)) }
+        func u32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
+        func u16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { data.append(contentsOf: $0) } }
+        let pcm = audio.samples.map { Int16((max(-1, min(1, $0)) * 32767).rounded()) }
+        tag("RIFF"); u32(UInt32(36 + pcm.count * 2)); tag("WAVE")
+        tag("fmt "); u32(16); u16(1); u16(1)
+        u32(UInt32(audio.sampleRate)); u32(UInt32(audio.sampleRate * 2)); u16(2); u16(16)
+        tag("data"); u32(UInt32(pcm.count * 2))
+        pcm.withUnsafeBytes { data.append(contentsOf: $0) }
+        try data.write(to: url)
     }
 }

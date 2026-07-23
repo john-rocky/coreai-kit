@@ -1,18 +1,20 @@
 # OpsDemo
 
 The anchored ops end to end. Point it at a voice memo and one audio file becomes a
-transcript, a cleaned-up text, a one-line summary, typed action items, and a Japanese
-translation — all on device. No sessions, no prompts, no model names in app code: ops are
-the stable API and the kit resolves a catalog model behind them.
+transcript, a cleaned-up text, a one-line summary, typed action items, a Japanese
+translation, and a spoken reply (`speech.wav`); point it at an image and it is captioned,
+object-detected, and OCR'd — all on device. No sessions, no prompts, no model names in
+app code: ops are the stable API and the kit resolves a catalog model behind them.
 
 ## Run
 
 ```bash
-swift run OpsDemo                    # text ops on built-in samples (qwen3 4B)
-swift run OpsDemo voice-memo.wav     # full pipeline (downloads Whisper large-v3-turbo once)
+swift run OpsDemo                    # text + search ops on built-in samples (qwen3 4B + EmbeddingGemma)
+swift run OpsDemo voice-memo.wav     # speech -> text -> speech (downloads Whisper + VoxCPM once)
+swift run OpsDemo photo.jpg          # caption + detect + read (Qwen3-VL 2B, RF-DETR, GLM-OCR)
 ```
 
-Real pipeline output (Mac, ~38 s warm for all five ops):
+Real pipeline output (Mac, ~38 s warm for the five text ops):
 
 ```
 > CoreAI.transcribe(memo)
@@ -30,9 +32,13 @@ call with Dana next Tuesday to review the launch plan.
 
 > CoreAI.translate(clean, to: .japanese)
 [ja] チーム会議のメモ。12個のアルファウィジェットを大阪支社に金曜日までに発送してください。…
+
+> CoreAI.speak(summary)
+[audio] 8.4 s -> speech.wav
 ```
 
 `extract` shapes the reply with the `@Generable` type's generation schema and parses it
 back through the framework, so the demo's `ActionItems` / `Order` types are exactly what
 you would write for Apple's `respond(generating:)`. Override any op's model per call,
-e.g. `options: .model("qwen3-0.6b")` when speed matters more than fidelity.
+e.g. `options: .model("qwen3-0.6b")` when speed matters more than fidelity, or
+`options: .model("mineru2.5-pro")` to swap the OCR engine behind `read`.
