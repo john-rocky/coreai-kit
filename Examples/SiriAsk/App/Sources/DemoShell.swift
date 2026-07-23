@@ -9,12 +9,12 @@ import SwiftUI
 /// Brand constants for the demo. The model name is shown verbatim in the badge and copy so the
 /// "your own model on device" claim is always on screen next to the answer it produced.
 enum Demo {
-    static let modelName = "Gemma 4 E2B"
+    static let modelName = "qwen3-0.6b (ANE)"
     /// The app's display name (CFBundleDisplayName) — also what `\(.applicationName)` resolves to,
     /// so the Siri phrase is "Ask Gemma".
     static let appName = "Gemma"
-    /// Cold first-run download of the Gemma 4 E2B bundle + PLE tables (honest, shown — not hidden).
-    static let modelDownloadHint = "~4.4 GB, one time"
+    /// The model is bundled in the app (side-loaded) — first launch stages it locally, no download.
+    static let modelDownloadHint = "bundled, no download"
     static let accent = Color.indigo
 }
 

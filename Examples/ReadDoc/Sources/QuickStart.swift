@@ -16,6 +16,12 @@ func readDocument(
     model id: String = "unlimited-ocr",
     downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
 ) async throws -> String {
+    // MinerU2.5 is a stock Qwen2-VL that rides the VL rope-shift rider (whole-page recognition
+    // via `KitMineruReader`), not the Unlimited-OCR single-pass `KitDocReader` path.
+    if id.hasPrefix("mineru") {
+        let reader = try await KitMineruReader(catalog: id, downloadProgress: downloadProgress)
+        return try await reader.read(imageAt: imageURL)
+    }
     // CARD-SNIPPET-BEGIN
     let reader = try await KitDocReader(catalog: id, downloadProgress: downloadProgress)
     let markdown = try await reader.read(imageAt: imageURL)

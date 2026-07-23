@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/john-rocky/coreai-models",
       "state" : {
-        "revision" : "9e5b605d3b93b9ef9909c1074fcaba1929a00653",
-        "version" : "0.1.0-zoo"
+        "revision" : "627fec75edea432db7d0c318073da7a7ef921403",
+        "version" : "0.1.1-zoo"
       }
     },
     {

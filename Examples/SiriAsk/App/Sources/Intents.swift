@@ -43,22 +43,28 @@ struct AskGemmaIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         #if os(iOS)
-        // Keep the process running (and GPU-eligible) for the whole short generation rather than
-        // letting iOS suspend it mid-answer.
         let app = UIApplication.shared
+        let stateName: String
+        switch app.applicationState {
+        case .active: stateName = "active"
+        case .inactive: stateName = "inactive"
+        case .background: stateName = "background"
+        @unknown default: stateName = "unknown"
+        }
         let bgTask = app.beginBackgroundTask(withName: "AskGemma")
         defer { if bgTask != .invalid { app.endBackgroundTask(bgTask) } }
+        #else
+        let stateName = "macos"
         #endif
 
         do {
             let answer = try await ModelHost.shared.ask(question: question)
             return .result(dialog: IntentDialog("\(answer)"))
         } catch {
-            // iOS refused GPU work while fully backgrounded (or generation failed). The runtime was
-            // dropped in ModelHost; answer softly instead of crashing. Opening Gemma once keeps it
-            // foreground-warm so the next hands-free ask lands in the GPU window.
-            return .result(dialog: IntentDialog(
-                "I couldn't reach Gemma just then. Open Gemma once, then ask again."))
+            // DIAGNOSTIC (temporary): speak the real error + app state so we can see exactly why the
+            // Siri path fails (GPU rejection? load failure? something else?) instead of Siri's
+            // generic "something went wrong". Revert to a friendly message once the cause is known.
+            return .result(dialog: IntentDialog("Gemma failed in state \(stateName): \(error)"))
         }
     }
 }

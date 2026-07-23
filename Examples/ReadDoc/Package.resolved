@@ -2,15 +2,6 @@
   "originHash" : "808bddaafbbbf3a30380a533aeed3463ed70d8d23a4089f603287417ae673527",
   "pins" : [
     {
-      "identity" : "coreai-models",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/john-rocky/coreai-models",
-      "state" : {
-        "revision" : "0fdf710774638ced1fc82783a1456835b4be1811",
-        "version" : "0.1.2-zoo"
-      }
-    },
-    {
       "identity" : "eventsource",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattt/EventSource.git",

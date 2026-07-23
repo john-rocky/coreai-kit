@@ -25,14 +25,13 @@ targets:
       macOS: "27.0"
     sources:
       - path: Sources
-      # Shared, testable core (the Gemma model host) — compiled into the app and also built
-      # standalone by ../Package.swift for `swift run SiriAskGate` / `swift test`.
+      # Shared, testable core (the model host) — compiled into the app and also built standalone by
+      # ../Package.swift for `swift run SiriAskGate` / `swift test`.
       - path: ../Sources/SiriAskCore
-      # Side-loaded Gemma 4 model: the AOT decoder bundle (gemma_decoder/) + PLE tables
-      # (gemma_tables/) bundled into the .app as a folder reference, so the device never downloads
-      # ~4.4 GB. Gitignored (Examples/SiriAsk/.gitignore) — drop the model under App/Model to bundle
-      # it; remove this entry (or the folder) to fall back to on-device download. ModelHost prefers
-      # the bundle when present (GemmaSource.bundledModel).
+      # Side-loaded model: the iOS qwen3-4b bundle (Model/qwen_ios) bundled into the .app as a
+      # folder reference so the device never downloads it. On first launch ModelHost copies it into
+      # the model cache so KitLanguageModel(.qwen3_4B) finds it pre-cached. Gitignored (the model is
+      # never committed); remove this entry (or App/Model) to fall back to on-device download.
       - path: Model
         type: folder
         buildPhase: resources

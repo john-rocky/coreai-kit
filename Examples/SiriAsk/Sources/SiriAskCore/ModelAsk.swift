@@ -1,141 +1,41 @@
-// ModelAsk — a process-global host for one on-device Gemma 4 model behind FoundationModels'
+// ModelAsk — a process-global host for one on-device model behind FoundationModels'
 // `LanguageModelSession`, shared by the app UI and the App Intent that Siri invokes. The model is
-// loaded once and kept warm; every ask runs on a fresh, tool-less session.
+// loaded once and kept warm; every ask runs on a fresh, tool-less session (no tools, no retrieval —
+// the WWDC 347 act/communicate leg is absent by construction).
 //
-// This is the ask-anything rework (SIRI-GEMMA): the model answers free-text questions from its own
-// knowledge — no notes, no retrieval, no tools. Tool-less + no retrieval means the Lethal Trifecta
-// has nothing to actuate and no untrusted data channel, so the whole prompt-injection surface the
-// notes-RAG version had to defend is simply absent (WWDC 347, by construction). Fresh per turn also
-// sidesteps the pipelined engine's multi-turn KV tax (GEMMA-KIT v1 re-prefills every turn).
+// MODEL = a SIDE-LOADED, AOT-compiled, ANE-oriented qwen3-0.6B bundle (`Model/qwen_ane`,
+// "compute-ANE" / h18p). Why this shape:
+//   • GPU models (Gemma, dynamic qwen) can't run from a backgrounded Siri intent — iOS rejects GPU
+//     command submission in the background (the pipelined engine then crashes/corrupts). ANE work,
+//     which Apple's own background Siri model uses, is the candidate for hands-free background.
+//   • AOT (pre-compiled for h18p) avoids the on-device compile that crashed the non-AOT bundle
+//     (the 10-15 min ANE compile of a multi-GB .mlirb).
+// `engineVariant: .auto` lets the kit pick the static-shape (Neural Engine) engine for this
+// chunked-static AOT bundle. (If iOS dispatches it to GPU anyway — "ANE closed this beta" — the
+// background case will still fail; that's then an OS limit, settled on device.)
 
 import CoreAIKit
 import Foundation
 import FoundationModels
 
-/// Which Gemma 4 E2B bundle to load on each platform. The device path is the make-or-break detail
-/// of this session, so it is a pure, unit-testable function (`SiriAskCoreTests` checks both
-/// branches on a Mac, where only the macOS branch can actually run).
-public enum GemmaSource {
-    public enum Platform: Sendable { case iOS, macOS }
-
-    /// The Hugging Face repo holding every Gemma 4 E2B variant + the paired QAT PLE tables.
-    public static let repo = "mlboydaisuke/gemma-4-E2B-CoreAI"
-
-    /// QAT PLE tables (shared by every E2B decode bundle; a QAT bundle pairs with QAT tables).
-    public static let tablesPath = "ios-frontend/gemma4_qat_gather_raw"
-
-    /// iOS: the AOT-compiled `…_tbl_aotc_h18p` bundle. REQUIRED on device — the plain bundle's
-    /// ~2 GB of graph constants crash the on-device GPU specializer (`LLVM ERROR: Failed to
-    /// allocate mmap'd buffer`), so the bundle is shipped pre-compiled for the iPhone 17 Pro GPU
-    /// family (h18p). Device-verified: iPhone 17 Pro decode ~30 tok/s, oracle 8/8, ~4.45 GB peak
-    /// (with the increased-memory entitlement). See `ondevice/_gemma4_qat_RESULTS.md`.
-    public static let iOSDecoderPath = "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p"
-
-    /// macOS: the plain `…_tbl` bundle. The Mac runtime JIT-specializes the large-constant graph
-    /// fine (there is no h18p Mac AOT artifact), and GEMMA-KIT validated this exact bundle on a Mac.
-    public static let macOSDecoderPath = "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl"
-
-    /// The Gemma 4 E2B model id (decoder bundle + paired tables) for a given platform.
-    public static func gemma4E2B(for platform: Platform) -> GemmaModelID {
-        let decoderPath = platform == .iOS ? iOSDecoderPath : macOSDecoderPath
-        return GemmaModelID(
-            decoder: ModelID(repo, path: decoderPath),
-            tables: ModelID(repo, path: tablesPath),
-            arch: .gemma4)
-    }
-
-    /// The Gemma 4 E2B model for the platform this build targets.
-    public static var gemma4E2B: GemmaModelID {
-        #if os(iOS)
-        return gemma4E2B(for: .iOS)
-        #else
-        return gemma4E2B(for: .macOS)
-        #endif
-    }
-
-    /// A SIDE-LOADED Gemma 4 model bundled inside the app under `Model/` (a `gemma_decoder` bundle
-    /// dir + a `gemma_tables` dir with `embed_per_layer.{i8,scale.f32}`), so the app loads it from
-    /// its own bundle instead of downloading ~4.4 GB on the device. Returns nil when not bundled
-    /// (then the model downloads from the Hub). The bundled decoder is the iPhone h18p AOT artifact,
-    /// so this is only used on iOS.
-    public static func bundledModel(in bundle: Bundle = .main) -> (decoder: URL, tables: URL)? {
-        let root = (bundle.resourceURL ?? bundle.bundleURL)
-            .appendingPathComponent("Model", isDirectory: true)
-        let decoder = root.appendingPathComponent("gemma_decoder", isDirectory: true)
-        let tables = root.appendingPathComponent("gemma_tables", isDirectory: true)
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: decoder.appendingPathComponent("metadata.json").path),
-              fm.fileExists(atPath: tables.appendingPathComponent("embed_per_layer.i8").path)
-        else { return nil }
-        return (decoder, tables)
-    }
-}
-
-/// Loads + warms a `KitGemmaModel` and answers free-text questions. An `actor` because the
-/// underlying engine assumes serial use (it traps on concurrent generate calls), and because the
-/// app UI and a Siri-invoked intent can both reach `shared` in the same process — the actor
-/// serializes them so a Siri ask waits for an in-flight UI generation rather than colliding.
 public actor ModelHost {
-    /// The app's shared, warm-kept instance. Model = Gemma 4 E2B (Google's official QAT int4): a
-    /// compact on-device model that runs on both iPhone 17 Pro (AOT) and Mac (JIT), behind the
-    /// FoundationModels `LanguageModel` protocol via GEMMA-KIT's `KitGemmaModel`.
-    public static let shared: ModelHost = {
-        // Prefer a side-loaded model bundled in the app (zero device download). iOS only — the
-        // bundled decoder is the h18p AOT artifact, which loads only on the iPhone GPU; macOS uses
-        // the downloadable plain bundle.
-        #if os(iOS)
-        if let local = GemmaSource.bundledModel() {
-            return ModelHost(sideloadedDecoder: local.decoder, tables: local.tables)
-        }
-        #endif
-        return ModelHost(model: GemmaSource.gemma4E2B)
-    }()
+    public static let shared = ModelHost()
 
-    /// A light system instruction. Gemma 4 answers directly (thinking is off by default in the
-    /// renderer); this just steers it toward concise, useful answers for the voice/read-aloud demo.
+    /// `/no_think` keeps qwen3 (a thinking model) snappy and single-turn.
     public static let askInstructions =
-        "You are Gemma, a helpful on-device assistant. Answer the user's question clearly and "
-        + "concisely in a few sentences."
+        "You are a helpful assistant. Answer the question clearly and concisely in a few "
+        + "sentences. /no_think"
 
-    public enum Phase: Sendable, Equatable {
-        case idle, downloading(Double), loading, ready, error(String)
-    }
+    /// Fallback when no side-loaded bundle is present (e.g. the Mac gate): a catalog model.
+    private let fallbackCatalog: ModelID = .qwen3_4B
 
-    /// What to load: a hosted model (decoder + tables downloaded on demand) or local bundle dirs.
-    private enum Source: Sendable {
-        case hub(GemmaModelID)
-        case localBundle(decoder: URL, tables: URL)
-        /// A model bundled in the app's read-only signed container; staged to a writable cache
-        /// before load (the runtime mmaps the tables copy-on-write, which needs a writable file).
-        case sideloaded(bundledDecoder: URL, bundledTables: URL)
-    }
+    private var loaded: KitLanguageModel?
+    private var loadTask: Task<KitLanguageModel, Error>?
 
-    private let source: Source
-    private var model: KitGemmaModel?
-    private var loadTask: Task<KitGemmaModel, Error>?
+    public init() {}
 
-    /// Load a hosted Gemma 4 model (decoder bundle + paired PLE tables) from the Hub.
-    public init(model: GemmaModelID) {
-        self.source = .hub(model)
-    }
+    public var isReady: Bool { loaded != nil }
 
-    /// Load a local decode-bundle directory + a local PLE-tables directory (the gate's
-    /// `--decoder/--tables` flags — point at freshly exported dirs to skip the multi-GB download).
-    public init(localDecoderAt decoder: URL, tablesAt tables: URL) {
-        self.source = .localBundle(decoder: decoder, tables: tables)
-    }
-
-    /// Load a model bundled inside the app: it is staged out of the read-only signed bundle into a
-    /// writable cache on first load (so the runtime can mmap the tables), then loaded from there.
-    public init(sideloadedDecoder decoder: URL, tables: URL) {
-        self.source = .sideloaded(bundledDecoder: decoder, bundledTables: tables)
-    }
-
-    public var isReady: Bool { model != nil }
-
-    /// Idempotent load + warm-up. Reuses an in-flight load if one is running, so the UI's
-    /// prewarm-on-launch and a racing intent share a single download/compile. `progress` reports
-    /// download fraction (the multi-GB first run dominates a cold start).
     @discardableResult
     public func ensureReady(
         progress: (@Sendable (DownloadProgress) -> Void)? = nil
@@ -146,99 +46,82 @@ public actor ModelHost {
 
     private func loadedModel(
         progress: (@Sendable (DownloadProgress) -> Void)?
-    ) async throws -> KitGemmaModel {
-        if let model { return model }
+    ) async throws -> KitLanguageModel {
+        if let loaded { return loaded }
         if let loadTask { return try await loadTask.value }
-        let source = self.source
-        let task = Task { () throws -> KitGemmaModel in
-            switch source {
-            case .hub(let id):
-                return try await KitGemmaModel(model: id, downloadProgress: progress)
-            case .localBundle(let decoder, let tables):
-                return try await KitGemmaModel(decoderBundleAt: decoder, tablesAt: tables)
-            case .sideloaded(let bundledDecoder, let bundledTables):
-                let staged = try Self.stageBundledModel(
-                    decoder: bundledDecoder, tables: bundledTables)
-                return try await KitGemmaModel(
-                    decoderBundleAt: staged.decoder, tablesAt: staged.tables)
+        let fallback = fallbackCatalog
+        let task = Task { () throws -> KitLanguageModel in
+            #if os(iOS)
+            if let staged = Self.stagedSideloadedBundle() {
+                // AOT, ANE-oriented bundle; `.auto` picks the static-shape (Neural Engine) engine.
+                return try await KitLanguageModel(bundleAt: staged, engineVariant: .auto)
             }
+            #endif
+            return try await KitLanguageModel(model: fallback, downloadProgress: progress)
         }
         loadTask = task
         do {
-            let loaded = try await task.value
-            model = loaded
+            let m = try await task.value
+            loaded = m
             loadTask = nil
-            await warm(loaded)
-            return loaded
+            await warm(m)
+            return m
         } catch {
             loadTask = nil
             throw error
         }
     }
 
-    /// Copy a side-loaded model out of the read-only signed app bundle into a writable cache once,
-    /// then return the writable dirs. The runtime mmaps the PLE tables copy-on-write, which needs a
-    /// writable file — mmap-COW of a file inside the signed .app regressed on device. Copying once
-    /// (~4.4 GB, local, no network) reproduces the proven "model in a writable location" state.
-    /// Idempotent: a complete prior copy (key file present) is reused, so only the first launch pays.
-    private static func stageBundledModel(decoder bundledDecoder: URL, tables bundledTables: URL)
-        throws -> (decoder: URL, tables: URL)
-    {
-        let fm = FileManager.default
-        var base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("CoreAIKit/SideloadedGemma", isDirectory: true)
-        try fm.createDirectory(at: base, withIntermediateDirectories: true)
-        var noBackup = URLResourceValues()
-        noBackup.isExcludedFromBackup = true
-        try? base.setResourceValues(noBackup)
-
-        let decoder = base.appendingPathComponent("gemma_decoder", isDirectory: true)
-        let tables = base.appendingPathComponent("gemma_tables", isDirectory: true)
-        // Presence of the key file == a complete copy (each copies via temp + rename).
-        if !fm.fileExists(atPath: decoder.appendingPathComponent("metadata.json").path) {
-            try copyReplacing(from: bundledDecoder, to: decoder, stagingIn: base, fm: fm)
-        }
-        if !fm.fileExists(atPath: tables.appendingPathComponent("embed_per_layer.i8").path) {
-            try copyReplacing(from: bundledTables, to: tables, stagingIn: base, fm: fm)
-        }
-        return (decoder, tables)
-    }
-
-    private static func copyReplacing(
-        from src: URL, to dst: URL, stagingIn base: URL, fm: FileManager
-    ) throws {
-        let tmp = base.appendingPathComponent(".staging-\(dst.lastPathComponent)", isDirectory: true)
-        try? fm.removeItem(at: tmp)
-        try fm.copyItem(at: src, to: tmp)   // ~minutes for the multi-GB decoder on first launch
-        try? fm.removeItem(at: dst)
-        try fm.moveItem(at: tmp, to: dst)
-    }
-
-    /// Compile the sampler graph and touch the weights so the first real ask doesn't pay warm-up
-    /// cost — critical when the caller is Siri (a cold multi-GB model blows the intent's time
-    /// budget). Done via one tiny real `respond` on the proven FM path; best-effort, so a warm-up
-    /// hiccup never fails the load.
-    private func warm(_ model: KitGemmaModel) async {
-        let session = LanguageModelSession(model: model, instructions: "Reply with the word OK.")
+    /// Compile the sampler graph + touch the weights so the first real ask doesn't pay warm-up cost.
+    private func warm(_ model: KitLanguageModel) async {
+        let session = LanguageModelSession(
+            model: model, instructions: "Reply with the single word OK. /no_think")
         _ = try? await session.respond(to: "ping")
     }
 
-    /// Answer a free-text question with the on-device model. Tool-less, no retrieval — the model
-    /// answers from its own knowledge.
-    ///
-    /// On failure (notably iOS rejecting GPU work while the app is backgrounded) the underlying
-    /// pipelined engine can be left wedged — its token Task doesn't release the engine, so the NEXT
-    /// turn's `reset()` spins and `fatalError`s, crashing the whole app. We defuse that by DROPPING
-    /// the runtime on any error: the next ask rebuilds a fresh engine instead of reusing the wedged
-    /// one, so a background-GPU rejection degrades to a recoverable thrown error, never a crash.
-    public func ask(question: String) async throws -> String {
-        let loaded = try await loadedModel(progress: nil)
+    /// If the AOT bundle ships inside the app (`Model/qwen_ane`), copy it once into a writable cache
+    /// and return that URL (the runtime loads from a writable location, not the read-only signed
+    /// .app). Small (~0.7 GB) so the one-time local copy is quick; no network. Returns nil if not
+    /// side-loaded → caller falls back to the catalog download.
+    private static func stagedSideloadedBundle() -> URL? {
+        let fm = FileManager.default
+        let bundled = (Bundle.main.resourceURL ?? Bundle.main.bundleURL)
+            .appendingPathComponent("Model/qwen_ane", isDirectory: true)
+        guard fm.fileExists(atPath: bundled.appendingPathComponent("metadata.json").path) else {
+            return nil
+        }
+        let dst = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("CoreAIKit/SideloadedModel/qwen_ane", isDirectory: true)
+        if fm.fileExists(atPath: dst.appendingPathComponent("metadata.json").path) {
+            return dst
+        }
         do {
-            let session = LanguageModelSession(model: loaded, instructions: Self.askInstructions)
+            let parent = dst.deletingLastPathComponent()
+            try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+            let tmp = parent.appendingPathComponent(".staging-qwen_ane", isDirectory: true)
+            try? fm.removeItem(at: tmp)
+            try fm.copyItem(at: bundled, to: tmp)
+            try? fm.removeItem(at: dst)
+            try fm.moveItem(at: tmp, to: dst)
+            return dst
+        } catch {
+            return nil
+        }
+    }
+
+    /// Answer a free-text question. Tool-less, no retrieval. The warm engine is reused across asks —
+    /// the consecutive-generation bug (1st ask fast, 2nd "something went wrong") is fixed in the
+    /// engine itself (v0.1.1-zoo D1: a stream break at EOS stops the engine instead of running to
+    /// maxTokens, so turn 2 no longer collides with turn 1). On a genuine error the model is dropped
+    /// so the next ask rebuilds fresh.
+    public func ask(question: String) async throws -> String {
+        let m = try await loadedModel(progress: nil)
+        do {
+            let session = LanguageModelSession(model: m, instructions: Self.askInstructions)
             let response = try await session.respond(to: question)
             return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {
-            model = nil       // discard the (possibly wedged) runtime → next ask builds a fresh engine
+            loaded = nil
             loadTask = nil
             throw error
         }
