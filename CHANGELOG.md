@@ -9,6 +9,14 @@ policy.
 
 ### Added
 
+- **Nanbeige4.2 3B** (`nanbeige4.2-3b`) — chat, the catalog's **first community-contributed
+  model**: ported and published by [@ukint-vs](https://github.com/ukint-vs)
+  ([zoo PR #6](https://github.com/john-rocky/coreai-model-zoo/pull/6)), served from the
+  contributor's HF repo at a pinned revision. A recurrent Llama — 22 physical blocks execute
+  twice per token (44 KV-cache layers) — int8, 4.6 GB, `thinking` chat template. Device-gated
+  on iPhone 17 Pro: token-exact vs the fp32 oracle (24/24 ×2 runs), 8.5 prefill / 6.4 decode
+  tok/s settled (two-pass models pay ~2× weight traffic per token; Mac M4 Max: 57 tok/s).
+
 - **`KitSeparator`** — music source separation (Mel-Band RoFormer, Kim Vocal): a song in, a
   vocals stem and an instrumental stem out. `separate(_:)` on a decoded stereo mix or
   `separate(contentsOf:)` on any file AVFoundation reads. New catalog kind `separation`

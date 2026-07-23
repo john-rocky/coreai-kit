@@ -291,6 +291,20 @@ public struct ModelCatalog: Sendable, Codable {
                         sizeMB: 4387),
                 ],
                 thinking: true, engine: "pipelined"),
+            // First community-contributed model (zoo PR #6, @ukint-vs) — recurrent
+            // two-pass Llama (22 physical blocks x2, 44 KV layers), contributor's HF repo.
+            CatalogEntry(
+                id: "nanbeige4.2-3b", name: "Nanbeige4.2 3B",
+                repo: "ukint-vs/Nanbeige4.2-3B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
+                        sizeMB: 4702),
+                    "ios": .init(
+                        path: "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
+                        sizeMB: 4702),
+                ],
+                thinking: true, engine: "pipelined"),
             // ── More official-recipe chat (stock runtime, macOS) ──
             CatalogEntry(
                 id: "qwen3-8b", name: "Qwen3 8B",
@@ -360,17 +374,8 @@ public struct ModelCatalog: Sendable, Codable {
                         sizeMB: 4931),
                 ],
                 engine: "pipelined"),
-            // ── Raw-Metal E2B: the same QAT weights as a hand-written mixed-bit Metal
-            //    decode loop (no .aimodel). One 2.18 GB pack shared by both platforms;
-            //    ChatSession dispatches by this id to Gemma4MetalRuntime. ──
-            CatalogEntry(
-                id: "gemma-4-e2b-metal", name: "Gemma 4 E2B raw-Metal",
-                repo: "mlboydaisuke/gemma-4-E2B-metal", kind: .chat,
-                variants: [
-                    "macos": .init(path: "gemma4_e2b_raw_metal", sizeMB: 2115),
-                    "ios": .init(path: "gemma4_e2b_raw_metal", sizeMB: 2115),
-                ],
-                engine: "raw-metal"),
+            // (gemma-4-e2b-metal removed here to match catalog.json — the raw-Metal pack's
+            // repo is not published yet; see 7d4600f. Re-add BOTH sides when it ships.)
             CatalogEntry(
                 id: "gemma-4-e4b", name: "Gemma 4 E4B",
                 repo: "mlboydaisuke/gemma-4-E4B-CoreAI", kind: .chat,
@@ -566,8 +571,7 @@ public struct ModelCatalog: Sendable, Codable {
             //    embedding table at the repo root. Driven by `KitDialogue`. ──
             CatalogEntry(
                 id: "vibevoice-realtime-0.5b", name: "VibeVoice-Realtime 0.5B (multi-speaker)",
-                repo: "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI",
-                revision: "889897cdc1df88428a3eed24e89f1814e580c033", kind: .tts,
+                repo: "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI", kind: .tts,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1420),
                     "ios": .init(path: "ios", sizeMB: 1420),
@@ -576,8 +580,7 @@ public struct ModelCatalog: Sendable, Codable {
             //    iSTFT folded in; the host only frames and overlap-adds. Driven by `KitSeparator`. ──
             CatalogEntry(
                 id: "melband-roformer-vocal", name: "Mel-Band RoFormer (Kim Vocal)",
-                repo: "mlboydaisuke/MelBandRoformer-Vocal-CoreAI",
-                revision: "0c7aca92db7341f7be579aa00fa1231442c7cb7c", kind: .separation,
+                repo: "mlboydaisuke/MelBandRoformer-Vocal-CoreAI", kind: .separation,
                 variants: [
                     "macos": .init(path: "mbr_full_fp16.aimodel", sizeMB: 470),
                     "ios": .init(path: "mbr_full_fp16.h18p.aimodelc", sizeMB: 470),

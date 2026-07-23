@@ -214,6 +214,25 @@
       "engine": "pipelined"
     },
     {
+      "id": "nanbeige4.2-3b",
+      "name": "Nanbeige4.2 3B",
+      "repo": "ukint-vs/Nanbeige4.2-3B-CoreAI",
+      "revision": "5864ec7a5581940958e58354a6b6c46c8f06891e",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
+          "sizeMB": 4702
+        },
+        "ios": {
+          "path": "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
+          "sizeMB": 4702
+        }
+      },
+      "thinking": true,
+      "engine": "pipelined"
+    },
+    {
       "id": "qwen3-8b",
       "name": "Qwen3 8B",
       "repo": "mlboydaisuke/qwen3-8b-CoreAI-official",
