@@ -2,6 +2,15 @@
   "originHash" : "0a6fc0eb1efefc955058a5398f714101c02465588d0c7db93254a568154fe540",
   "pins" : [
     {
+      "identity" : "coreai-models",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/john-rocky/coreai-models",
+      "state" : {
+        "revision" : "f54736b4ac81b683fe00dbff2108b626a066138f",
+        "version" : "0.2.0-zoo"
+      }
+    },
+    {
       "identity" : "eventsource",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattt/EventSource.git",
@@ -96,8 +105,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mlc-ai/xgrammar",
       "state" : {
-        "branch" : "main",
-        "revision" : "ff923ddf34abde5a524506c84d4432ccbd8ea7d6"
+        "revision" : "4d145cc13d878c751ebeed36af1c013074be76bc",
+        "version" : "0.2.2"
       }
     },
     {
