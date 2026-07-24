@@ -55,6 +55,12 @@ public actor ModelStore {
 
     /// Returns the local bundle root, downloading it first if needed. Concurrent calls for
     /// the same model join the in-flight download (only the first caller receives progress).
+    ///
+    /// Offline fallback: when the download fails at the transport level (airplane mode,
+    /// no route to the Hub) and a complete copy of the same repo + variant is cached
+    /// under a *different* revision — a catalog pin moved since it was downloaded — that
+    /// copy is returned instead of surfacing the network error. A stale revision beats a
+    /// dead Load button; the pinned revision downloads next time the network is back.
     @discardableResult
     public func download(
         _ model: ModelID,
@@ -62,10 +68,41 @@ public actor ModelStore {
     ) async throws -> URL {
         if let url = localURL(for: model) { return url }
         if let task = inflight[model] { return try await task.value }
-        let task = Task<URL, Error> { try await self.performDownload(model, progress: progress) }
+        let task = Task<URL, Error> {
+            do {
+                return try await self.performDownload(model, progress: progress)
+            } catch let error as URLError {
+                guard let cached = self.siblingRevisionURL(for: model) else { throw error }
+                return cached
+            }
+        }
         inflight[model] = task
         defer { inflight[model] = nil }
         return try await task.value
+    }
+
+    /// A complete cached copy of this model under another revision, newest first, or nil.
+    /// Presence means complete — bundles only ever land at their final path by atomic
+    /// rename (the staging directory is hidden), the same contract `localURL` relies on.
+    nonisolated func siblingRevisionURL(for model: ModelID) -> URL? {
+        let fm = FileManager.default
+        let repoDir = directory.appendingPathComponent(model.repo, isDirectory: true)
+        guard let revisions = try? fm.contentsOfDirectory(
+            at: repoDir, includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles])
+        else { return nil }
+        let candidates = revisions
+            .filter { $0.lastPathComponent != model.revision }
+            .map { rev in
+                model.resolvedPath.isEmpty
+                    ? rev : rev.appendingPathComponent(model.resolvedPath)
+            }
+            .filter { fm.fileExists(atPath: $0.path) }
+        func mtime(_ url: URL) -> Date {
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate) ?? .distantPast
+        }
+        return candidates.max { mtime($0) < mtime($1) }
     }
 
     public func delete(_ model: ModelID) throws {
