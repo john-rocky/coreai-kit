@@ -15,7 +15,9 @@ let package = Package(
             name: "chat-cli",
             dependencies: [.product(name: "CoreAIKit", package: "coreai-kit")],
             path: ".",
-            exclude: ["build", "ChatDemo.xcodeproj", "project.yml", "README.md"],
+            // build_ios: device-build DerivedData Xcode recreates locally — without the
+            // exclude, SPM globs its PrivacyInfo.xcprivacy copies into the target.
+            exclude: ["build", "build_ios", "ChatDemo.xcodeproj", "project.yml", "README.md"],
             sources: ["Sources/QuickStart.swift", "CLI/main.swift"]
         )
     ]
