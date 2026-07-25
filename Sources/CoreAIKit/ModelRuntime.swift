@@ -99,6 +99,13 @@ struct ModelRuntime: Sendable {
         }
         let start = SuspendingClock.now
         let bundle = try LanguageBundle(at: url)
+        // NB (device-bisected 2026-07-24, nanbeige4.2-3b): the iOS on-device compiler
+        // miscompiles this graph class when the bound KV state's seq dim is >=2048 —
+        // output is corrupt from token 1 at full pipeline speed. Capacity <=1024 is
+        // clean; Mac is clean at every shape; a full cache evict does not help, and
+        // .fixedSize (4096 upfront) makes every generation ride the broken shape.
+        // So: keep .auto (growing) and keep per-turn prompt+maxTokens inside 1024
+        // at the app layer until the compiler-level fix lands.
         let runner = CoreAIRunner(from: bundle, variant: engineVariant.factoryOverride)
         async let engineLoad = runner.makeInferenceEngine()
         async let tokenizerLoad = bundle.loadTokenizer()

@@ -63,7 +63,19 @@ final class ChatModel {
             do {
                 // Same gesture as the model card: the catalog id resolves the platform
                 // variant and the engine hint (zoo decode-only ports ride "pipelined").
-                let session = try await ChatSession(catalog: entry.id) { progress in
+                var config = ChatSession.Configuration()
+                #if os(iOS)
+                // iOS-only: the pipelined engine's growing KV cache mis-respecializes
+                // on-device when a turn pre-grows capacity to >=2048
+                // (history+prompt+maxTokens): output is corrupt from token 1 while the
+                // Mac handles the same growth fine. 896 keeps a fresh turn inside the
+                // device-verified 1024-capacity envelope until the engine fix lands
+                // (device-bisected 2026-07-24, nanbeige4.2-3b: capacity 1024 clean /
+                // 2048 corrupt). NB: long multi-turn history can still cross 1024 —
+                // start a New chat for a fresh budget.
+                config.maxResponseTokens = 896
+                #endif
+                let session = try await ChatSession(catalog: entry.id, configuration: config) { progress in
                     Task { @MainActor in
                         self.status = progress.fraction < 1
                             ? .downloading(progress.fraction) : .loading

@@ -32,7 +32,8 @@ let package = Package(
         // per-token/static inputs, D1 EOS stop), plus the sampler/stream ordering fix
         // (bogus first token per turn). For local engine work, swap in
         // .package(path: "../coreai/coreai-models") — branch zoo-0.2 matches this tag.
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.0-zoo"),
+        // 0.2.1-zoo adds the iOS dynamic-KV capacity guard (apple/coreai-models#124, kit #5).
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.1-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [

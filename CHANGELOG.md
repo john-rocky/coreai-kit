@@ -9,6 +9,13 @@ policy.
 
 ### Added
 
+- **iOS dynamic-KV guard** — the engine (coreai-models `0.2.1-zoo`) now caps a pipelined
+  turn's KV pre-grow at capacity 1024 on iOS for dynamically-sized-KV bundles: the on-device
+  compiler miscompiles those specializations at seq ≥2048 (corrupt output from token 1).
+  ChatDemo additionally clamps `maxResponseTokens` to 896 on iOS as belt-and-suspenders.
+  Tracked in [#5](https://github.com/john-rocky/coreai-kit/issues/5); upstream
+  apple/coreai-models#124. Both guards come out when the compiler fix lands.
+
 - **Nanbeige4.2 3B** (`nanbeige4.2-3b`) — chat, the catalog's **first community-contributed
   model**: ported and published by [@ukint-vs](https://github.com/ukint-vs)
   ([zoo PR #6](https://github.com/john-rocky/coreai-model-zoo/pull/6)), served from the
