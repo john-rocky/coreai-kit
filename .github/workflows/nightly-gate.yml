@@ -28,3 +28,5 @@ jobs:
         run: swift test
       - name: Catalog pins present
         run: python3 scripts/pin-catalog.py --check
+      - name: Built-in fallback carries the same pins
+        run: python3 scripts/gen-builtin-pins.py --check

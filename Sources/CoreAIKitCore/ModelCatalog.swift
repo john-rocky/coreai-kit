@@ -175,7 +175,32 @@ public struct ModelCatalog: Sendable, Codable {
     }
 
     /// Snapshot of the hosted models at packaging time (mirrors catalog.json).
-    public static let builtin = ModelCatalog(
+    /// A copy of this catalog with revision pins filled in by id.
+    ///
+    /// An entry that already carries a pin keeps it; only `nil` revisions are filled. Used to
+    /// pin `builtin` from `catalog.json` without hand-maintaining the hashes in two places.
+    public func pinned(with pins: [String: String]) -> ModelCatalog {
+        ModelCatalog(
+            version: version,
+            models: models.map { e in
+                guard e.revision == nil, let rev = pins[e.id] else { return e }
+                return CatalogEntry(
+                    id: e.id, name: e.name, repo: e.repo, revision: rev, kind: e.kind,
+                    variants: e.variants, thinking: e.thinking, engine: e.engine)
+            })
+    }
+
+    /// The compiled-in fallback, used when the network fetch of `catalog.json` fails.
+    ///
+    /// Pins come from `BuiltinPins` (generated from `catalog.json`), because a fallback happens
+    /// exactly when the network is unavailable — the moment a shipped app must *not* silently
+    /// resolve `main` instead of the reviewed bytes. `CoreAIKitTests.builtinIsFullyPinned`
+    /// fails the build if any entry here loses its pin.
+    public static let builtin = builtinLiteral.pinned(with: BuiltinPins.byID)
+
+    /// Everything about the built-in entries except their revisions: paths, sizes, engine
+    /// hints, and the per-model notes that explain them.
+    static let builtinLiteral = ModelCatalog(
         version: 1,
         models: [
             CatalogEntry(
