@@ -10,6 +10,35 @@ Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 
 > Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta
 > (real device; the CoreAI framework is not in the iOS Simulator SDK).
 
+### How the catalog is verified — and how you re-check it yourself
+
+The models are converted, not vendored, so the question that matters before you depend on
+this is *what was checked, by whom, and can you check it again.* All 53 catalog entries:
+
+- **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
+  that were gated — never "whatever is on `main` today." CI re-checks every pin
+  (`scripts/pin-catalog.py --check`, run by the nightly gate above).
+- **Gated against the original model before enrollment** — the export is stepped against the
+  fp32/fp16 reference implementation on fixed inputs (token-exact for LLMs, `cos ≥ 0.999`
+  otherwise), then re-gated after compression, then run on real hardware. The gate that
+  produced each row and its proof strength are on that model's card.
+- **Shipped with the recipe that produced them.** `models/<model>/recipe.toml` in the
+  [model zoo](https://github.com/john-rocky/coreai-model-zoo) records the exact script and
+  flags; `zoo_convert.py run <name>` rebuilds the bundle from the same checkpoint.
+
+These gates are run by the maintainer — so don't take them on faith, re-run them. Checking a
+published bundle against the model it claims to come from is one command, no GPU and no
+device needed:
+
+```bash
+python3 conversion/zoo_verify.py mlboydaisuke/Gemma-4-12B-CoreAI   # one repo
+python3 conversion/zoo_verify.py --all                             # the whole catalog, minutes
+```
+
+It compares tokenizer, chat template, context length and declared precision against the
+source model each bundle names in its own `metadata.json`. If you are shipping something you
+have to support, re-running the recipe yourself is cheap and leaves you owning the artifact.
+
 Two layers, one package. **Task ops** when you want the result in one line — like a
 Vision framework request, the model is resolved (and cached) behind the op:
 
@@ -128,6 +157,11 @@ whole transcript — including across a divergence, e.g. a re-rendered transcrip
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
 | `CoreAIOps` | Twenty anchored task-level ops — text (`CoreAI.summarize`, `.extract` typed by `@Generable`, `.translate`, `.proofread`, `.redact`), audio (`.transcribe`, `.transcribeMeeting`, `.describeAudio`, `.speak`, `.compose`, `.separate`), image (`.caption`, `.detect`, `.read`, `.upscale`, `.estimateDepth`), plus `.recognizeAction`, `.search`, `.forecast` — each resolving a catalog model behind a stable API ([Cookbook](docs/COOKBOOK.md)) |
+
+Beyond this package: [**coreai-model-zoo**](https://github.com/john-rocky/coreai-model-zoo) is
+where the models and their conversion recipes live, and
+[**awesome-core-ai**](https://github.com/john-rocky/awesome-core-ai) tracks the wider Core AI
+ecosystem — Apple's own tooling, other people's converters, sample apps, and benchmarks.
 
 ## Examples
 
