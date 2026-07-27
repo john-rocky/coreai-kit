@@ -36,8 +36,17 @@ python3 conversion/zoo_verify.py --all                             # the whole c
 ```
 
 It compares tokenizer, chat template, context length and declared precision against the
-source model each bundle names in its own `metadata.json`. If you are shipping something you
-have to support, re-running the recipe yourself is cheap and leaves you owning the artifact.
+source model each bundle names in its own `metadata.json`.
+
+That checks a bundle is *described* correctly, not that it still *computes* correctly — the
+numerical check is `conversion/coreai_gate.py`, which rebuilds the reference model in fp32 and
+compares a greedy decode token for token. It runs outside the maintainer's tree (point it at
+your own `llm-runner` and overlay interpreter) and writes a transcript: pinned revision, exact
+`input_ids`, both sides' tokens, verdict. Re-running the engine side against a published
+transcript needs only the bundle and `llm-runner` — no oracle, no fp32 download.
+
+If you are shipping something you have to support, re-running the recipe yourself is cheap and
+leaves you owning the artifact.
 
 Two layers, one package. **Task ops** when you want the result in one line — like a
 Vision framework request, the model is resolved (and cached) behind the op:
