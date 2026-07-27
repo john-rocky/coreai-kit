@@ -82,10 +82,12 @@ final class ModelCatalogTests: XCTestCase {
     }
 
     func testBuiltinMatchesShippedCatalogFile() throws {
-        // Keep the builtin snapshot in sync with catalog.json at the repo root. The shipped
-        // file carries revision pins (scripts/pin-catalog.py); the builtin snapshot stays
-        // unpinned — it is the offline fallback, and the live catalog is where pins are
-        // maintained — so compare modulo `revision`.
+        // Keep the builtin snapshot in sync with catalog.json at the repo root, in every field
+        // except the pins: the hand-written literal carries paths, sizes, kinds and engine
+        // hints, while its revisions are overlaid from BuiltinPins (generated from the same
+        // catalog.json). So this compares the *literal* modulo `revision`, and
+        // `BuiltinPinsTests` covers the overlay — including that no entry reaches
+        // `ModelCatalog.builtin` unpinned, which would make an offline fallback resolve `main`.
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // CoreAIKitTests
             .deletingLastPathComponent()  // Tests
@@ -103,8 +105,8 @@ final class ModelCatalogTests: XCTestCase {
                 id: entry.id, name: entry.name, repo: entry.repo, kind: entry.kind,
                 variants: entry.variants, thinking: entry.thinking, engine: entry.engine)
         }
-        XCTAssertEqual(unpinned.map(\.id), ModelCatalog.builtin.models.map(\.id))
-        for (shippedEntry, builtinEntry) in zip(unpinned, ModelCatalog.builtin.models) {
+        XCTAssertEqual(unpinned.map(\.id), ModelCatalog.builtinLiteral.models.map(\.id))
+        for (shippedEntry, builtinEntry) in zip(unpinned, ModelCatalog.builtinLiteral.models) {
             XCTAssertEqual(
                 shippedEntry, builtinEntry,
                 "catalog.json/builtin drift at '\(shippedEntry.id)'")
