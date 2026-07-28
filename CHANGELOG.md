@@ -39,6 +39,30 @@ policy.
 - `StatefulGraphModel.seedState(keys:values:prefillLength:)` — seed a decode bundle's KV cache from
   an **external** prefill (a voice prompt, a cached prefix) instead of replaying it.
 
+- **[`SECURITY.md`](SECURITY.md)** — the trust boundary written down: two hosts (GitHub raw for
+  the catalog, Hugging Face for the weights), revision pins as the integrity mechanism, and the
+  parts that are absent — `catalog.json` is unsigned, downloads carry no independent checksum
+  manifest, bundles are not code-signed. Includes the escape hatch for production apps:
+  `ModelCatalog.load(from:)` takes a URL, so you can host the catalog yourself.
+
+- **[`AGENTS.md`](AGENTS.md)** — the contract for coding agents building on the kit: which layer
+  to reach for (Apple's Foundation Models first), the catalog as data to read rather than guess
+  at, the failures that only appear on a real device, and an accurate statement of what
+  "verified" covers.
+
+### Fixed
+
+- **The offline fallback catalog resolved unpinned revisions.** `ModelCatalog.load()` falls back
+  to the compiled-in `ModelCatalog.builtin` when the network fetch of `catalog.json` fails, and
+  that literal carried no revision pins — while `CatalogEntry.modelID(path:)` resolves
+  `revision ?? "main"`. A network failure therefore downgraded a shipped app from the exact bytes
+  that were gated to whatever the model repository's `main` branch held at that moment, which is
+  the opposite of what the catalog documents. Pins are now generated from `catalog.json` into
+  `BuiltinPins.swift` and overlaid onto the literal; CI fails if the two drift, and
+  `BuiltinPinsTests` fails if any entry reaches `builtin` without a pin. **Apps pinned to 0.2.0
+  or earlier are affected** — the fallback path is the one that matters here, so an app that has
+  never seen a catalog fetch failure has never hit it.
+
 ## [0.2.0] — 2026-07-10
 
 ### Added
