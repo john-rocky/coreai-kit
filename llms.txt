@@ -33,7 +33,7 @@ let tldr = try await CoreAI.summarize(text)
   not in the iOS Simulator SDK.
 - Memory, not throughput, is the shipping constraint on a phone. A 4B-class model is tight.
 
-## Example apps (24, each buildable on its own)
+## Example apps (27, each buildable on its own)
 
 - [ActionCamera](https://john-rocky.github.io/coreai-kit/Examples/ActionCamera/): ActionCamera — Live action recognition from the camera, fully on-device: CameraFeed streams frames, a rolling 16-frame clip goes through ActionRecognizer (V-JEPA 2 ViT-L, SSv2 head — Meta's video world model) and the top actions come back with confidences
 - [AskVLM](https://john-rocky.github.io/coreai-kit/Examples/AskVLM/): Qwen3-VL (AskVLM) — your VLM as its own Visual Intelligence tab
@@ -45,8 +45,11 @@ let tldr = try await CoreAI.summarize(text)
 - [DocChat](https://john-rocky.github.io/coreai-kit/Examples/DocChat/): DocChat — On-device RAG, end to end: your .md/.txt notes are indexed with EmbeddingGemma embeddings, and a local LLM answers questions through LanguageModelSession with a retrieval Tool — the model decides when to search, the framework executes the search and grounds the answer
 - [DocSearch](https://john-rocky.github.io/coreai-kit/Examples/DocSearch/): DocSearch — on-device visual document retrieval (ColModernVBERT)
 - [FMToolDemo](https://john-rocky.github.io/coreai-kit/Examples/FMToolDemo/): FMToolDemo — Local tool calling behind Apple's LanguageModelSession: a Core AI bundle answers a weather question by calling a Swift Tool — the model decides to call, the FoundationModels framework executes it, and the answer is grounded on the result
+- [Forecast](https://john-rocky.github.io/coreai-kit/Examples/Forecast/): Forecast — time-series forecasting on device
 - [GuidedDemo](https://john-rocky.github.io/coreai-kit/Examples/GuidedDemo/): GuidedDemo — Guided generation (constrained decoding): per-step logits are masked through a JSON schema's grammar (xgrammar bitmask) before sampling, so the model's output is valid JSON for the schema by construction — no retries, no parse failures
+- [InfoExtract](https://john-rocky.github.io/coreai-kit/Examples/InfoExtract/): InfoExtract — zero-shot entity extraction and PII redaction on device
 - [Meeting](https://john-rocky.github.io/coreai-kit/Examples/Meeting/): Meeting — who said what, fully on-device
+- [Music](https://john-rocky.github.io/coreai-kit/Examples/Music/): Music — text-to-music generation on device
 - [OpsDemo](https://john-rocky.github.io/coreai-kit/Examples/OpsDemo/): OpsDemo — The anchored ops end to end
 - [OpsGallery](https://john-rocky.github.io/coreai-kit/Examples/OpsGallery/): OpsGallery — Every task op as a card
 - [PhotoSearch](https://john-rocky.github.io/coreai-kit/Examples/PhotoSearch/): PhotoSearch — Semantic photo search, fully on-device: the photo library is indexed with CLIP image embeddings (Neural Engine, ~4 ms per photo), and free-text queries like "red bike at the beach" rank photos by cosine similarity
