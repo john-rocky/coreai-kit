@@ -1,0 +1,55 @@
+# GitHub Pages configuration.
+#
+# Why this package needs a site at all, from its own traffic: over 14 days it took 662 clones
+# from 167 unique cloners — the SwiftPM resolution signature, i.e. people building against it —
+# and 8 page views from Google. Everyone arrives from GitHub or Hugging Face, which in practice
+# means from the model zoo. The package has no independent presence in search, and its 28 example
+# apps — each one a specific searchable task, from speaker diarization to semantic photo search —
+# are buried inside a repository tree where nothing indexes them as pages.
+#
+# Served from the repository root rather than a docs/ copy, so a page has one source of truth and
+# the site cannot drift from what a reader sees on GitHub.
+
+title: CoreAIKit
+description: >-
+  Run models on Apple's Core AI runtime from Swift — chat, vision-language, speech, TTS,
+  diarization, detection, depth, embeddings, OCR and forecasting, one line per model.
+url: https://john-rocky.github.io
+baseurl: /coreai-kit
+
+theme: jekyll-theme-primer
+
+plugins:
+  # The READMEs are written to be read on GitHub first; requiring YAML front matter would put a
+  # header on every one of them for the site's sake.
+  - jekyll-optional-front-matter
+  # Keeps [x](y.md) cross-links working in both places.
+  - jekyll-relative-links
+  - jekyll-titles-from-headings
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  # README.md becomes the index of its directory — so Examples/<name>/ is that example's page.
+  - jekyll-readme-index
+
+relative_links:
+  enabled: true
+  collections: false
+
+optional_front_matter:
+  remove_originals: true
+
+# Code and build output. The example sources stay: they are small, and being able to read one in
+# a browser is the point of an example.
+exclude:
+  - Sources/
+  - Tests/
+  - scripts/
+  - Package.swift
+  - Package.resolved
+  - "**/.build"
+  - "**/build_ios"
+  - "**/*.xcodeproj"
+  - .swiftpm/
+  - .github/
+  - CLAUDE.md
+  - LICENSE

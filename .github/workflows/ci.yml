@@ -3,6 +3,17 @@ name: CI
 on:
   push:
     branches: [main]
+    # This job runs on a self-hosted Apple silicon machine that is also used for conversions and
+    # for energy and throughput measurements, where a concurrent build shows up in the numbers.
+    # A documentation-only change cannot affect `swift build` or `swift test`, so it must not
+    # occupy that machine. Anything touching code, the manifest, the catalog or CI itself still
+    # runs — the list below is only files with no bearing on the build.
+    paths-ignore:
+      - "**/*.md"
+      - "llms.txt"
+      - "_config.yml"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
   workflow_dispatch:
 
@@ -31,3 +42,5 @@ jobs:
         # The offline fallback is what ships when the catalog fetch fails; an unpinned entry
         # there downloads from the model repo's main branch instead of the reviewed bytes.
         run: python3 scripts/gen-builtin-pins.py --check
+      - name: llms.txt lists every example
+        run: python3 scripts/gen_llms_txt.py --check

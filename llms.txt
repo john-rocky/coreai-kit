@@ -1,0 +1,71 @@
+# CoreAIKit
+
+> A Swift package for running models on Apple's Core AI runtime (iOS/macOS 27) — one line per
+> model across chat, vision-language, speech-to-text, text-to-speech, diarization, detection,
+> depth, embeddings, OCR and forecasting. Models download from Hugging Face on first use and are
+> pinned to immutable revisions. Community package, not affiliated with Apple.
+
+```swift
+import CoreAIOps
+let text = try await CoreAI.transcribe(voiceMemoURL)   // speech to text, on device
+let tldr = try await CoreAI.summarize(text)
+```
+
+## Start here
+
+- [README](https://john-rocky.github.io/coreai-kit/): the two layers — task ops for one-line results, model-level APIs when you
+  need to pick the model, stream, or attach tools.
+- [Cookbook](https://john-rocky.github.io/coreai-kit/docs/COOKBOOK.html): reverse lookup. Find the task, copy the snippet; every
+  one compiles with a single `import CoreAIOps`.
+- [Getting started](https://john-rocky.github.io/coreai-kit/docs/GETTING_STARTED.html): from an empty Xcode project to a model
+  answering on device.
+- [AGENTS.md](https://john-rocky.github.io/coreai-kit/AGENTS.html): for coding agents — which layer to reach for, why the catalog
+  is data to read rather than guess at, and the failures that only appear on a real device.
+- [Stability policy](https://john-rocky.github.io/coreai-kit/docs/STABILITY.html): what a version bump is allowed to change.
+- [SECURITY.md](https://john-rocky.github.io/coreai-kit/SECURITY.html): the trust boundary — two hosts, revision pins, and what
+  is absent (no signature on the catalog, no checksum manifest, no code signing).
+- [catalog.json](https://john-rocky.github.io/coreai-kit/catalog.json): every model the package resolves, with its pinned
+  Hugging Face revision, kind, and per-platform variants.
+
+## Requirements
+
+- macOS 27 beta / iOS 27 beta, Xcode 27 beta. **Real hardware only** — the Core AI framework is
+  not in the iOS Simulator SDK.
+- Memory, not throughput, is the shipping constraint on a phone. A 4B-class model is tight.
+
+## Example apps (24, each buildable on its own)
+
+- [ActionCamera](https://john-rocky.github.io/coreai-kit/Examples/ActionCamera/): ActionCamera — Live action recognition from the camera, fully on-device: CameraFeed streams frames, a rolling 16-frame clip goes through ActionRecognizer (V-JEPA 2 ViT-L, SSv2 head — Meta's video world model) and the top actions come back with confidences
+- [AskVLM](https://john-rocky.github.io/coreai-kit/Examples/AskVLM/): Qwen3-VL (AskVLM) — your VLM as its own Visual Intelligence tab
+- [AudioChat](https://john-rocky.github.io/coreai-kit/Examples/AudioChat/): AudioChat — on-device audio *understanding* (macOS)
+- [ChatDemo](https://john-rocky.github.io/coreai-kit/Examples/ChatDemo/): ChatDemo — on-device chat, any chat model in the catalog
+- [DepthCamera](https://john-rocky.github.io/coreai-kit/Examples/DepthCamera/): DepthCamera — Live monocular depth from the camera, fully on-device: CameraFeed streams frames, DepthEstimator (Depth Anything 3, ~100 MB) turns each one into a relative depth map
+- [DetectCamera](https://john-rocky.github.io/coreai-kit/Examples/DetectCamera/): DetectCamera — Real-time object detection from the live camera, fully on-device, over the zero-copy capture path — two detector families behind one picker: RF-DETR (DETR, fp32, no NMS, ObjectDetector) and YOLOX-S (Megvii's dense anchor-free detector, fp32, host NMS + letterbox/BGR preprocessing, YOLOXDetector)
+- [DiffuseChat](https://john-rocky.github.io/coreai-kit/Examples/DiffuseChat/): DiffuseChat — An on-device diffusion LM (LLaDA-8B, ~5.3 GB): the reply is not written left-to-right — a masked canvas denoises in place, tokens popping in in parallel, lowest-entropy first
+- [DocChat](https://john-rocky.github.io/coreai-kit/Examples/DocChat/): DocChat — On-device RAG, end to end: your .md/.txt notes are indexed with EmbeddingGemma embeddings, and a local LLM answers questions through LanguageModelSession with a retrieval Tool — the model decides when to search, the framework executes the search and grounds the answer
+- [DocSearch](https://john-rocky.github.io/coreai-kit/Examples/DocSearch/): DocSearch — on-device visual document retrieval (ColModernVBERT)
+- [FMToolDemo](https://john-rocky.github.io/coreai-kit/Examples/FMToolDemo/): FMToolDemo — Local tool calling behind Apple's LanguageModelSession: a Core AI bundle answers a weather question by calling a Swift Tool — the model decides to call, the FoundationModels framework executes it, and the answer is grounded on the result
+- [GuidedDemo](https://john-rocky.github.io/coreai-kit/Examples/GuidedDemo/): GuidedDemo — Guided generation (constrained decoding): per-step logits are masked through a JSON schema's grammar (xgrammar bitmask) before sampling, so the model's output is valid JSON for the schema by construction — no retries, no parse failures
+- [Meeting](https://john-rocky.github.io/coreai-kit/Examples/Meeting/): Meeting — who said what, fully on-device
+- [OpsDemo](https://john-rocky.github.io/coreai-kit/Examples/OpsDemo/): OpsDemo — The anchored ops end to end
+- [OpsGallery](https://john-rocky.github.io/coreai-kit/Examples/OpsGallery/): OpsGallery — Every task op as a card
+- [PhotoSearch](https://john-rocky.github.io/coreai-kit/Examples/PhotoSearch/): PhotoSearch — Semantic photo search, fully on-device: the photo library is indexed with CLIP image embeddings (Neural Engine, ~4 ms per photo), and free-text queries like "red bike at the beach" rank photos by cosine similarity
+- [ReadDoc](https://john-rocky.github.io/coreai-kit/Examples/ReadDoc/): ReadDoc — On-device document OCR: pick an image of a document, KitDocReader (Unlimited-OCR, ~4.5 GB) turns it into structured markdown — tables survive as <table>/<tr>/<td> markup
+- [SiriAsk](https://john-rocky.github.io/coreai-kit/Examples/SiriAsk/): Gemma (SiriAsk) — "Hey Siri, Ask Gemma" → your on-device Gemma 4 answers anything
+- [Speak](https://john-rocky.github.io/coreai-kit/Examples/Speak/): Speak — the text-to-speech runner (GUI + CLI, any tts catalog id)
+- [SpotlightApp](https://john-rocky.github.io/coreai-kit/Examples/SpotlightApp/): SpotlightApp — ask your own files, with your own local model
+- [SpotlightChat](https://john-rocky.github.io/coreai-kit/Examples/SpotlightChat/): SpotlightChat — Local RAG with Apple's SpotlightSearchTool (WWDC26) driven by your own model
+- [Transcribe](https://john-rocky.github.io/coreai-kit/Examples/Transcribe/): Transcribe — on-device speech-to-text, any ASR model in the catalog
+- [UpscaleDemo](https://john-rocky.github.io/coreai-kit/Examples/UpscaleDemo/): UpscaleDemo — Minimal CoreAIKit example: AdcSR ×4 super-resolution on-device
+- [VLChat](https://john-rocky.github.io/coreai-kit/Examples/VLChat/): VLChat — the vision-language runner (GUI + CLI, any vlm catalog id)
+- [VisualIntel](https://john-rocky.github.io/coreai-kit/Examples/VisualIntel/): VisualIntel — your own models behind system Visual Intelligence
+
+## Beyond this package
+
+- [Core AI model zoo](https://john-rocky.github.io/coreai-model-zoo/): the models themselves — 57 ports, each with the recipe that
+  produced it and a card stating what was gated and on which hardware.
+- [Questions Apple's documentation doesn't answer](https://john-rocky.github.io/coreai-model-zoo/knowledge/undocumented-answers.html):
+  measured answers — the AOT threshold, the iOS-only dynamic-KV miscompile, whether a 4B fits on
+  the Neural Engine, what the chunk threshold really dials.
+- [The Art of Core AI](https://john-rocky.github.io/the-art-of-core-ai/): a free book built from
+  the same measurements.
