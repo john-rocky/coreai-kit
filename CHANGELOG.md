@@ -5,7 +5,7 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
-## [Unreleased]
+## [0.3.0] — 2026-07-28
 
 ### Added
 
