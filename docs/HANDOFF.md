@@ -20,6 +20,7 @@ nicer API over the same job.
 | [`SHIPPABILITY_PLAN.md`](SHIPPABILITY_PLAN.md) | The four gaps between "it runs" and "you can ship it" | Plan, ready to build |
 | [`CAPABILITY_HANDOFF.md`](CAPABILITY_HANDOFF.md) | One of those four in detail — `CoreAI.capability(_:)`, plus the full ops list and how to describe them | Plan, ready to build |
 | [`SPEECH_API.md`](SPEECH_API.md) | The speech design — `listen()`, streaming, diarization back-fill | Design, has a precondition |
+| [`BACKEND_ROUTING.md`](BACKEND_ROUTING.md) | Ops picking Apple's free backend when it suffices, the catalog model when it does not — the largest lever on entry cost | Design, gated on measurement |
 
 Existing docs unaffected by any of this: [`GETTING_STARTED.md`](GETTING_STARTED.md),
 [`COOKBOOK.md`](COOKBOOK.md), [`STABILITY.md`](STABILITY.md).
@@ -45,6 +46,12 @@ Ordered by value per unit of work, not by how interesting it is.
 6. **`listen()` + VAD** — the largest demand on the map, but see the precondition below.
    *(`SPEECH_API.md`)*
 7. **Streaming variants and PDF** — smallest audiences, cheapest once the above exists.
+
+Running beside all of it, on its own clock: **[`BACKEND_ROUTING.md`](BACKEND_ROUTING.md)**. Its
+first two steps (result types carrying `.backend`, and one measured Vision-vs-GLM-OCR
+comparison) can start immediately and gate everything after them. It moves the entry cost of
+most ops from gigabytes to zero, which is the number that decides whether any of the rest gets
+adopted.
 
 ## Preconditions and unknowns — resolve before writing the code they gate
 
