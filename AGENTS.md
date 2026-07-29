@@ -109,6 +109,13 @@ Ask the human:
 - Posting publicly about the package, or filing issues/PRs against `apple/*`.
 - Reporting device numbers you did not measure on that device.
 
+## Implementing the current plan
+
+If you were handed this repository to build the designed-but-unbuilt work, start at
+[`docs/HANDOFF.md`](docs/HANDOFF.md) — it indexes every design document, gives the build order,
+and lists the preconditions that must be resolved on hardware before the code they gate is
+written.
+
 ## More
 
 - [README](README.md) — the ops table, the examples, the FoundationModels provider.
