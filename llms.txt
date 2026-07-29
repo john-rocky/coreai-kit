@@ -33,7 +33,7 @@ let tldr = try await CoreAI.summarize(text)
   not in the iOS Simulator SDK.
 - Memory, not throughput, is the shipping constraint on a phone. A 4B-class model is tight.
 
-## Example apps (27, each buildable on its own)
+## Example apps (28, each buildable on its own)
 
 - [ActionCamera](https://john-rocky.github.io/coreai-kit/Examples/ActionCamera/): ActionCamera — Live action recognition from the camera, fully on-device: CameraFeed streams frames, a rolling 16-frame clip goes through ActionRecognizer (V-JEPA 2 ViT-L, SSv2 head — Meta's video world model) and the top actions come back with confidences
 - [AskVLM](https://john-rocky.github.io/coreai-kit/Examples/AskVLM/): Qwen3-VL (AskVLM) — your VLM as its own Visual Intelligence tab
@@ -44,6 +44,7 @@ let tldr = try await CoreAI.summarize(text)
 - [DiffuseChat](https://john-rocky.github.io/coreai-kit/Examples/DiffuseChat/): DiffuseChat — An on-device diffusion LM (LLaDA-8B, ~5.3 GB): the reply is not written left-to-right — a masked canvas denoises in place, tokens popping in in parallel, lowest-entropy first
 - [DocChat](https://john-rocky.github.io/coreai-kit/Examples/DocChat/): DocChat — On-device RAG, end to end: your .md/.txt notes are indexed with EmbeddingGemma embeddings, and a local LLM answers questions through LanguageModelSession with a retrieval Tool — the model decides when to search, the framework executes the search and grounds the answer
 - [DocSearch](https://john-rocky.github.io/coreai-kit/Examples/DocSearch/): DocSearch — on-device visual document retrieval (ColModernVBERT)
+- [Expense](https://john-rocky.github.io/coreai-kit/Examples/Expense/): Expense — a receipt photo becomes a Swift value
 - [FMToolDemo](https://john-rocky.github.io/coreai-kit/Examples/FMToolDemo/): FMToolDemo — Local tool calling behind Apple's LanguageModelSession: a Core AI bundle answers a weather question by calling a Swift Tool — the model decides to call, the FoundationModels framework executes it, and the answer is grounded on the result
 - [Forecast](https://john-rocky.github.io/coreai-kit/Examples/Forecast/): Forecast — time-series forecasting on device
 - [GuidedDemo](https://john-rocky.github.io/coreai-kit/Examples/GuidedDemo/): GuidedDemo — Guided generation (constrained decoding): per-step logits are masked through a JSON schema's grammar (xgrammar bitmask) before sampling, so the model's output is valid JSON for the schema by construction — no retries, no parse failures

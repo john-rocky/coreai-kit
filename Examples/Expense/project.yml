@@ -1,0 +1,34 @@
+name: Expense
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+schemes:
+  Expense:
+    build:
+      targets:
+        Expense: all
+    run:
+      config: Release
+
+targets:
+  Expense:
+    type: application
+    platform: iOS
+    deploymentTarget: "27.0"
+    sources:
+      - path: App
+      - path: Sources
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIOps
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.expense
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Pick a receipt photo to read on device.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
