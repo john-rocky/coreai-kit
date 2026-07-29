@@ -44,7 +44,6 @@ let tldr = try await CoreAI.summarize(text)
 - [DiffuseChat](https://john-rocky.github.io/coreai-kit/Examples/DiffuseChat/): DiffuseChat — An on-device diffusion LM (LLaDA-8B, ~5.3 GB): the reply is not written left-to-right — a masked canvas denoises in place, tokens popping in in parallel, lowest-entropy first
 - [DocChat](https://john-rocky.github.io/coreai-kit/Examples/DocChat/): DocChat — On-device RAG, end to end: your .md/.txt notes are indexed with EmbeddingGemma embeddings, and a local LLM answers questions through LanguageModelSession with a retrieval Tool — the model decides when to search, the framework executes the search and grounds the answer
 - [DocSearch](https://john-rocky.github.io/coreai-kit/Examples/DocSearch/): DocSearch — on-device visual document retrieval (ColModernVBERT)
-- [Expense](https://john-rocky.github.io/coreai-kit/Examples/Expense/): Expense — a receipt photo becomes a Swift value
 - [FMToolDemo](https://john-rocky.github.io/coreai-kit/Examples/FMToolDemo/): FMToolDemo — Local tool calling behind Apple's LanguageModelSession: a Core AI bundle answers a weather question by calling a Swift Tool — the model decides to call, the FoundationModels framework executes it, and the answer is grounded on the result
 - [Forecast](https://john-rocky.github.io/coreai-kit/Examples/Forecast/): Forecast — time-series forecasting on device
 - [GuidedDemo](https://john-rocky.github.io/coreai-kit/Examples/GuidedDemo/): GuidedDemo — Guided generation (constrained decoding): per-step logits are masked through a JSON schema's grammar (xgrammar bitmask) before sampling, so the model's output is valid JSON for the schema by construction — no retries, no parse failures
@@ -55,6 +54,7 @@ let tldr = try await CoreAI.summarize(text)
 - [OpsGallery](https://john-rocky.github.io/coreai-kit/Examples/OpsGallery/): OpsGallery — Every task op as a card
 - [PhotoSearch](https://john-rocky.github.io/coreai-kit/Examples/PhotoSearch/): PhotoSearch — Semantic photo search, fully on-device: the photo library is indexed with CLIP image embeddings (Neural Engine, ~4 ms per photo), and free-text queries like "red bike at the beach" rank photos by cosine similarity
 - [ReadDoc](https://john-rocky.github.io/coreai-kit/Examples/ReadDoc/): ReadDoc — On-device document OCR: pick an image of a document, KitDocReader (Unlimited-OCR, ~4.5 GB) turns it into structured markdown — tables survive as <table>/<tr>/<td> markup
+- [ScanToType](https://john-rocky.github.io/coreai-kit/Examples/ScanToType/): ScanToType — a document photo becomes a value of your own type
 - [SiriAsk](https://john-rocky.github.io/coreai-kit/Examples/SiriAsk/): Gemma (SiriAsk) — "Hey Siri, Ask Gemma" → your on-device Gemma 4 answers anything
 - [Speak](https://john-rocky.github.io/coreai-kit/Examples/Speak/): Speak — the text-to-speech runner (GUI + CLI, any tts catalog id)
 - [SpotlightApp](https://john-rocky.github.io/coreai-kit/Examples/SpotlightApp/): SpotlightApp — ask your own files, with your own local model

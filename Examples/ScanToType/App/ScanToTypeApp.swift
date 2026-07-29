@@ -6,12 +6,12 @@ import PhotosUI
 import SwiftUI
 
 @main
-struct ExpenseApp: App {
+struct ScanToTypeApp: App {
     var body: some Scene { WindowGroup { ScanView() } }
 }
 
 struct ScanView: View {
-    @State private var receipts: [Receipt] = []
+    @State private var scanned: [Receipt] = []
     @State private var picked: PhotosPickerItem?
     @State private var status: String?
 
@@ -19,14 +19,14 @@ struct ScanView: View {
         NavigationStack {
             List {
                 if let status { Text(status).foregroundStyle(.secondary) }
-                ForEach(Array(receipts.enumerated()), id: \.offset) { _, r in
+                ForEach(Array(scanned.enumerated()), id: \.offset) { _, r in
                     LabeledContent(r.merchant) {
                         Text("\(r.total, format: .number) · \(r.date)")
                     }
-                    .badge(r.category)
+                    
                 }
             }
-            .navigationTitle("Expenses")
+            .navigationTitle("Scanned")
             .toolbar {
                 PhotosPicker(selection: $picked, matching: .images) { Image(systemName: "camera") }
             }
@@ -49,7 +49,7 @@ struct ScanView: View {
         else { return }
         status = "Reading…"
         do {
-            receipts.append(try await scanReceipt(image))
+            scanned.append(try await scan(image, as: Receipt.self))
             status = nil
         } catch {
             status = error.localizedDescription

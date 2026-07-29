@@ -1,4 +1,4 @@
-name: Expense
+name: ScanToType
 options:
   bundleIdPrefix: com.coreaikit
   createIntermediateGroups: true
@@ -8,15 +8,15 @@ packages:
     path: ../..
 
 schemes:
-  Expense:
+  ScanToType:
     build:
       targets:
-        Expense: all
+        ScanToType: all
     run:
       config: Release
 
 targets:
-  Expense:
+  ScanToType:
     type: application
     platform: iOS
     deploymentTarget: "27.0"
@@ -28,7 +28,7 @@ targets:
         product: CoreAIOps
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.expense
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.scantotype
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: Pick a receipt photo to read on device.
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         GENERATE_INFOPLIST_FILE: YES

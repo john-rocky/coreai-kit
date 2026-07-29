@@ -1,7 +1,7 @@
-// expense-cli — the receipt flow with no Xcode and no device.
+// scan-cli — the document flow with no Xcode and no device.
 //
-//   swift run expense-cli --image receipt.jpg
-//   swift run expense-cli --image receipt.jpg --json
+//   swift run scan-cli --image receipt.jpg
+//   swift run scan-cli --image receipt.jpg --json
 //
 // Progress goes to stderr so stdout stays machine-checkable.
 
@@ -14,7 +14,7 @@ import UniformTypeIdentifiers
 func err(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
 func fail(_ s: String) -> Never { err(s); exit(1) }
 
-let usage = "usage: expense-cli --image <path> [--json]"
+let usage = "usage: scan-cli --image <path> [--json]"
 
 var imagePath: String?
 var asJSON = false
@@ -36,15 +36,15 @@ else { fail("could not read an image from \(imagePath)") }
 
 CoreAI.onDownload { p in err("  downloading \(p.currentFile): \(Int(p.fraction * 100))%") }
 
-let receipt = try await scanReceipt(image)
+let receipt = try await scan(image, as: Receipt.self)
 
 if asJSON {
     let obj: [String: Any] = [
         "merchant": receipt.merchant, "total": receipt.total,
-        "date": receipt.date, "category": receipt.category,
+        "date": receipt.date, 
     ]
     let data = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
     print(String(decoding: data, as: UTF8.self))
 } else {
-    print("\(receipt.merchant)  \(receipt.total)  \(receipt.date)  [\(receipt.category)]")
+    print("\(receipt.merchant)  \(receipt.total)  \(receipt.date)")
 }
