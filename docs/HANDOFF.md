@@ -21,6 +21,7 @@ nicer API over the same job.
 | [`CAPABILITY_HANDOFF.md`](CAPABILITY_HANDOFF.md) | One of those four in detail — `CoreAI.capability(_:)`, plus the full ops list and how to describe them | Plan, ready to build |
 | [`SPEECH_API.md`](SPEECH_API.md) | The speech design — `listen()`, streaming, diarization back-fill | Design, has a precondition |
 | [`BACKEND_ROUTING.md`](BACKEND_ROUTING.md) | Ops picking Apple's free backend when it suffices, the catalog model when it does not — the largest lever on entry cost | Design, gated on measurement |
+| [`EVERYWHERE_CONCEPT.md`](EVERYWHERE_CONCEPT.md) | Where routing leads: one API where every on-device AI task has an answer, plus the measured dependency structure and the light path it unlocks | Product concept |
 
 Existing docs unaffected by any of this: [`GETTING_STARTED.md`](GETTING_STARTED.md),
 [`COOKBOOK.md`](COOKBOOK.md), [`STABILITY.md`](STABILITY.md).
