@@ -34,6 +34,7 @@ Every other example app in one place, on two shelves:
 | [ReadDoc](ReadDoc/) | document OCR | Any `ocr` catalog model (Unlimited-OCR): document image → structured markdown. GUI + `swift run readdoc-cli`. |
 | [DiffuseChat](DiffuseChat/) | diffusion LM | Any `dllm` catalog model (LLaDA-8B): watch the reply denoise in place (parallel fill-in, not left-to-right). GUI + `swift run diffuse-cli`. |
 | [DetectCamera](DetectCamera/) | detection | Any `detection` catalog model (RF-DETR / YOLOX) behind one `KitDetector`. GUI + `swift run detect-cli`. |
+| [LiveCamera](LiveCamera/) | live camera + video | The four live tasks as four tabs: `watch()` detection, `watchDepth()`, a trigger that gates a VLM, and `scan(videoAt:)` over a video file. Measured stats and the thermal governor are on screen. GUI (iPhone) + `swift run live-cli`. |
 | [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. GUI + `swift run upscale-cli`. |
 | [PhotoSearch](PhotoSearch/) | image-text embeddings | Semantic photo search — the photo library indexed with CLIP. |
 | [DocSearch](DocSearch/) | visual doc retrieval | Any `retrieval` catalog model (ColModernVBERT): query + page images → MaxSim ranking, no OCR. GUI (iPhone) + `swift run docsearch-cli`. |

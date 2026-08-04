@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Detection and depth are small (36–103 MB), but the Trigger tab's "Describe with a
+	     VLM" button loads Qwen3-VL alongside a live capture session; that peaks past the
+	     default jetsam limit on iPhone (same as ChatDemo / AudioChat / OpsGallery). -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>

@@ -5,6 +5,75 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
+## [Unreleased]
+
+### Added
+
+- **`CoreAI.watch()` / `watchDepth()` — the camera as an op.** `CameraFeed` has vended frames
+  since the beginning and no op consumed them, so every live example wrote its own two-stage
+  task pipeline, stale-frame policy and stats window. That loop is now `LivePipeline`
+  (CoreAIKitCore, Foundation only) with `LiveVision` over it, and `CoreAI.watch()` on top:
+  detections per frame, normalized boxes, `result.stats` carrying *measured* frame rate,
+  median latency, dropped frames and thermal state. Attach an `AVCaptureVideoPreviewLayer`
+  to `watch.captureSession` and the preview costs nothing.
+
+- **Thermal governor, on by default.** A sustained camera-plus-model loop is the hottest
+  thing an app can do on a phone. `LiveGovernor` halves the target frame rate at a
+  `.serious` thermal state and quarters it at `.critical` — `thermalBackoff: 1` opts out,
+  which is appropriate only for a bench run.
+
+- **Event triggers — `CoreAI.watch(for:)`.** A small detector runs continuously and decides;
+  the expensive model runs on the frames that matter. `.label("person")`, `.anything()`, or
+  `.when { … }`, each carrying a cooldown, because a predicate over a live stream is true for
+  as long as the object is in shot. Yields a rendered `CGImage` only when it fires.
+
+- **`KitDetector` real-time path** — `prepare(_:)` / `detect(_:)` over a 32BGRA capture
+  buffer, plus `inputSize`. `Examples/DetectCamera` hand-wrote an enum to put RF-DETR and
+  YOLOX behind one prepare/detect surface; that abstraction now lives in the package where
+  it belongs.
+
+- **`CoreAI.scan(videoAt:)` — a video file as a timeline.** `recognizeAction` answers one
+  question about a whole clip; an app holding an hour of footage usually wants to know
+  *where*. `scan` samples, runs a model per sample, and stamps the results; `scan(videoAt:for:)`
+  is the offline twin of `watch(for:)`, with the cooldown counted in video time. Unlike the
+  live path a scan drops nothing — it was asked for a specific set of samples and delivers
+  all of them.
+
+- **`VideoFile.stream` picks its reader from the sample rate.** Seeking costs per sample,
+  sequential decode costs per clip, and the two cross over near one sample per second of
+  30 fps source. Measured on an M4 Max over a 60 s clip: at 15 samples/s sequential is
+  **17× faster** (0.48 s vs 8.20 s), at 0.1 samples/s seeking is **4.2× faster** (0.11 s vs
+  0.47 s). `.automatic` chooses; `.seeking` / `.sequential` override. The sequential path
+  rides OS 27's `AVAssetReader.outputProvider`, so it suspends rather than blocking a thread.
+
+- **Scene-change sampling.** `minimumChange` skips frames too similar to the last one kept
+  (mean absolute difference on a 32×32 grey thumbnail). On an 8 s clip that is a slow zoom
+  over one photo, 2 samples/s runs the detector 16 times and `--changes` runs it once.
+
+- **`Examples/LiveCamera`** — the four live tasks as four tabs on an iPhone, with the
+  measured stats and the thermal governor visible on screen, plus `swift run live-cli` for
+  the offline half (video scan and the preprocessing benchmark) with no device.
+
+### Fixed
+
+- **Live depth no longer renders a bitmap per frame.** `LiveVision.depth` fed the estimator
+  through `CIContext.createCGImage`; it now takes the capture buffer directly through the new
+  `PixelBufferPreprocessor` (vImage scale + vDSP channel split, scratch reused). Measured on
+  an M4 Max, 640×480 → 224², release build: **0.13 ms against 0.78 ms**, about 6×. The two
+  paths agree bit-for-bit on flat colour, so this is not a change in what the model sees —
+  only in what it costs to hand it over. `DepthEstimator` gains the matching
+  `prepare(_:)` / `estimateDepth(_:)` real-time pair, and `ObjectDetector`'s previously
+  private fast path is now the shared implementation.
+
+- **Op models are now evictable.** `OpModels` and its six siblings cached every load and
+  never released one, so an app calling three ops in sequence kept three models resident and
+  was jetsammed on a phone — the capacity planning the op layer exists to remove. All
+  thirteen caches now share `ResidentCache`, admitting loads through a process-wide
+  `ModelResidency`: least-recently-used models are dropped to make room, a model an op is
+  currently running on is never dropped, memory pressure drops everything idle, and a
+  re-load after eviction is a cache miss rather than an error. `CoreAI.evictModels()` and
+  `CoreAI.residentModels()` expose it.
+
 ## [0.3.0] — 2026-07-28
 
 ### Added

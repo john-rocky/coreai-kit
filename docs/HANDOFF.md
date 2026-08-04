@@ -30,6 +30,47 @@ Existing docs unaffected by any of this: [`GETTING_STARTED.md`](GETTING_STARTED.
 
 Ordered by value per unit of work, not by how interesting it is.
 
+> **State, 2026-08-03.** Steps 4 and 5 are built and tested (`Sources/CoreAIOps/ModelResidency.swift`,
+> `Sources/CoreAIKitCore/LivePipeline.swift`, `Sources/CoreAIKitVision/LiveVision.swift`,
+> `Sources/CoreAIOps/CoreAI+Watch.swift`; 28 tests in total with the video work below).
+> Two things the plan did not have: the live loop is a **shared** primitive rather than a
+> vision-only one — `listen()` is meant to ride the same `LivePipeline` — and it carries a
+> **thermal governor**, because the "nothing here has been measured for power" warning under
+> *Preconditions* applies to exactly the pipeline step 5 introduces. Also settled while
+> building: `Detection` already carried a normalised rect, so the coordinate contract step 5
+> asks for was never a change. Steps 1, 2, 3, 6 and 7 are still as written.
+>
+> **Video is now a row on the map.** `APP_SCALE_INPUT.md`'s table has four rows — speech,
+> vision, documents, text — and no video, which turned out to be the only area with no design
+> at all rather than a design not yet built. `CoreAI.scan(videoAt:)` and `VideoFile.stream`
+> fill it. The load-bearing decision there is measured, not chosen: seeking and sequential
+> decode cross over near one sample per second of 30 fps source, and picking one and standing
+> by it costs 17× at one end of the range and 4× at the other.
+>
+> **Live drops, offline does not.** Worth carrying into the speech work: `watch()` throws
+> frames away when the model falls behind, `scan()` delivers every sample it was asked for.
+> `listen()` is the live policy; `transcribeStream(file:)` is the offline one, and they are
+> not the same pipeline configuration.
+>
+> **Try it on a device: `Examples/LiveCamera`.** Four tabs, one per live task, with the
+> measured stats and the governor on screen, plus `swift run live-cli` for the offline half.
+> Launch it with `-gate` for a device transcript instead of taps (`DeviceGate`).
+>
+> **Known open, deliberately deferred — the coordinate contract.** Step 5 above asks for
+> normalised rects so that drawing a box is a multiplication. `Detection` has them, and it is
+> still not enough: the preview runs at the session preset's aspect under `.resizeAspectFill`
+> while the model is fed `LiveVision.captureSize(forModelInput:)`, so boxes drawn without the
+> aspect-fill correction are visibly offset — confirmed on an iPhone 17 Pro on 2026-08-03.
+> The fix is a frame size on `LiveResult` plus the mapping shipped in `CoreAIKitUI` instead of
+> re-derived per app; `Examples/DetectCamera`'s `DetectionOverlay` is the working version to
+> lift. Marked `TODO` at `Sources/CoreAIKitCore/LivePipeline.swift` (`LiveResult`) and
+> `Examples/LiveCamera/Sources/CameraPreview.swift` (`DetectionOverlay`). Until it lands,
+> **this part of step 5 is not done**, whatever the rest of the row says.
+>
+> **Not measured yet.** No device numbers for this path — the gate has not been run to
+> completion (the phone dropped off mid-session). The 33–39 FPS in the README belongs to
+> `DetectCamera`'s hand-rolled loop, not to `LivePipeline`, and must not be quoted for it.
+
 1. **Text at scale** — chunking for `summarize` / `translate` / `proofread` / `extract`.
    No new API, no new model, no device. It makes calls that fail today stop failing.
    *(`APP_SCALE_INPUT.md` §Text)*
