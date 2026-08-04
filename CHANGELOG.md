@@ -9,6 +9,24 @@ policy.
 
 ### Added
 
+- **`VoiceActivityDetector`** — where speech starts and stops, which the speech design calls
+  the only genuinely new component behind `listen()`. Everything else in the live speech path
+  is composition of models that exist; deciding that a pause ended an utterance is not
+  something a model does, and Apple's nearest offering (`SNClassifySoundRequest`) is a
+  classifier over second-long windows, not an endpointer. Energy against an adaptive noise
+  floor, with hysteresis, a hangover across stop consonants, and `minimumSilence` exposed
+  because it is the latency choice and there is no correct value for it. No model, no
+  dependency. `segments(in:)` is useful with no microphone in sight: it cuts a two-hour
+  recording at pauses, which is how you feed a model whose window is thirty seconds.
+
+  Two things the tests changed. `minimumSpeech` was being applied to the *padded* clip, so a
+  40 ms click became 440 ms of "speech" and passed the filter that exists to reject it — the
+  padding is for the model's benefit and must not decide what counts. And an utterance could
+  stay open indefinitely: an energy detector cannot tell a fan from a voice, so a step in room
+  level held one open forever and what eventually reached the model was longer than its
+  window. `maximumSpeech` bounds it, splitting mid-word rather than handing over a clip
+  nothing can take.
+
 - **`KitTracker`** — detections in, stable identities out. A detector is stateless by
   construction, so "is that the same person as last frame" is a question no model answers and
   Apple ships nothing for; every counting, dwell-time or follow-the-object feature needs it

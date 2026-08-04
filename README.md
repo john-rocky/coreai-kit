@@ -161,7 +161,7 @@ whole transcript — including across a divergence, e.g. a re-rendered transcrip
 
 | Product | What it gives you |
 |---|---|
-| `CoreAIKit` | `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats + guided generation), `KitLanguageModel` (FoundationModels provider with tool calling + guided generation) |
+| `CoreAIKit` | `VoiceActivityDetector` (where speech starts and stops), `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats + guided generation), `KitLanguageModel` (FoundationModels provider with tool calling + guided generation) |
 | `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, `LiveVision` (camera → model, with the frame policy and thermal governor already written), `KitTracker` (detections → stable ids across frames), image preprocessing |
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
