@@ -9,6 +9,23 @@ policy.
 
 ### Added
 
+- **`KitTracker`** — detections in, stable identities out. A detector is stateless by
+  construction, so "is that the same person as last frame" is a question no model answers and
+  Apple ships nothing for; every counting, dwell-time or follow-the-object feature needs it
+  and rebuilds it. Hungarian association (optimal, not greedy — greedy swaps identities
+  exactly when two objects cross), constant-velocity prediction against real elapsed time,
+  and a second association pass over low-confidence detections so a partly-occluded object
+  keeps its id. No model, no framework, 18 tests.
+
+  Two bugs the tests caught, both of which would have shipped: assignment crashed whenever
+  there were more tracks than detections — which is every frame where something leaves — and
+  IoU-only association fell apart at low frame rates. The second one matters most: box
+  overlap between consecutive frames drops from 0.82 at 30 fps to 0.25 at 5 fps for the same
+  motion, and 5 fps is what this package's own thermal governor produces on a hot phone. It
+  worked on the desk and would have assigned a new id to every object in the user's hand.
+  Association now falls back to centre distance, gated by how far the object could actually
+  have travelled in the elapsed time.
+
 - **`CoreAI.watch()` / `watchDepth()` — the camera as an op.** `CameraFeed` has vended frames
   since the beginning and no op consumed them, so every live example wrote its own two-stage
   task pipeline, stale-frame policy and stats window. That loop is now `LivePipeline`
