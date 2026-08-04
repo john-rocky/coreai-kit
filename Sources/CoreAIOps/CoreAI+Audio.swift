@@ -21,10 +21,12 @@ extension CoreAI {
     public static func transcribeMeeting(
         _ audioURL: URL, language: String? = nil, options: OpOptions = OpOptions()
     ) async throws -> MeetingTranscript {
-        let transcriber = try await AudioOpModels.shared.meetingTranscriber(
-            asr: options.model ?? defaultSpeechModel)
+        let id = options.model ?? defaultSpeechModel
+        let transcriber = try await AudioOpModels.shared.meetingTranscriber(asr: id)
         let samples = try AudioFile.pcm16kMono(audioURL)
-        return try await transcriber.transcribe(samples: samples, language: language)
+        return try await withPinnedModel(ResidentKind.meeting, id) {
+            try await transcriber.transcribe(samples: samples, language: language)
+        }
     }
 
     /// Default audio-understanding model.
@@ -58,10 +60,12 @@ extension CoreAI {
     public static func separate(
         _ audioURL: URL, options: OpOptions = OpOptions()
     ) async throws -> Stems {
-        let separator = try await AudioOpModels.shared.separator(
-            catalog: options.model ?? defaultSeparationModel)
+        let id = options.model ?? defaultSeparationModel
+        let separator = try await AudioOpModels.shared.separator(catalog: id)
         let mix = try AudioFile.pcmStereo(audioURL)
-        return try await separator.separate(mix)
+        return try await withPinnedModel(ResidentKind.separator, id) {
+            try await separator.separate(mix)
+        }
     }
 }
 
@@ -72,24 +76,26 @@ extension CoreAI {
 actor AudioOpModels {
     static let shared = AudioOpModels()
 
-    private var meetingLoads: [String: Task<MeetingTranscriber, Error>] = [:]
-    private var audioLoads: [String: Task<KitAudioModel, Error>] = [:]
+    private let meetings = ResidentCache<MeetingTranscriber>(kind: ResidentKind.meeting)
+    private let audioModels = ResidentCache<KitAudioModel>(kind: ResidentKind.audio)
+    private let musicians = ResidentCache<KitMusician>(kind: ResidentKind.musician)
+    private let separators = ResidentCache<KitSeparator>(kind: ResidentKind.separator)
     private var audioTurns: [String: Task<Void, Never>] = [:]
-    private var musicianLoads: [String: Task<KitMusician, Error>] = [:]
     private var musicianTurns: [String: Task<Void, Never>] = [:]
-    private var separatorLoads: [String: Task<KitSeparator, Error>] = [:]
 
     func describe(catalog id: String, samples: [Float]) async throws -> String {
         let model = try await audioModel(catalog: id)
         let previous = audioTurns[id]
         let turn = Task { [previous] in
             await previous?.value
-            try await model.attach(samples: samples)
-            let session = LanguageModelSession(model: model)
-            let reply = try await session.respond(
-                to: "Describe this audio clip — the sounds, any speech or music, and the "
-                    + "setting. Reply with only the description.")
-            return reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return try await withPinnedModel(ResidentKind.audio, id) {
+                try await model.attach(samples: samples)
+                let session = LanguageModelSession(model: model)
+                let reply = try await session.respond(
+                    to: "Describe this audio clip — the sounds, any speech or music, and "
+                        + "the setting. Reply with only the description.")
+                return reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         }
         audioTurns[id] = Task { _ = try? await turn.value }
         return try await turn.value
@@ -100,65 +106,35 @@ actor AudioOpModels {
         let previous = musicianTurns[id]
         let turn = Task { [previous] in
             await previous?.value
-            return try await musician.generate(prompt, seconds: seconds)
+            return try await withPinnedModel(ResidentKind.musician, id) {
+                try await musician.generate(prompt, seconds: seconds)
+            }
         }
         musicianTurns[id] = Task { _ = try? await turn.value }
         return try await turn.value
     }
 
     func meetingTranscriber(asr id: String) async throws -> MeetingTranscriber {
-        if let load = meetingLoads[id] { return try await load.value }
-        let load = Task<MeetingTranscriber, Error> {
+        try await meetings.value(for: id) {
             try await MeetingTranscriber(asr: id, downloadProgress: OpDownloads.forward)
-        }
-        meetingLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            meetingLoads[id] = nil
-            throw error
         }
     }
 
     func separator(catalog id: String) async throws -> KitSeparator {
-        if let load = separatorLoads[id] { return try await load.value }
-        let load = Task<KitSeparator, Error> {
+        try await separators.value(for: id) {
             try await KitSeparator(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        separatorLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            separatorLoads[id] = nil
-            throw error
         }
     }
 
     func audioModel(catalog id: String) async throws -> KitAudioModel {
-        if let load = audioLoads[id] { return try await load.value }
-        let load = Task<KitAudioModel, Error> {
+        try await audioModels.value(for: id) {
             try await KitAudioModel(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        audioLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            audioLoads[id] = nil
-            throw error
         }
     }
 
     func musician(catalog id: String) async throws -> KitMusician {
-        if let load = musicianLoads[id] { return try await load.value }
-        let load = Task<KitMusician, Error> {
+        try await musicians.value(for: id) {
             try await KitMusician(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        musicianLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            musicianLoads[id] = nil
-            throw error
         }
     }
 }

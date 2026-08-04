@@ -84,7 +84,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CoreAIKitTests",
-            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings"]
+            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings", "CoreAIOps"]
         ),
     ]
 )
