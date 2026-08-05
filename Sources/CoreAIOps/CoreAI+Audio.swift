@@ -14,16 +14,27 @@ import Foundation
 import FoundationModels
 
 extension CoreAI {
-    /// Audio file → speaker-attributed transcript: Sortformer diarization finds the
-    /// turns, the ASR model transcribes each one. `language` nil = auto-detect.
-    /// `options: .model(...)` overrides the ASR model (the diarizer is the catalog's
-    /// only one); `MeetingTranscript.text` is the ready-to-print form.
+    /// Audio file → speaker-attributed transcript: Sortformer diarization finds the turns,
+    /// a transcriber does each one. `MeetingTranscript.text` is the ready-to-print form.
+    ///
+    /// **This is the op the kit exists for in speech, and it costs 238 MB.** Who spoke when is
+    /// the one speech capability Apple ships nothing for — `Speech.framework` has no speaker
+    /// API at all — so the diarizer is a real download, while the transcription it is paired
+    /// with is Apple's and free. `options: .model(...)` swaps in a catalog ASR and takes the
+    /// feature from 238 MB to over 3 GB; do it when Apple's locale coverage or determinism is
+    /// genuinely not enough.
     public static func transcribeMeeting(
         _ audioURL: URL, language: String? = nil, options: OpOptions = OpOptions()
     ) async throws -> MeetingTranscript {
-        let id = options.model ?? defaultSpeechModel
-        let transcriber = try await AudioOpModels.shared.meetingTranscriber(asr: id)
         let samples = try AudioFile.pcm16kMono(audioURL)
+        guard let id = options.model else {
+            let transcriber = try await AudioOpModels.shared.systemMeetingTranscriber(
+                language: language)
+            return try await withPinnedModel(ResidentKind.meeting, "system") {
+                try await transcriber.transcribe(samples: samples, language: language)
+            }
+        }
+        let transcriber = try await AudioOpModels.shared.meetingTranscriber(asr: id)
         return try await withPinnedModel(ResidentKind.meeting, id) {
             try await transcriber.transcribe(samples: samples, language: language)
         }
@@ -114,9 +125,20 @@ actor AudioOpModels {
         return try await turn.value
     }
 
+    /// Sortformer plus Apple's transcriber — the default pairing.
+    func systemMeetingTranscriber(language: String?) async throws -> MeetingTranscriber {
+        let locale = language.map { Locale(identifier: $0) } ?? .current
+        return try await meetings.value(for: "system:\(locale.identifier)") {
+            try await MeetingTranscriber(
+                locale: locale, downloadProgress: OpDownloads.forward)
+        }
+    }
+
     func meetingTranscriber(asr id: String) async throws -> MeetingTranscriber {
         try await meetings.value(for: id) {
-            try await MeetingTranscriber(asr: id, downloadProgress: OpDownloads.forward)
+            try await MeetingTranscriber(
+                asr: KitTranscriber(catalog: id, downloadProgress: OpDownloads.forward),
+                downloadProgress: OpDownloads.forward)
         }
     }
 

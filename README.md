@@ -54,7 +54,7 @@ Vision framework request, the model is resolved (and cached) behind the op:
 ```swift
 import CoreAIOps
 
-let text  = try await CoreAI.transcribe(voiceMemoURL)   // speech → text (Whisper v3 turbo)
+let text  = try await CoreAI.transcribe(voiceMemoURL)   // speech → text (Apple's, 0 bytes)
 let tldr  = try await CoreAI.summarize(text)            // also: extract / translate / redact …
 let boxes = try await CoreAI.detect(in: photo)          // [Detection] — RF-DETR, no NMS
 let reply = try await CoreAI.speak(tldr)                // text → speech (PCM + sample rate)

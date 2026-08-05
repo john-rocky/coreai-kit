@@ -7,6 +7,29 @@ policy.
 
 ## [Unreleased]
 
+### Changed
+
+- **Transcription runs on Apple's on-device transcriber by default, at no download cost.**
+  `CoreAI.transcribe` used to pull Whisper — 3.2 GB on an iPhone — for a capability iOS 27
+  ships in `SpeechAnalyzer` + `SpeechTranscriber`, with OS-managed locale assets shared
+  across apps. This package's own porting contract has a gate for exactly that ("Apple's
+  stock stack does not already ship this capability. If it does, stop") and speech-to-text
+  was the clearest case of it in the catalog. Measured on this machine: 45 supported locales,
+  ten already installed, a 3.9 s clip transcribed in 0.18 s.
+
+  `options: .model("whisper-large-v3-turbo")` opts back in, for a locale Apple lacks on the
+  device in hand, behaviour that must not change under an OS update, or an offline guarantee.
+
+- **`CoreAI.transcribeMeeting` is now 238 MB rather than 3.4 GB.** Who spoke when is the one
+  speech capability Apple ships nothing for — `Speech.framework` has no speaker API at all —
+  so Sortformer is a real download and the transcription it is paired with is free. The new
+  `SpeechToText` protocol is the seam: `SystemTranscriber` and `KitTranscriber` are
+  interchangeable, and `MeetingTranscriber(asr:)` takes either.
+
+  Text-to-speech is deliberately **not** changed. Apple's voices are free but cannot be
+  cloned, so the catalog TTS models still do something the system cannot, and defaulting them
+  away would leave a wrapper with no reason to exist.
+
 ### Added
 
 - **`VoiceActivityDetector`** — where speech starts and stops, which the speech design calls
