@@ -184,11 +184,11 @@
       "variants": {
         "macos": {
           "path": "int8",
-          "sizeMB": 2000
+          "sizeMB": 1092
         },
         "ios": {
           "path": "int8",
-          "sizeMB": 2000
+          "sizeMB": 1092
         }
       },
       "thinking": true,
@@ -255,7 +255,7 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 6000
+          "sizeMB": 6660
         }
       }
     },
@@ -327,7 +327,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8",
-          "sizeMB": 13000
+          "sizeMB": 14699
         }
       },
       "engine": "pipelined"
@@ -341,7 +341,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8",
-          "sizeMB": 18000
+          "sizeMB": 20121
         }
       },
       "engine": "pipelined"
@@ -545,7 +545,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1415
+          "sizeMB": 710
         }
       }
     },
@@ -665,7 +665,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 2460
+          "sizeMB": 1336
         }
       }
     },
@@ -682,7 +682,7 @@
         },
         "ios": {
           "path": "sortformer_float16.h18p.aimodelc",
-          "sizeMB": 451
+          "sizeMB": 238
         }
       }
     },
@@ -824,7 +824,7 @@
     },
     {
       "id": "adcsr-x4",
-      "name": "AdcSR ×4 Super-Resolution",
+      "name": "AdcSR \u00d74 Super-Resolution",
       "repo": "mlboydaisuke/AdcSR-CoreAI",
       "revision": "60a65ad223ea89385b0b4c880a306616112d55ce",
       "kind": "superResolution",
@@ -852,7 +852,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 883
+          "sizeMB": 464
         }
       },
       "engine": "static-shape"

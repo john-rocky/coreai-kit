@@ -300,8 +300,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
                 variants: [
-                    "macos": .init(path: "int8", sizeMB: 2000),
-                    "ios": .init(path: "int8", sizeMB: 2000),
+                    "macos": .init(path: "int8", sizeMB: 1092),
+                    "ios": .init(path: "int8", sizeMB: 1092),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -339,7 +339,7 @@ public struct ModelCatalog: Sendable, Codable {
             CatalogEntry(
                 id: "gemma-3-12b-it", name: "Gemma 3 12B",
                 repo: "mlboydaisuke/gemma-3-12b-it-CoreAI-official", kind: .chat,
-                variants: ["macos": .init(path: "macos", sizeMB: 6000)]),
+                variants: ["macos": .init(path: "macos", sizeMB: 6660)]),
             // ── Zoo community ports (decode-pipelined, some with custom Metal kernels) —
             //    S=1 decode-only graphs, hint "pipelined". macOS-only: they run well past a
             //    12 GB iPhone's per-process limit. Proven by the CoreAIChatMac dmg. ──
@@ -371,13 +371,13 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "gemma-4-12b", name: "Gemma 4 12B",
                 repo: "mlboydaisuke/Gemma-4-12B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8", sizeMB: 13000)],
+                    path: "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8", sizeMB: 14699)],
                 engine: "pipelined"),
             CatalogEntry(
                 id: "gemma-4-31b", name: "Gemma 4 31B",
                 repo: "mlboydaisuke/Gemma-4-31B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8", sizeMB: 18000)],
+                    path: "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8", sizeMB: 20121)],
                 engine: "pipelined"),
             // ── Gemma 4 E2B/E4B (per-layer embeddings, official-QAT int4): a `…_tbl`
             //    decode bundle + paired PLE tables bound as static graph inputs. The
@@ -504,7 +504,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/VJEPA2-ViTL-SSv2-CoreAI", kind: .video,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 708),
-                    "ios": .init(path: "ios", sizeMB: 1415),
+                    "ios": .init(path: "ios", sizeMB: 710),
                 ]),
             // ── Document OCR: image → structured markdown (vision + unified prefill/decode
             //    decoder + host constant tables; KitDocReader resolves the four subtrees). ──
@@ -577,7 +577,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI", kind: .asr,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1340),
-                    "ios": .init(path: "ios", sizeMB: 2460),
+                    "ios": .init(path: "ios", sizeMB: 1336),
                 ]),
             // ── Speaker diarization: clip → who spoke when (up to 4 speakers, 80 ms frames).
             //    Flat repo, one graph per platform: the variant path names the JIT .aimodel
@@ -589,7 +589,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", kind: .diarization,
                 variants: [
                     "macos": .init(path: "sortformer_float16.aimodel", sizeMB: 226),
-                    "ios": .init(path: "sortformer_float16.h18p.aimodelc", sizeMB: 451),
+                    "ios": .init(path: "sortformer_float16.h18p.aimodelc", sizeMB: 238),
                 ]),
             // ── Multi-speaker / dialogue TTS (VibeVoice-Realtime-0.5B): five fp16 graphs in the
             //    platform dir + `coreai_host/` (voice prefill caches, glue, tokenizer) + the fp16
@@ -673,7 +673,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/TimesFM-2.5-200M-CoreAI", kind: .forecasting,
                 variants: [
                     "macos": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
-                    "ios": .init(path: "ios", sizeMB: 883),   // AOT .aimodelc (h18p; weights + MPSGraph)
+                    "ios": .init(path: "ios", sizeMB: 464),   // AOT .aimodelc (h18p; weights + MPSGraph)
                 ], engine: "static-shape"),
         ])
 }
