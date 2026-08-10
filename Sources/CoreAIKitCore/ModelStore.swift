@@ -105,6 +105,13 @@ public actor ModelStore {
         return candidates.max { mtime($0) < mtime($1) }
     }
 
+    /// The files this model is made of, per the Hub. One place, so the download and the size
+    /// probes can never disagree about what a model consists of.
+    func hubFiles(for model: ModelID) async throws -> [HubClient.PlannedFile] {
+        try await hub.listFiles(
+            repo: model.repo, revision: model.revision, path: model.resolvedPath)
+    }
+
     public func delete(_ model: ModelID) throws {
         let url = directory.appendingPathComponent(model.cacheSubpath, isDirectory: true)
         try FileManager.default.removeItem(at: url)
@@ -116,8 +123,7 @@ public actor ModelStore {
         _ model: ModelID,
         progress: (@Sendable (DownloadProgress) -> Void)?
     ) async throws -> URL {
-        let files = try await hub.listFiles(
-            repo: model.repo, revision: model.revision, path: model.resolvedPath)
+        let files = try await hubFiles(for: model)
         let totalBytes = files.reduce(0) { $0 + $1.size }
 
         let fm = FileManager.default
@@ -213,7 +219,7 @@ public actor ModelStore {
         throw lastError ?? CoreAIKitError.httpError(statusCode: -1, file: url.lastPathComponent)
     }
 
-    private nonisolated static func directorySize(_ url: URL) -> Int64 {
+    nonisolated static func directorySize(_ url: URL) -> Int64 {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
             at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }

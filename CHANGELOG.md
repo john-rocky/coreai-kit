@@ -7,6 +7,48 @@ policy.
 
 ## [Unreleased]
 
+### Added
+
+- **`CoreAI.capability(_:)` — the question the kit could not be asked.** `prepare` is an
+  instruction ("fetch this now"); before an app can decide whether to *offer* a feature it
+  needs "can this happen, and what will it cost the user". Answers `.ready`,
+  `.needsDownload(bytes:)`, `.needsSystemAssets(what:)`, `.insufficientStorage(needs:free:)`
+  or `.unsupportedDevice(reason:)` — offline, without touching the network, so a gallery of
+  every op is not 23 round trips. `capabilities()` answers for all of them at once.
+
+  `.needsSystemAssets` is new against the design: with transcription on Apple's backend, the
+  honest answer for `transcribe` is neither "ready" nor a size — the OS may fetch a locale
+  pack, and those bytes are shared with every app rather than charged to this one.
+
+- **`coreai-doctor` — what will this app download.** `swift run coreai-doctor path/to/App`
+  scans the sources for op calls and totals the models behind them, counting a model shared by
+  three ops once. It asks `CoreAI.Op` rather than reimplementing the mapping, which is what
+  keeps it right when a default changes — and the first thing it found was that `watch`,
+  `watchDepth` and `scan` were missing from that enum, so an app using the live camera was
+  being reported as having nothing to download.
+
+- **`ModelStore.remoteSize(of:)` / `localSize(of:)` / `isCached(_:)` / `downloadPlan(for:)`** —
+  sizes measured from the Hub rather than typed by hand, and the file list an adopter needs to
+  hand to Apple's Background Assets. A Swift package cannot ship the downloader extension that
+  framework requires; it can say exactly what to enqueue, which
+  [`docs/BACKGROUND_ASSETS.md`](docs/BACKGROUND_ASSETS.md) walks through.
+
+- **Errors for the three failures a shipped app actually hits** — `insufficientStorage`,
+  `unsupportedDevice`, `systemAssetsUnavailable`. Every existing case was the vocabulary of
+  someone who knows how a model repository is laid out (`notAHuggingFaceRepo`,
+  `variantNotFound`), and none of them fire on the developer's machine, where the device is
+  supported, the disk has room and the model is cached from the last run.
+
+### Fixed
+
+- **A supported language in an unsupported region no longer hides transcription.** A device
+  set to English-in-Japan reports `en_JP`, which is in nobody's supported-locale list, while
+  ten English locales sit installed — strict matching declared the feature unsupported on a
+  machine where it plainly worked. Resolution now falls back to the language, preferring the
+  requested region, then the language's likely region via ICU (`en` → `en_US`), then anything
+  installed. A language Apple genuinely cannot do is still refused rather than silently
+  swapped for another. Found the first time this ran on a real machine.
+
 ### Changed
 
 - **Transcription runs on Apple's on-device transcriber by default, at no download cost.**

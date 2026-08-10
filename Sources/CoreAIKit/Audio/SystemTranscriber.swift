@@ -81,18 +81,66 @@ public struct SystemTranscriber: SpeechToText {
         get async { await SpeechTranscriber.installedLocales }
     }
 
-    public static func isAvailable(for locale: Locale = .current) async -> Bool {
-        let wanted = locale.identifier(.bcp47)
-        return await SpeechTranscriber.supportedLocales
+    /// The locale Apple will actually transcribe in, for a requested one — or nil if it
+    /// cannot do that language at all.
+    ///
+    /// **Exact matching is wrong here and the bug it causes is invisible.** A device set to
+    /// English-in-Japan reports `en_JP`, which is in nobody's supported list, while `en_US`,
+    /// `en_GB` and eight other English locales are installed and working. Matching strictly
+    /// would tell that user transcription is unsupported on a device where it plainly works —
+    /// and nobody files a report about a feature they never saw. (Found the first time this
+    /// ran on a real machine, which was not the developer's own default locale.)
+    ///
+    /// So: the exact locale if it is offered, else the same language in the requested region,
+    /// else the same language anywhere — preferring one already installed, since that costs
+    /// no download and no wait.
+    public static func resolvedLocale(for requested: Locale = .current) async -> Locale? {
+        let supported = await SpeechTranscriber.supportedLocales
+        let installed = Set(await SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) })
+        let wanted = requested.identifier(.bcp47)
+        if let exact = supported.first(where: { $0.identifier(.bcp47) == wanted }) {
+            return exact
+        }
+        guard let language = requested.language.languageCode?.identifier else { return nil }
+        let sameLanguage = supported.filter {
+            $0.language.languageCode?.identifier == language
+        }
+        guard !sameLanguage.isEmpty else { return nil }
+        // Requested region first — an Australian asking for English should get en_AU. Then
+        // the language's *likely* region, which is what ICU's maximal identifier is for:
+        // "en" maximises to "en_Latn_US", so English-in-Japan lands on en_US rather than on
+        // whichever English locale happened to be first in the installed list.
+        let region = requested.region?.identifier
+        // `maximalIdentifier` is hyphenated — "en" gives "en-Latn-US" — while the locale
+        // identifiers beside it are underscored. Splitting on one separator silently matches
+        // nothing, which is a fallback that looks implemented and is not.
+        let likely = Locale.Language(identifier: language).maximalIdentifier
+            .split(whereSeparator: { $0 == "-" || $0 == "_" }).last.map(String.init)
+        return sameLanguage.first { $0.region?.identifier == region }
+            ?? sameLanguage.first { $0.region?.identifier == likely }
+            ?? sameLanguage.first { installed.contains($0.identifier(.bcp47)) }
+            ?? sameLanguage.first
+    }
+
+    /// Whether this locale's assets are already on the device — no wait, no network.
+    /// `isAvailable` says the OS *can* do this language; this says it can do it right now.
+    public static func isInstalled(for locale: Locale = .current) async -> Bool {
+        guard let resolved = await resolvedLocale(for: locale) else { return false }
+        let wanted = resolved.identifier(.bcp47)
+        return await SpeechTranscriber.installedLocales
             .contains { $0.identifier(.bcp47) == wanted }
+    }
+
+    public static func isAvailable(for locale: Locale = .current) async -> Bool {
+        await resolvedLocale(for: locale) != nil
     }
 
     /// Prepares the transcriber, downloading the locale's assets if the OS does not have them
     /// yet. The download is Apple's, not the app's: it is shared with every other app and does
     /// not count against the app's size.
-    public init(locale: Locale = .current) async throws {
-        guard await SystemTranscriber.isAvailable(for: locale) else {
-            throw TranscriberError.localeUnsupported(locale)
+    public init(locale requested: Locale = .current) async throws {
+        guard let locale = await SystemTranscriber.resolvedLocale(for: requested) else {
+            throw TranscriberError.localeUnsupported(requested)
         }
         self.locale = locale
         let module = SpeechTranscriber(locale: locale, preset: .transcription)

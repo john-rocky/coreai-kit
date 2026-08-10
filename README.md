@@ -64,7 +64,19 @@ Twenty ops, one shape — the [Cookbook](docs/COOKBOOK.md) maps every "I want to
 its snippet. Adding the one `CoreAIOps` product is enough: it re-exports the model
 layer, so the `import` above also covers everything below. First-use downloads are
 observable process-wide (`CoreAI.onDownload { … }`) and prefetchable behind a loading
-UI (`try await CoreAI.prepare(.transcribe, .caption)`).
+UI (`try await CoreAI.prepare(.transcribe, .caption)`) — and answerable before you offer
+the feature at all:
+
+```swift
+switch await CoreAI.capability(.transcribeMeeting) {
+case .ready:                     showButton()          // nothing to fetch
+case .needsDownload(let bytes):  showPrompt(bytes)     // "Meeting notes needs 238 MB"
+case .needsSystemAssets:         showFirstRunNotice()  // the OS's bytes, not the app's
+case .insufficientStorage, .unsupportedDevice: hideFeature()
+}
+```
+
+`swift run coreai-doctor path/to/YourApp` totals it for a whole app before you ship.
 
 **Model-level APIs** when you want control — pick the model, stream, attach tools:
 

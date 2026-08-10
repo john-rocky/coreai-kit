@@ -15,6 +15,16 @@ public enum CoreAIKitError: Error, LocalizedError, Sendable {
     case modelNotInCatalog(id: String)
     case modelNotAvailableOnPlatform(id: String)
     case catalogKindMismatch(id: String, expected: String, found: String)
+    /// No room for the download. The three cases below are the failures a shipped app
+    /// actually hits, and none of them existed until now: every case above is the vocabulary
+    /// of someone who knows how a model repository is laid out, and none of them fire on the
+    /// developer's own machine — where the device is supported, the disk has room, and the
+    /// model is already cached from the last run.
+    case insufficientStorage(needsBytes: Int64, freeBytes: Int64)
+    case unsupportedDevice(reason: String)
+    /// The model is fine; this device has not been given the OS-side assets it needs (a
+    /// locale pack for the system transcriber, say) and could not fetch them.
+    case systemAssetsUnavailable(what: String)
 
     public var errorDescription: String? {
         switch self {
@@ -33,6 +43,25 @@ public enum CoreAIKitError: Error, LocalizedError, Sendable {
         case .catalogKindMismatch(let id, let expected, let found):
             return "Model '\(id)' is a '\(found)' model, not '\(expected)' — "
                 + "load it with the matching Kit model type."
+        case .insufficientStorage(let needs, let free):
+            return "Not enough room: this needs \(CoreAIKitError.gigabytes(needs)) and "
+                + "\(CoreAIKitError.gigabytes(free)) is free. Ask the user to free space, or "
+                + "call CoreAI.capability(_:) before offering the feature so this is a prompt "
+                + "rather than a failure."
+        case .unsupportedDevice(let reason):
+            return "This device cannot run the model: \(reason)"
+        case .systemAssetsUnavailable(let what):
+            return "The system could not provide \(what). These assets belong to the OS and "
+                + "are shared between apps; a network connection is needed the first time."
         }
+    }
+
+    /// Sizes in an error are read by a person deciding what to do, so they are rounded to
+    /// something a person says out loud.
+    static func gigabytes(_ bytes: Int64) -> String {
+        let gb = Double(bytes) / 1_000_000_000
+        return gb >= 1
+            ? String(format: "%.1f GB", gb)
+            : String(format: "%.0f MB", Double(bytes) / 1_000_000)
     }
 }
