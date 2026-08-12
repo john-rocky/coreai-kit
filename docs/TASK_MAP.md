@@ -14,10 +14,10 @@ first-use download; **(Mac)** means no iOS variant is published yet.
 
 | Task | Demand | Apple ships | Kit ships | Verdict |
 |---|---|---|---|---|
-| Speech → text | **5,972** | `SFSpeechRecognizer`, `SpeechAnalyzer` (iOS 26) | Whisper 3.2 GB · Nemotron-streaming 2.5 GB · Parakeet 1.3 GB **(Mac)** · Qwen3-ASR 3.1 GB **(Mac)** | Apple is free and good. Kit wins on languages, timestamps, and running where Apple's is unavailable — **but only if it can be afforded** |
-| Text → speech | **4,080** | `AVSpeechSynthesizer` | VibeVoice 1.4 GB · VoxCPM 1.7 GB · Kokoro 341 MB **(Mac)** · VoxCPM2 5.7 GB | Apple's voices are robotic and cannot be cloned. **Clearest quality upgrade in the whole catalog** |
-| Who spoke when | — (no Apple API to measure) | **nothing** | Sortformer 451 MB | **Apple has no answer at all.** The one speech capability that is not a better version of something Apple ships |
-| Speaker-attributed transcript | — | **nothing** | `MeetingTranscriber` (Sortformer + ASR) | Composition, not a model. The thing to lead with |
+| Speech → text | **5,972** | `SpeechAnalyzer` + `SpeechTranscriber` — 45 locales, OS-managed assets shared between apps, streaming, **and word timestamps** | Whisper 3.2 GB · Nemotron-streaming 1.3 GB · Parakeet 1.3 GB **(Mac)** · Qwen3-ASR 3.1 GB **(Mac)** | **Corrected 2026-08-05, from the SDK.** Two of the three advantages claimed here were already Apple's: `timeIndexedProgressiveTranscription` is a preset. What is left is a locale Apple lacks on the device in hand, behaviour that must not move under an OS update, and an offline guarantee. `CoreAI.transcribe` now defaults to Apple's and the catalog model is opt-in |
+| Text → speech | **4,080** | `AVSpeechSynthesizer`, and `PersonalVoice` only for accessibility | VibeVoice 1.4 GB · VoxCPM 1.7 GB · Kokoro 341 MB **(Mac)** · VoxCPM2 5.7 GB | Apple's voices are free but cannot be cloned. **Deliberately not moved to the system backend**: doing so would leave a wrapper around a public API with no reason to exist. The clone is what earns the download |
+| Who spoke when | — (no Apple API to measure) | **nothing** — `Speech.framework` contains no speaker API; the analyzer runs exactly three modules and none of them is one | Sortformer **238 MB** (measured; the 451 MB here was the macOS figure doubled) | **Apple has no answer at all.** Still true after reading the iOS 27 SDK, and now the only speech row where that holds |
+| Speaker-attributed transcript | — | **nothing** | `MeetingTranscriber` (Sortformer + Apple's transcriber) = **238 MB** | Composition, not a model, and now the cheapest thing here rather than the most expensive. The thing to lead with |
 | Audio understanding | — | `SNAudioStreamAnalyzer` (166, classification only) | Qwen2.5-Omni 5.5 GB **(Mac)** | Different question ("describe this audio"), no Apple equivalent, no demand signal yet |
 | Source separation | 166 (nearest) | nothing | Mel-Band 470 MB | Audio, not speech. Portfolio |
 | Music generation | — | nothing | Stable Audio 1.1 GB **(Mac)** | Portfolio |
@@ -56,6 +56,18 @@ for that little work — both models are already ported, just not for iOS.
 
 ---
 
+## Read the SDK, not this table
+
+This file was written from measured GitHub demand and from what was believed about Apple's
+stack. On 2026-08-05 the iOS 27 `Speech.framework` interface was read directly for the first
+time, and two rows above were wrong in the kit's favour — streaming and word timestamps were
+listed as reasons a catalog ASR model beats Apple's, and both are presets on
+`SpeechTranscriber`. `SpeechDetector` also exists, which is an endpointer, i.e. the component
+`SPEECH_API.md` calls "the only genuinely new component" behind `listen()`.
+
+Nothing here is a substitute for opening the SDK before building the thing. The porting
+contract's GAP gate assumes someone has.
+
 ## What the map says
 
 **1. Half the catalog is where Apple competes hardest.** 23 of 53 entries are chat models, and
@@ -63,8 +75,15 @@ chat is the one thing Apple gives away for free with zero download. Supply is co
 the differentiator is weakest.
 
 **2. The unique positions are cheap and few.** Where Apple ships nothing at all:
-diarization (451 MB), monocular depth (54 MB), open-vocabulary detection (36 MB), screen
-understanding, document *structure*, zero-shot entity labels. Four of those are under 500 MB.
+diarization (**238 MB**), monocular depth (54 MB), open-vocabulary detection (36 MB), screen
+understanding, document *structure*, zero-shot entity labels, and voice cloning. Five of those
+are under 500 MB.
+
+**2a. A capability Apple ships is not automatically a reason to stop — a *wrapper* is.** The
+GAP gate reads as binary and is not. Apple's transcriber is as good, so the kit routes to it
+and keeps the 238 MB that Apple cannot do. Apple's voices are free and cannot be cloned, so
+the TTS models stay: defaulting them away would leave a wrapper around a public API. The test
+is whether anything survives the routing, not whether Apple has the capability.
 
 **3. Two tasks should never be built**: face detection and person segmentation. Apple's are
 free, on-device, and better. Their demand numbers are real but they are not the kit's demand.
@@ -91,7 +110,9 @@ Ranked by whether there is a mechanism pushing them, not by how interesting they
   surface; the retrieval quality is the part Apple does not answer.
 - **Voice that belongs to the user.** Apple's Personal Voice exists for accessibility, narrowly.
   Zero-shot cloning (VoxCPM, VibeVoice, Chatterbox in progress) is a different product, and the
-  privacy argument only works on-device.
+  privacy argument only works on-device. **After the 2026-08-05 SDK read this is the only
+  remaining reason the TTS models exist**, which makes it the row to build on rather than one
+  of several.
 
 ## What this implies for structure
 

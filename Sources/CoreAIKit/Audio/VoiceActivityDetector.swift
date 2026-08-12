@@ -6,10 +6,18 @@
 // model does that — an ASR model transcribes a window it is handed, and choosing the window
 // is this file's job.
 //
-// Apple's nearest offering is `SNClassifySoundRequest`, which can tell you a window contained
-// speech. That is a classifier, not an endpointer: it works on roughly second-long windows and
-// answers "was there speech", where an endpointer has to answer "has this person stopped
-// talking" within a couple of hundred milliseconds or the app feels broken.
+// **Use Apple's `SpeechDetector` for the live case.** iOS 27's `Speech.framework` ships one —
+// `SensitivityLevel`, an `AsyncSequence` of `(CMTimeRange, speechDetected)` — and it runs inside
+// the same `SpeechAnalyzer` as the transcriber, for no download. This file was written a day
+// before that interface was read, on the strength of a design note saying no such thing
+// existed. It does.
+//
+// What is left here, and why it was not deleted: `SpeechDetector` is a `SpeechModule`, so using
+// it means standing up an analyzer and a locale. This is a pure function over `[Float]` with no
+// framework, no locale and no assets — which is what `segments(in:)` needs to cut a two-hour
+// recording into utterances for a model whose window is thirty seconds, and what any non-speech
+// audio (a separator, a music model) would need. Whether that is enough to keep it is an open
+// question in `docs/HANDOFF.md`, not a settled one.
 //
 // ```swift
 // var vad = VoiceActivityDetector()

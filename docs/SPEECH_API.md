@@ -1,3 +1,11 @@
+> **Superseded in part, 2026-08-05.** Written before anyone read the iOS 27
+> `Speech.framework` interface. It ships `SpeechDetector` — an endpointer, i.e. what this
+> document calls "the only genuinely new component" — and `SpeechTranscriber` presets for
+> streaming and word timestamps. `VoiceActivityDetector` was built here anyway and
+> duplicates `SpeechDetector` for the live case; see `docs/HANDOFF.md`. The parts that
+> still stand: the `Utterance` shape, the partial/final rewrite contract, speaker
+> back-fill, and `say`. The iOS Parakeet/Kokoro precondition is dropped.
+
 # Design — the speech API
 
 For an app engineer who wants speech in their app and has never trained a model. The test for
