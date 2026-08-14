@@ -33,7 +33,7 @@ let tldr = try await CoreAI.summarize(text)
   not in the iOS Simulator SDK.
 - Memory, not throughput, is the shipping constraint on a phone. A 4B-class model is tight.
 
-## Example apps (28, each buildable on its own)
+## Example apps (29, each buildable on its own)
 
 - [ActionCamera](https://john-rocky.github.io/coreai-kit/Examples/ActionCamera/): ActionCamera — Live action recognition from the camera, fully on-device: CameraFeed streams frames, a rolling 16-frame clip goes through ActionRecognizer (V-JEPA 2 ViT-L, SSv2 head — Meta's video world model) and the top actions come back with confidences
 - [AskVLM](https://john-rocky.github.io/coreai-kit/Examples/AskVLM/): Qwen3-VL (AskVLM) — your VLM as its own Visual Intelligence tab
@@ -48,6 +48,7 @@ let tldr = try await CoreAI.summarize(text)
 - [Forecast](https://john-rocky.github.io/coreai-kit/Examples/Forecast/): Forecast — time-series forecasting on device
 - [GuidedDemo](https://john-rocky.github.io/coreai-kit/Examples/GuidedDemo/): GuidedDemo — Guided generation (constrained decoding): per-step logits are masked through a JSON schema's grammar (xgrammar bitmask) before sampling, so the model's output is valid JSON for the schema by construction — no retries, no parse failures
 - [InfoExtract](https://john-rocky.github.io/coreai-kit/Examples/InfoExtract/): InfoExtract — zero-shot entity extraction and PII redaction on device
+- [LiveCamera](https://john-rocky.github.io/coreai-kit/Examples/LiveCamera/): LiveCamera — Four live tasks, one per tab, each a few lines over CoreAIOps
 - [Meeting](https://john-rocky.github.io/coreai-kit/Examples/Meeting/): Meeting — who said what, fully on-device
 - [Music](https://john-rocky.github.io/coreai-kit/Examples/Music/): Music — text-to-music generation on device
 - [OpsDemo](https://john-rocky.github.io/coreai-kit/Examples/OpsDemo/): OpsDemo — The anchored ops end to end
