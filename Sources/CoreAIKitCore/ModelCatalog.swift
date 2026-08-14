@@ -38,6 +38,10 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case forecasting
         /// Music source separation (Mel-Band RoFormer): song → vocals + instrumental stems.
         case separation
+        /// Policy-conditioned safety classification (Shieldstral): the caller writes the policy
+        /// in plain language and the model returns P(violation) from ONE forward — a static
+        /// graph with no decode loop, so nothing here resembles chat.
+        case moderation
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -676,6 +680,21 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "small/da3-small_float16.aimodel", sizeMB: 54),
                     "ios": .init(path: "small/da3-small_float16.aimodel", sizeMB: 54),
+                ]),
+            // ── Safety classification: one static graph, (input_ids, attention_mask) ->
+            //    probs[1,2] = softmax([no, yes]). Same 2.53 GB weights at both grids; the
+            //    variant differs only in S (512 leaves ~450 tokens for the document, 256
+            //    leaves ~196), and the verdict's cost is that grid, not the text length. ──
+            CatalogEntry(
+                id: "shieldstral-3b", name: "Shieldstral 1.0 3B",
+                repo: "mlboydaisuke/Shieldstral-CoreAI", kind: .moderation,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s512",
+                        sizeMB: 2530),
+                    "ios": .init(
+                        path: "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s256",
+                        sizeMB: 2530),
                 ]),
             CatalogEntry(
                 id: "embeddinggemma-300m", name: "EmbeddingGemma 300m",

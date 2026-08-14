@@ -821,6 +821,23 @@
       }
     },
     {
+      "id": "shieldstral-3b",
+      "name": "Shieldstral 1.0 3B",
+      "repo": "mlboydaisuke/Shieldstral-CoreAI",
+      "revision": "5ec6faf69eb47e2e6b05527fd50c7cd65005b6a6",
+      "kind": "moderation",
+      "variants": {
+        "macos": {
+          "path": "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s512",
+          "sizeMB": 2530
+        },
+        "ios": {
+          "path": "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s256",
+          "sizeMB": 2530
+        }
+      }
+    },
+    {
       "id": "embeddinggemma-300m",
       "name": "EmbeddingGemma 300m",
       "repo": "mlboydaisuke/embeddinggemma-300m-CoreAI",
