@@ -483,11 +483,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin",
-          "sizeMB": 477
+          "sizeMB": 658
         },
         "ios": {
           "path": "ios-h18p/lfm2_5_vl_450m_decode_int8lin",
-          "sizeMB": 472
+          "sizeMB": 653
         }
       }
     },

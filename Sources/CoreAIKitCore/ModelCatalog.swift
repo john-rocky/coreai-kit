@@ -479,10 +479,11 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "lfm2.5-vl-450m", name: "LFM2.5-VL 450M",
                 repo: "mlboydaisuke/LFM2.5-VL-450M-CoreAI", kind: .vlm,
                 variants: [
+                    // sizeMB is what the first run downloads: decoder + vision tower.
                     "macos": .init(
-                        path: "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin", sizeMB: 477),
+                        path: "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin", sizeMB: 658),
                     "ios": .init(
-                        path: "ios-h18p/lfm2_5_vl_450m_decode_int8lin", sizeMB: 472),
+                        path: "ios-h18p/lfm2_5_vl_450m_decode_int8lin", sizeMB: 653),
                 ]),
             // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
             //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant

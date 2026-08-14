@@ -90,15 +90,25 @@ public struct VLModelID: Sendable, Hashable {
 
     /// LFM2.5-VL-450M: a SigLIP2-NaFlex tower (host-patchified 512x512 → `image_embeds`
     /// [256, 1024]) + the LFM2 hybrid decoder. The zoo's smallest VLM: 658 MB for the pair,
-    /// device-gated on an iPhone 17 Pro at 112 tok/s.
-    public static let lfm2VL450M = VLModelID(
-        decoder: ModelID(
-            "mlboydaisuke/LFM2.5-VL-450M-CoreAI",
-            path: "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin"),
-        vision: ModelID(
-            "mlboydaisuke/LFM2.5-VL-450M-CoreAI",
-            path: "gpu-pipelined/lfm2_5_vl_450m_vision_fp16"),
-        arch: .lfm2VL450M)
+    /// device-gated on an iPhone 17 Pro — 112 tok/s decode with the image bound, 33.6 ms per
+    /// encode.
+    ///
+    /// iOS takes the **AOT** subtree, which is the configuration that was gated: a JIT
+    /// `.aimodel` specializes on device instead, and that path has not been measured here.
+    /// (`ModelID`'s own platform default is the `ios`/`macos` layout of the starter repos,
+    /// which this repo does not use, so the choice is made here.)
+    public static let lfm2VL450M = {
+        let repo = "mlboydaisuke/LFM2.5-VL-450M-CoreAI"
+        #if os(iOS)
+        let subtree = "ios-h18p"
+        #else
+        let subtree = "gpu-pipelined"
+        #endif
+        return VLModelID(
+            decoder: ModelID(repo, path: "\(subtree)/lfm2_5_vl_450m_decode_int8lin"),
+            vision: ModelID(repo, path: "\(subtree)/lfm2_5_vl_450m_vision_fp16"),
+            arch: .lfm2VL450M)
+    }()
 
     /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
     /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
