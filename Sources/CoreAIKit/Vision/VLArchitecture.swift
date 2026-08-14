@@ -31,6 +31,16 @@ public struct VLArchitecture: Sendable, Hashable {
         case clip
     }
 
+    /// Byte order INSIDE one flattened patch. Both produce `[patches, patchDim]`; getting it
+    /// wrong is silent — the tower still runs and still describes something.
+    public enum PatchLayout: Sendable, Hashable {
+        /// `[C][T][py][px]` — channel-major with the temporal duplicate (Qwen2/3-VL).
+        case channelMajor
+        /// `[py][px][C]` — channel fastest, row-major within the patch (SigLIP2 NaFlex:
+        /// HF permutes `(b,C,ph,P,pw,P) -> (b,ph,pw,P,P,C)`).
+        case channelLast
+    }
+
     /// How the source image is fit into the fixed export canvas.
     public enum Resize: Sendable, Hashable {
         /// Stretch to fill the canvas, ignoring aspect (Qwen3-VL square grid).
@@ -69,6 +79,8 @@ public struct VLArchitecture: Sendable, Hashable {
     public let normalization: Normalization
     /// How the source image is fit into the canvas (`.stretch` / `.aspectFitPad`).
     public let resize: Resize
+    /// Byte order inside one patch (`.channelMajor` Qwen-VL / `.channelLast` NaFlex).
+    public let patchLayout: PatchLayout
 
     // Special tokens (ChatML + optional vision framing). Strings, not ids: the bundle
     // tokenizer maps them, and `imagePad` must be a single token for the splice to work.
@@ -92,7 +104,7 @@ public struct VLArchitecture: Sendable, Hashable {
         vocab: Int32, mergedTokens: Int, grid: Int, hidden: Int, patches: Int, patchDim: Int,
         deepstackPerToken: Int, imageSide: Int, patchSize: Int, temporalPatchSize: Int,
         imageWidth: Int? = nil, normalization: Normalization = .symmetric,
-        resize: Resize = .stretch,
+        resize: Resize = .stretch, patchLayout: PatchLayout = .channelMajor,
         imStart: String = "<|im_start|>", imEnd: String = "<|im_end|>",
         visionStart: String = "<|vision_start|>", visionEnd: String = "<|vision_end|>",
         imagePad: String = "<|image_pad|>",
@@ -112,6 +124,7 @@ public struct VLArchitecture: Sendable, Hashable {
         self.temporalPatchSize = temporalPatchSize
         self.normalization = normalization
         self.resize = resize
+        self.patchLayout = patchLayout
         self.imStart = imStart
         self.imEnd = imEnd
         self.visionStart = visionStart
@@ -158,6 +171,26 @@ public struct VLArchitecture: Sendable, Hashable {
         imageSide: 448, patchSize: 14, temporalPatchSize: 1,
         visionStart: "", visionEnd: "\n",
         visionInput: .pixels, visionOutput: "image_features",
+        ropeShifted: false)
+
+    /// LFM2.5-VL-450M: a SigLIP2-**NaFlex** tower fed FLATTENED patches (the host patchifies)
+    /// at a baked 32x32 grid — one 512x512 tile → 2x pixel-unshuffle → 256 tokens, which is the
+    /// checkpoint's own `max_image_tokens` — into one static `image_embeds` [256, 1024] on the
+    /// LFM2 hybrid decoder. No deepstack, plain 1D positions (no rope shift).
+    ///
+    /// Two things differ from every other `.patches` entry here and both are silent when wrong:
+    /// the patch bytes are **channel-last** (`[py][px][C]`, HF's NaFlex permute), and there is
+    /// no temporal duplicate (`temporalPatchSize: 1`, which also makes the patch order plain
+    /// row-major rather than block-major). `patchDim` = 3·16·16 = 768.
+    ///
+    /// Framing is the checkpoint's own: `<|image_start|>` + 256 `<image>` + `<|image_end|>`.
+    public static let lfm2VL450M = VLArchitecture(
+        vocab: 65_536, mergedTokens: 256, grid: 16, hidden: 1024,
+        patches: 1024, patchDim: 768, deepstackPerToken: 0,
+        imageSide: 512, patchSize: 16, temporalPatchSize: 1,
+        patchLayout: .channelLast,
+        visionStart: "<|image_start|>", visionEnd: "<|image_end|>", imagePad: "<image>",
+        visionInput: .patches, visionOutput: "image_embeds",
         ropeShifted: false)
 
     /// MinerU2.5-Pro (stock Qwen2-VL): a Qwen2-VL ViT (`.patches`, no deepstack) + Qwen2-0.5B

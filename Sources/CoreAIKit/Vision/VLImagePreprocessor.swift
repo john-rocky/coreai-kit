@@ -83,13 +83,28 @@ enum VLImagePreprocessor {
                         let y0 = pr * patchSide
                         let x0 = pc * patchSide
                         let base = patchIndex * arch.patchDim
-                        for channel in 0..<3 {
-                            for t in 0..<arch.temporalPatchSize {  // still frame duplicated
-                                let channelBase = base
-                                    + (channel * arch.temporalPatchSize + t) * patchSide * patchSide
-                                for py in 0..<patchSide {
-                                    for px in 0..<patchSide {
-                                        out[channelBase + py * patchSide + px] =
+                        switch arch.patchLayout {
+                        case .channelMajor:
+                            for channel in 0..<3 {
+                                for t in 0..<arch.temporalPatchSize {  // still frame duplicated
+                                    let channelBase = base
+                                        + (channel * arch.temporalPatchSize + t)
+                                        * patchSide * patchSide
+                                    for py in 0..<patchSide {
+                                        for px in 0..<patchSide {
+                                            out[channelBase + py * patchSide + px] =
+                                                pixel(x0 + px, y0 + py, channel)
+                                        }
+                                    }
+                                }
+                            }
+                        case .channelLast:
+                            // SigLIP2 NaFlex: channel is the FASTEST axis inside the patch.
+                            for py in 0..<patchSide {
+                                for px in 0..<patchSide {
+                                    let rowBase = base + (py * patchSide + px) * 3
+                                    for channel in 0..<3 {
+                                        out[rowBase + channel] =
                                             pixel(x0 + px, y0 + py, channel)
                                     }
                                 }

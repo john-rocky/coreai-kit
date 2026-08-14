@@ -37,7 +37,7 @@ for that little work — both models are already ported, just not for iOS.
 | Face detection | **1,118** | `VNDetectFaceRectanglesRequest` | nothing | Apple is free, on-device, better. **Do not build this** |
 | Person segmentation | 257 | `VNGeneratePersonSegmentation` | nothing | Same |
 | Depth from one image | — | only `AVDepthData` from dual cameras | Depth Anything 3 **54 MB** | **Apple has no monocular depth.** 54 MB. Genuinely missing and genuinely cheap |
-| Image → caption | — | nothing | Qwen3-VL 3.3 GB · MiniCPM-V 2.1 GB | No Apple answer; expensive |
+| Image → caption | — | nothing | **LFM2.5-VL 658 MB** · MiniCPM-V 2.1 GB · Qwen3-VL 3.3 GB | No Apple answer. 658 MB is an app-sized VLM; the bigger two buy detail |
 | Screen / UI understanding | — | nothing | Holo2 5.5 GB | No Apple answer. The capability behind on-device automation |
 | Image similarity search | 346 | `VNGenerateImageFeaturePrint` | CLIP 291 MB | Apple's is free and adequate for most cases |
 | Super-resolution | — | `MetalFX` (games), Photos (private) | AdcSR 1.7 GB | Portfolio |

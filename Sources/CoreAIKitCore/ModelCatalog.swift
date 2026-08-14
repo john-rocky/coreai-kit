@@ -471,6 +471,19 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(
                         path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2145),
                 ]),
+            // LFM2.5-VL-450M: the smallest VLM in the catalog (658 MB for the pair). A
+            // SigLIP2-NaFlex tower fed host-flattened patches + the LFM2 hybrid decoder with
+            // one image_embeds static input. iPhone-gated (112 tok/s, image bound) via the
+            // ios-h18p AOT bundle; the macOS variant is the JIT .aimodel.
+            CatalogEntry(
+                id: "lfm2.5-vl-450m", name: "LFM2.5-VL 450M",
+                repo: "mlboydaisuke/LFM2.5-VL-450M-CoreAI", kind: .vlm,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin", sizeMB: 477),
+                    "ios": .init(
+                        path: "ios-h18p/lfm2_5_vl_450m_decode_int8lin", sizeMB: 472),
+                ]),
             // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
             //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant
             //    path names the platform bundle dir and KitSpeaker resolves the rest.

@@ -88,6 +88,18 @@ public struct VLModelID: Sendable, Hashable {
             path: "gpu-pipelined/minicpmv46_vision"),
         arch: .miniCPMV46)
 
+    /// LFM2.5-VL-450M: a SigLIP2-NaFlex tower (host-patchified 512x512 → `image_embeds`
+    /// [256, 1024]) + the LFM2 hybrid decoder. The zoo's smallest VLM: 658 MB for the pair,
+    /// device-gated on an iPhone 17 Pro at 112 tok/s.
+    public static let lfm2VL450M = VLModelID(
+        decoder: ModelID(
+            "mlboydaisuke/LFM2.5-VL-450M-CoreAI",
+            path: "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin"),
+        vision: ModelID(
+            "mlboydaisuke/LFM2.5-VL-450M-CoreAI",
+            path: "gpu-pipelined/lfm2_5_vl_450m_vision_fp16"),
+        arch: .lfm2VL450M)
+
     /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
     /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
     /// a preset here; the id is the one the model's card shows.
@@ -97,6 +109,7 @@ public struct VLModelID: Sendable, Hashable {
         "qwen3-vl-8b": .qwen3VL8B,
         "holo2-4b": .holo2_4B,
         "minicpm-v-4.6": .miniCPMV46,
+        "lfm2.5-vl-450m": .lfm2VL450M,
     ]
 
     /// A copy with both sub-bundle ids pinned to a Hub revision (nil = unchanged), so a
