@@ -478,7 +478,7 @@
       "id": "lfm2.5-vl-450m",
       "name": "LFM2.5-VL 450M",
       "repo": "mlboydaisuke/LFM2.5-VL-450M-CoreAI",
-      "revision": "f5e8a83dd1dbff7ff7f51b82ee3c9524198c554c",
+      "revision": "f6648f9c65402a4d5c280cae41b672f977e74e3a",
       "kind": "vlm",
       "variants": {
         "macos": {
