@@ -34,13 +34,7 @@ public final class StatefulGraphModel: @unchecked Sendable {
         contentsOf url: URL, function name: String = "main",
         computeUnits: GraphModel.ComputeUnits = .gpu, kvCapacity: Int = 512
     ) async throws {
-        let options: SpecializationOptions
-        switch computeUnits {
-        case .neuralEngine: options = SpecializationOptions(preferredComputeUnitKind: .neuralEngine)
-        case .gpu: options = SpecializationOptions(preferredComputeUnitKind: .gpu)
-        case .cpu: options = SpecializationOptions(preferredComputeUnitKind: .cpu)
-        }
-        let model = try await AIModel(contentsOf: url, options: options)
+        let model = try await AIModel(contentsOf: url, options: computeUnits.specializationOptions)
         guard let descriptor = model.functionDescriptor(for: name) else {
             throw VisionError.functionNotFound(name)
         }
