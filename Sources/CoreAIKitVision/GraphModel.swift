@@ -13,7 +13,25 @@ import Foundation
 /// ```
 public final class GraphModel: @unchecked Sendable {
     public enum ComputeUnits: Sendable {
-        case neuralEngine, gpu, cpu
+        /// `neuralEngine`/`gpu`/`cpu` express a *preference* over the full allowed set
+        /// (`[cpu, gpu, neuralEngine]`); `cpuOnly` collapses the allowed set to the CPU alone.
+        /// The distinction is load-bearing: a preference over a heterogeneous allowed set is the
+        /// trigger for a Core AI placement defect that returns silently wrong numerics on some
+        /// graphs (filed with Apple; see `knowledge/pocket-tts-port.md`). Parity and gate runs
+        /// should use `cpuOnly`, never `cpu`.
+        case neuralEngine, gpu, cpu, cpuOnly
+
+        /// The Core AI options this choice lowers to. Exposed so callers that hold a raw
+        /// `AIModel` — the graphs whose shape `GraphModel`/`StatefulGraphModel` cannot
+        /// accept — specialize identically instead of re-deriving the mapping.
+        public var specializationOptions: SpecializationOptions {
+            switch self {
+            case .neuralEngine: return SpecializationOptions(preferredComputeUnitKind: .neuralEngine)
+            case .gpu: return SpecializationOptions(preferredComputeUnitKind: .gpu)
+            case .cpu: return SpecializationOptions(preferredComputeUnitKind: .cpu)
+            case .cpuOnly: return SpecializationOptions.cpuOnly
+            }
+        }
     }
 
     private let function: InferenceFunction
@@ -26,16 +44,7 @@ public final class GraphModel: @unchecked Sendable {
         contentsOf url: URL, function name: String = "main",
         computeUnits: ComputeUnits = .gpu
     ) async throws {
-        let options: SpecializationOptions
-        switch computeUnits {
-        case .neuralEngine:
-            options = SpecializationOptions(preferredComputeUnitKind: .neuralEngine)
-        case .gpu:
-            options = SpecializationOptions(preferredComputeUnitKind: .gpu)
-        case .cpu:
-            options = SpecializationOptions(preferredComputeUnitKind: .cpu)
-        }
-        let model = try await AIModel(contentsOf: url, options: options)
+        let model = try await AIModel(contentsOf: url, options: computeUnits.specializationOptions)
         guard let descriptor = model.functionDescriptor(for: name) else {
             throw VisionError.functionNotFound(name)
         }
