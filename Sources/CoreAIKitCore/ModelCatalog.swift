@@ -485,16 +485,18 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(
                         path: "ios-h18p/lfm2_5_vl_450m_decode_int8lin", sizeMB: 653),
                 ]),
-            // LFM2.5-VL-3B: the detail tier of the same family. macOS only — its AOT
-            // resources.bin (3.13 GiB int8 / 2.03 GiB int4) is past the iOS 2 GiB load wall,
-            // so there is no `ios` variant and the phone answer is the 450M.
+            // LFM2.5-VL-3B: the detail tier of the same family, on both platforms but at
+            // different precision — iOS takes int4 because the int8 AOT bundle (3.13 GiB)
+            // does not load there and int4 (2.03 GiB) does, at no measured quality cost.
             CatalogEntry(
                 id: "lfm2.5-vl-3b", name: "LFM2.5-VL 3B",
                 repo: "mlboydaisuke/LFM2.5-VL-3B-CoreAI", kind: .vlm,
                 variants: [
-                    // decoder 3.1 GB + vision tower 815 MB.
+                    // sizeMB is decoder + vision tower, what the first run downloads.
                     "macos": .init(
                         path: "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin", sizeMB: 3915),
+                    "ios": .init(
+                        path: "ios-h18p/lfm2_5_vl_3b_decode_int4lin", sizeMB: 2815),
                 ]),
             // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
             //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant

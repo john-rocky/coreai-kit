@@ -113,18 +113,24 @@ public struct VLModelID: Sendable, Hashable {
     /// LFM2.5-VL-3B: the same two-bundle shape as the 450M with a wider tower and a 128k
     /// vocab. Pick it over the 450M when the answer has to hold detail; the 450M when the
     /// budget has to hold an app.
-    /// macOS only, and not for want of trying: the 3B's AOT `resources.bin` is 3.13 GiB at
-    /// int8 and 2.03 GiB at int4, against the iOS runtime's 2 GiB load wall. The catalog entry
-    /// publishes no `ios` variant, so `KitVisionModel(catalog:)` fails clearly on a phone
-    /// instead of downloading 3.9 GB that cannot load. Use the 450M there.
-    public static let lfm2VL3B = VLModelID(
-        decoder: ModelID(
-            "mlboydaisuke/LFM2.5-VL-3B-CoreAI",
-            path: "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin"),
-        vision: ModelID(
-            "mlboydaisuke/LFM2.5-VL-3B-CoreAI",
-            path: "gpu-pipelined/lfm2_5_vl_3b_vision_fp16"),
-        arch: .lfm2VL3B)
+    /// Different QUANTIZATION per platform, not just a different subtree: the int8 decoder's
+    /// AOT `resources.bin` is 3.13 GiB and does not load on iOS, while int4's 2.03 GiB does —
+    /// and on this model int4 costs nothing (7/9 on the suite, the same cases as fp16). Mac
+    /// takes int8 because it has no wall to clear. Both are device- or Mac-gated as shipped.
+    public static let lfm2VL3B = {
+        let repo = "mlboydaisuke/LFM2.5-VL-3B-CoreAI"
+        #if os(iOS)
+        let decoder = "ios-h18p/lfm2_5_vl_3b_decode_int4lin"
+        let vision = "ios-h18p/lfm2_5_vl_3b_vision_fp16"
+        #else
+        let decoder = "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin"
+        let vision = "gpu-pipelined/lfm2_5_vl_3b_vision_fp16"
+        #endif
+        return VLModelID(
+            decoder: ModelID(repo, path: decoder),
+            vision: ModelID(repo, path: vision),
+            arch: .lfm2VL3B)
+    }()
 
     /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
     /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
