@@ -61,6 +61,13 @@ enum VLPromptRenderer {
         let text = head + body + "\(arch.imStart)assistant\n"
 
         var tokens = tokenizer.encode(text: text).map(Int32.init)
+        // The chat template these checkpoints ship starts with `bos_token`, but whether
+        // `encode` reproduces it depends on the tokenizer's post-processor, not on the model:
+        // LFM2.5-VL-450M's prepends BOS, the 3B's (plain ByteLevel) does not. Without it the
+        // 3B answers "F, F, F, F" — fluent degeneracy, no error. Add it when it is missing.
+        if let bos = tokenizer.bosTokenId.map(Int32.init), tokens.first != bos {
+            tokens.insert(bos, at: 0)
+        }
         guard chosen != nil else {
             return Rendered(tokens: tokens, imageStart: nil, image: nil)
         }

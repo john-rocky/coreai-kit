@@ -110,6 +110,22 @@ public struct VLModelID: Sendable, Hashable {
             arch: .lfm2VL450M)
     }()
 
+    /// LFM2.5-VL-3B: the same two-bundle shape as the 450M with a wider tower and a 128k
+    /// vocab. Pick it over the 450M when the answer has to hold detail; the 450M when the
+    /// budget has to hold an app.
+    /// macOS only, and not for want of trying: the 3B's AOT `resources.bin` is 3.13 GiB at
+    /// int8 and 2.03 GiB at int4, against the iOS runtime's 2 GiB load wall. The catalog entry
+    /// publishes no `ios` variant, so `KitVisionModel(catalog:)` fails clearly on a phone
+    /// instead of downloading 3.9 GB that cannot load. Use the 450M there.
+    public static let lfm2VL3B = VLModelID(
+        decoder: ModelID(
+            "mlboydaisuke/LFM2.5-VL-3B-CoreAI",
+            path: "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin"),
+        vision: ModelID(
+            "mlboydaisuke/LFM2.5-VL-3B-CoreAI",
+            path: "gpu-pipelined/lfm2_5_vl_3b_vision_fp16"),
+        arch: .lfm2VL3B)
+
     /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
     /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
     /// a preset here; the id is the one the model's card shows.
@@ -120,6 +136,7 @@ public struct VLModelID: Sendable, Hashable {
         "holo2-4b": .holo2_4B,
         "minicpm-v-4.6": .miniCPMV46,
         "lfm2.5-vl-450m": .lfm2VL450M,
+        "lfm2.5-vl-3b": .lfm2VL3B,
     ]
 
     /// A copy with both sub-bundle ids pinned to a Hub revision (nil = unchanged), so a

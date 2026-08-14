@@ -193,6 +193,24 @@ public struct VLArchitecture: Sendable, Hashable {
         visionInput: .patches, visionOutput: "image_embeds",
         ropeShifted: false)
 
+    /// LFM2.5-VL-3B: the 450M's bigger sibling — same graph shape end to end (baked 32x32
+    /// grid, 256 tokens, one `image_embeds` static input, plain 1D positions), a wider tower
+    /// (hidden 1152, 27 layers) and a 128k-vocab decoder at hidden 2048.
+    ///
+    /// One thing does NOT carry over from the 450M and is invisible here: the checkpoints
+    /// declare different `resample` filters (450M PIL BILINEAR, 3B PIL BICUBIC). This host
+    /// resizes with CoreGraphics `.high` for every model — an approximation of both, verified
+    /// token-exact through each model rather than assumed. If a port ever needs the exact
+    /// filter, that is where to add it.
+    public static let lfm2VL3B = VLArchitecture(
+        vocab: 128_000, mergedTokens: 256, grid: 16, hidden: 2048,
+        patches: 1024, patchDim: 768, deepstackPerToken: 0,
+        imageSide: 512, patchSize: 16, temporalPatchSize: 1,
+        patchLayout: .channelLast,
+        visionStart: "<|image_start|>", visionEnd: "<|image_end|>", imagePad: "<image>",
+        visionInput: .patches, visionOutput: "image_embeds",
+        ropeShifted: false)
+
     /// MinerU2.5-Pro (stock Qwen2-VL): a Qwen2-VL ViT (`.patches`, no deepstack) + Qwen2-0.5B
     /// decoder on the rope-shift rider. Fixed **portrait non-square** grid 32×24 merged (768
     /// tokens) at a 672×896 canvas — the document is letterboxed (aspect-fit + white pad) and
