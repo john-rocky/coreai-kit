@@ -86,6 +86,14 @@ public struct VLArchitecture: Sendable, Hashable {
     // tokenizer maps them, and `imagePad` must be a single token for the splice to work.
     public let imStart: String
     public let imEnd: String
+    /// Role markers and the separator between a marker and its content. ChatML writes
+    /// `<|im_start|>user\n … <|im_end|>\n`; Cohere writes
+    /// `<|START_OF_TURN_TOKEN|><|USER_TOKEN|> … <|END_OF_TURN_TOKEN|>` with no newlines,
+    /// so the turn shape is data rather than a hardcoded string.
+    public let userRole: String
+    public let assistantRole: String
+    public let systemRole: String
+    public let roleSeparator: String
     public let visionStart: String
     public let visionEnd: String
     public let imagePad: String
@@ -106,6 +114,8 @@ public struct VLArchitecture: Sendable, Hashable {
         imageWidth: Int? = nil, normalization: Normalization = .symmetric,
         resize: Resize = .stretch, patchLayout: PatchLayout = .channelMajor,
         imStart: String = "<|im_start|>", imEnd: String = "<|im_end|>",
+        userRole: String = "user", assistantRole: String = "assistant",
+        systemRole: String = "system", roleSeparator: String = "\n",
         visionStart: String = "<|vision_start|>", visionEnd: String = "<|vision_end|>",
         imagePad: String = "<|image_pad|>",
         visionInput: VisionInput = .patches, visionOutput: String = "image_embeds",
@@ -127,6 +137,10 @@ public struct VLArchitecture: Sendable, Hashable {
         self.patchLayout = patchLayout
         self.imStart = imStart
         self.imEnd = imEnd
+        self.userRole = userRole
+        self.assistantRole = assistantRole
+        self.systemRole = systemRole
+        self.roleSeparator = roleSeparator
         self.visionStart = visionStart
         self.visionEnd = visionEnd
         self.imagePad = imagePad
@@ -210,6 +224,26 @@ public struct VLArchitecture: Sendable, Hashable {
         visionStart: "<|image_start|>", visionEnd: "<|image_end|>", imagePad: "<image>",
         visionInput: .patches, visionOutput: "image_embeds",
         ropeShifted: false)
+
+    /// North-Micro-Vision (Cohere `cohere_compass`, 2.4B): a Qwen3-VL visual encoder at
+    /// SigLIP2-SO400M dimensions — deepstack and all — in front of a parallel-block Cohere
+    /// decoder, so the graph contract is Qwen3-VL's: `.patches`, three deepstack rows per
+    /// merged token, rope-shift inputs. A 512x512 canvas at patch 16 with a 2x2 merge gives
+    /// 16x16 = 256 tokens; `patchDim` = 3 * 2 * 16 * 16 = 1536 (temporal duplicate).
+    ///
+    /// The turn shape is NOT ChatML: Cohere marks roles with single tokens and ends a turn
+    /// with `<|END_OF_TURN_TOKEN|>`, no newlines anywhere.
+    public static let northMicroVision = VLArchitecture(
+        vocab: 262_144, mergedTokens: 256, grid: 16, hidden: 2048,
+        patches: 1024, patchDim: 1536, deepstackPerToken: 3,
+        imageSide: 512, patchSize: 16, temporalPatchSize: 2,
+        imStart: "<|START_OF_TURN_TOKEN|>", imEnd: "<|END_OF_TURN_TOKEN|>",
+        userRole: "<|USER_TOKEN|>", assistantRole: "<|CHATBOT_TOKEN|>",
+        systemRole: "<|SYSTEM_TOKEN|>", roleSeparator: "",
+        visionStart: "<|VISION_START|>", visionEnd: "<|VISION_END|>",
+        imagePad: "<|IMAGE_PAD|>",
+        visionInput: .patches, visionOutput: "image_embeds",
+        ropeShifted: true)
 
     /// MinerU2.5-Pro (stock Qwen2-VL): a Qwen2-VL ViT (`.patches`, no deepstack) + Qwen2-0.5B
     /// decoder on the rope-shift rider. Fixed **portrait non-square** grid 32×24 merged (768

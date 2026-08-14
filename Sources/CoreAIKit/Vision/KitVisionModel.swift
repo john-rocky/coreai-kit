@@ -132,6 +132,21 @@ public struct VLModelID: Sendable, Hashable {
             arch: .lfm2VL3B)
     }()
 
+    /// North-Micro-Vision (Cohere, 2.4B, Apache-2.0): 11 languages, and token-exact against
+    /// fp32 on an iPhone 17 Pro. int8 on both platforms — int4 craters on this model.
+    public static let northMicroVision = {
+        let repo = "mlboydaisuke/North-Micro-Vision-CoreAI"
+        #if os(iOS)
+        let subtree = "ios-h18p"
+        #else
+        let subtree = "gpu-pipelined"
+        #endif
+        return VLModelID(
+            decoder: ModelID(repo, path: "\(subtree)/north_micro_vision_instruct_decode_int8lin"),
+            vision: ModelID(repo, path: "\(subtree)/north_micro_vision_instruct_vision_fp16"),
+            arch: .northMicroVision)
+    }()
+
     /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
     /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
     /// a preset here; the id is the one the model's card shows.
@@ -143,6 +158,7 @@ public struct VLModelID: Sendable, Hashable {
         "minicpm-v-4.6": .miniCPMV46,
         "lfm2.5-vl-450m": .lfm2VL450M,
         "lfm2.5-vl-3b": .lfm2VL3B,
+        "north-micro-vision": .northMicroVision,
     ]
 
     /// A copy with both sub-bundle ids pinned to a Hub revision (nil = unchanged), so a

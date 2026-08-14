@@ -509,6 +509,23 @@
       }
     },
     {
+      "id": "north-micro-vision",
+      "name": "North Micro Vision",
+      "repo": "mlboydaisuke/North-Micro-Vision-CoreAI",
+      "revision": "d6e48e3c2eb26dd3ad29c9b58642a405d66f0d54",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/north_micro_vision_instruct_decode_int8lin",
+          "sizeMB": 3400
+        },
+        "ios": {
+          "path": "ios-h18p/north_micro_vision_instruct_decode_int8lin",
+          "sizeMB": 3500
+        }
+      }
+    },
+    {
       "id": "voxcpm-0.5b",
       "name": "VoxCPM 0.5B",
       "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",

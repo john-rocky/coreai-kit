@@ -498,6 +498,20 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(
                         path: "ios-h18p/lfm2_5_vl_3b_decode_int4lin", sizeMB: 2815),
                 ]),
+            // North-Micro-Vision (Cohere, Apache-2.0): 11 languages, int8 on both platforms
+            // (int4 craters on this model), device-gated at 24/24 tokens vs fp32.
+            CatalogEntry(
+                id: "north-micro-vision", name: "North Micro Vision",
+                repo: "mlboydaisuke/North-Micro-Vision-CoreAI", kind: .vlm,
+                variants: [
+                    // decoder 2.4 GB + vision tower 1.0 GB.
+                    "macos": .init(
+                        path: "gpu-pipelined/north_micro_vision_instruct_decode_int8lin",
+                        sizeMB: 3400),
+                    "ios": .init(
+                        path: "ios-h18p/north_micro_vision_instruct_decode_int8lin",
+                        sizeMB: 3500),
+                ]),
             // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
             //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant
             //    path names the platform bundle dir and KitSpeaker resolves the rest.
