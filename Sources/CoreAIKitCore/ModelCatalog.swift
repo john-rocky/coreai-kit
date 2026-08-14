@@ -279,8 +279,7 @@ public struct ModelCatalog: Sendable, Codable {
             // iOS wall, and no device measurement has been taken. Add "ios" when one has.
             CatalogEntry(
                 id: "lfm2.5-2.6b", name: "LFM2.5 2.6B",
-                repo: "mlboydaisuke/LFM2.5-2.6B-CoreAI",
-                revision: "79704a10ac98e49dabf7051543f151d6f5da3a83", kind: .chat,
+                repo: "mlboydaisuke/LFM2.5-2.6B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/lfm2_5_2_6b_decode_int8hu_block32_sym",
