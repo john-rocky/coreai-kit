@@ -271,6 +271,18 @@ public struct ModelCatalog: Sendable, Codable {
                         sizeMB: 1623),
                 ],
                 engine: "pipelined"),
+            // macOS only on purpose: int8hu is 3.4 GB and even int4lin is 2.0 GB, right at the
+            // iOS wall, and no device measurement has been taken. Add "ios" when one has.
+            CatalogEntry(
+                id: "lfm2.5-2.6b", name: "LFM2.5 2.6B",
+                repo: "mlboydaisuke/LFM2.5-2.6B-CoreAI",
+                revision: "79704a10ac98e49dabf7051543f151d6f5da3a83", kind: .chat,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/lfm2_5_2_6b_decode_int8hu_block32_sym",
+                        sizeMB: 3474),
+                ],
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "granite-4.0-h-1b", name: "Granite 4.0-H 1B",
                 repo: "mlboydaisuke/granite-4.0-h-CoreAI", kind: .chat,
