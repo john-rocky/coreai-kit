@@ -1,7 +1,9 @@
 // AudioFile.swift — decode any audio file to the 16 kHz mono Float waveform every kit speech
 // model consumes (`transcribe(samples:)` on Whisper/Qwen3-ASR/Parakeet, `attach(samples:)` on
-// the audio-understanding models). Promoted from the AudioChat example so card snippets stay
-// honest: the file→samples glue is a kit API, not "see the example".
+// the audio-understanding models), and write the `[Float]` the generative audio types return
+// back out as a WAV. Promoted from the AudioChat example so card snippets stay honest: the
+// file→samples glue is a kit API, not "see the example". The writer arrived the same way —
+// four examples had each grown their own RIFF header.
 
 import AVFoundation
 import Foundation
@@ -108,6 +110,52 @@ public enum AudioFile {
         let right = dstBuf.format.channelCount > 1
             ? Array(UnsafeBufferPointer(start: channels[1], count: n)) : left
         return [left, right]
+    }
+
+    // MARK: - writing
+
+    /// Encode mono `[Float]` as a 16-bit PCM WAV. This is the container for what every
+    /// generative audio type hands back — `KokoroTTS`, `DotsTTS`, `VoxCPMTTS`, `VibeVoiceTTS`,
+    /// `PocketTTS` return `[Float]` at their own `sampleRate`, with no file behind it.
+    /// Samples are clamped to ±1 before rounding, so a model that overshoots clips rather
+    /// than wrapping to the opposite rail.
+    public static func wav16(_ samples: [Float], sampleRate: Int) -> Data {
+        wav16(channels: [samples], sampleRate: sampleRate)
+    }
+
+    /// Same, from per-channel buffers — `[[left], [right]]`, what `KitSeparator` returns and
+    /// what `pcmStereo(_:)` above reads back. Channels are interleaved here; shorter channels
+    /// are zero-filled rather than truncating the longer ones.
+    public static func wav16(channels: [[Float]], sampleRate: Int) -> Data {
+        let channelCount = max(channels.count, 1)
+        let frames = channels.map(\.count).max() ?? 0
+        var pcm = [Int16](repeating: 0, count: frames * channelCount)
+        for (c, channel) in channels.enumerated() {
+            for i in 0..<channel.count {
+                pcm[i * channelCount + c] = Int16((max(-1, min(1, channel[i])) * 32767).rounded())
+            }
+        }
+
+        var data = Data(capacity: 44 + pcm.count * 2)
+        func tag(_ s: String) { data.append(contentsOf: Array(s.utf8)) }
+        func u32(_ v: Int) { withUnsafeBytes(of: UInt32(v).littleEndian) { data.append(contentsOf: $0) } }
+        func u16(_ v: Int) { withUnsafeBytes(of: UInt16(v).littleEndian) { data.append(contentsOf: $0) } }
+        tag("RIFF"); u32(36 + pcm.count * 2); tag("WAVE")
+        tag("fmt "); u32(16); u16(1); u16(channelCount)
+        u32(sampleRate); u32(sampleRate * channelCount * 2); u16(channelCount * 2); u16(16)
+        tag("data"); u32(pcm.count * 2)
+        pcm.withUnsafeBytes { data.append(contentsOf: $0) }
+        return data
+    }
+
+    /// Write mono `[Float]` to `url` as a 16-bit PCM WAV.
+    public static func writeWAV(_ samples: [Float], sampleRate: Int, to url: URL) throws {
+        try wav16(samples, sampleRate: sampleRate).write(to: url)
+    }
+
+    /// Write per-channel buffers to `url` as an interleaved 16-bit PCM WAV.
+    public static func writeWAV(channels: [[Float]], sampleRate: Int, to url: URL) throws {
+        try wav16(channels: channels, sampleRate: sampleRate).write(to: url)
     }
 
     /// Deterministic white noise at 16 kHz — a demo clip so an app or CLI always has something
