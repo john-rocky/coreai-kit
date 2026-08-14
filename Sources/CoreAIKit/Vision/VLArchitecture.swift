@@ -31,6 +31,16 @@ public struct VLArchitecture: Sendable, Hashable {
         case clip
     }
 
+    /// Byte order INSIDE one flattened patch. Both produce `[patches, patchDim]`; getting it
+    /// wrong is silent — the tower still runs and still describes something.
+    public enum PatchLayout: Sendable, Hashable {
+        /// `[C][T][py][px]` — channel-major with the temporal duplicate (Qwen2/3-VL).
+        case channelMajor
+        /// `[py][px][C]` — channel fastest, row-major within the patch (SigLIP2 NaFlex:
+        /// HF permutes `(b,C,ph,P,pw,P) -> (b,ph,pw,P,P,C)`).
+        case channelLast
+    }
+
     /// How the source image is fit into the fixed export canvas.
     public enum Resize: Sendable, Hashable {
         /// Stretch to fill the canvas, ignoring aspect (Qwen3-VL square grid).
@@ -69,11 +79,21 @@ public struct VLArchitecture: Sendable, Hashable {
     public let normalization: Normalization
     /// How the source image is fit into the canvas (`.stretch` / `.aspectFitPad`).
     public let resize: Resize
+    /// Byte order inside one patch (`.channelMajor` Qwen-VL / `.channelLast` NaFlex).
+    public let patchLayout: PatchLayout
 
     // Special tokens (ChatML + optional vision framing). Strings, not ids: the bundle
     // tokenizer maps them, and `imagePad` must be a single token for the splice to work.
     public let imStart: String
     public let imEnd: String
+    /// Role markers and the separator between a marker and its content. ChatML writes
+    /// `<|im_start|>user\n … <|im_end|>\n`; Cohere writes
+    /// `<|START_OF_TURN_TOKEN|><|USER_TOKEN|> … <|END_OF_TURN_TOKEN|>` with no newlines,
+    /// so the turn shape is data rather than a hardcoded string.
+    public let userRole: String
+    public let assistantRole: String
+    public let systemRole: String
+    public let roleSeparator: String
     public let visionStart: String
     public let visionEnd: String
     public let imagePad: String
@@ -92,8 +112,10 @@ public struct VLArchitecture: Sendable, Hashable {
         vocab: Int32, mergedTokens: Int, grid: Int, hidden: Int, patches: Int, patchDim: Int,
         deepstackPerToken: Int, imageSide: Int, patchSize: Int, temporalPatchSize: Int,
         imageWidth: Int? = nil, normalization: Normalization = .symmetric,
-        resize: Resize = .stretch,
+        resize: Resize = .stretch, patchLayout: PatchLayout = .channelMajor,
         imStart: String = "<|im_start|>", imEnd: String = "<|im_end|>",
+        userRole: String = "user", assistantRole: String = "assistant",
+        systemRole: String = "system", roleSeparator: String = "\n",
         visionStart: String = "<|vision_start|>", visionEnd: String = "<|vision_end|>",
         imagePad: String = "<|image_pad|>",
         visionInput: VisionInput = .patches, visionOutput: String = "image_embeds",
@@ -112,8 +134,13 @@ public struct VLArchitecture: Sendable, Hashable {
         self.temporalPatchSize = temporalPatchSize
         self.normalization = normalization
         self.resize = resize
+        self.patchLayout = patchLayout
         self.imStart = imStart
         self.imEnd = imEnd
+        self.userRole = userRole
+        self.assistantRole = assistantRole
+        self.systemRole = systemRole
+        self.roleSeparator = roleSeparator
         self.visionStart = visionStart
         self.visionEnd = visionEnd
         self.imagePad = imagePad
@@ -159,6 +186,64 @@ public struct VLArchitecture: Sendable, Hashable {
         visionStart: "", visionEnd: "\n",
         visionInput: .pixels, visionOutput: "image_features",
         ropeShifted: false)
+
+    /// LFM2.5-VL-450M: a SigLIP2-**NaFlex** tower fed FLATTENED patches (the host patchifies)
+    /// at a baked 32x32 grid — one 512x512 tile → 2x pixel-unshuffle → 256 tokens, which is the
+    /// checkpoint's own `max_image_tokens` — into one static `image_embeds` [256, 1024] on the
+    /// LFM2 hybrid decoder. No deepstack, plain 1D positions (no rope shift).
+    ///
+    /// Two things differ from every other `.patches` entry here and both are silent when wrong:
+    /// the patch bytes are **channel-last** (`[py][px][C]`, HF's NaFlex permute), and there is
+    /// no temporal duplicate (`temporalPatchSize: 1`, which also makes the patch order plain
+    /// row-major rather than block-major). `patchDim` = 3·16·16 = 768.
+    ///
+    /// Framing is the checkpoint's own: `<|image_start|>` + 256 `<image>` + `<|image_end|>`.
+    public static let lfm2VL450M = VLArchitecture(
+        vocab: 65_536, mergedTokens: 256, grid: 16, hidden: 1024,
+        patches: 1024, patchDim: 768, deepstackPerToken: 0,
+        imageSide: 512, patchSize: 16, temporalPatchSize: 1,
+        patchLayout: .channelLast,
+        visionStart: "<|image_start|>", visionEnd: "<|image_end|>", imagePad: "<image>",
+        visionInput: .patches, visionOutput: "image_embeds",
+        ropeShifted: false)
+
+    /// LFM2.5-VL-3B: the 450M's bigger sibling — same graph shape end to end (baked 32x32
+    /// grid, 256 tokens, one `image_embeds` static input, plain 1D positions), a wider tower
+    /// (hidden 1152, 27 layers) and a 128k-vocab decoder at hidden 2048.
+    ///
+    /// One thing does NOT carry over from the 450M and is invisible here: the checkpoints
+    /// declare different `resample` filters (450M PIL BILINEAR, 3B PIL BICUBIC). This host
+    /// resizes with CoreGraphics `.high` for every model — an approximation of both, verified
+    /// token-exact through each model rather than assumed. If a port ever needs the exact
+    /// filter, that is where to add it.
+    public static let lfm2VL3B = VLArchitecture(
+        vocab: 128_000, mergedTokens: 256, grid: 16, hidden: 2048,
+        patches: 1024, patchDim: 768, deepstackPerToken: 0,
+        imageSide: 512, patchSize: 16, temporalPatchSize: 1,
+        patchLayout: .channelLast,
+        visionStart: "<|image_start|>", visionEnd: "<|image_end|>", imagePad: "<image>",
+        visionInput: .patches, visionOutput: "image_embeds",
+        ropeShifted: false)
+
+    /// North-Micro-Vision (Cohere `cohere_compass`, 2.4B): a Qwen3-VL visual encoder at
+    /// SigLIP2-SO400M dimensions — deepstack and all — in front of a parallel-block Cohere
+    /// decoder, so the graph contract is Qwen3-VL's: `.patches`, three deepstack rows per
+    /// merged token, rope-shift inputs. A 512x512 canvas at patch 16 with a 2x2 merge gives
+    /// 16x16 = 256 tokens; `patchDim` = 3 * 2 * 16 * 16 = 1536 (temporal duplicate).
+    ///
+    /// The turn shape is NOT ChatML: Cohere marks roles with single tokens and ends a turn
+    /// with `<|END_OF_TURN_TOKEN|>`, no newlines anywhere.
+    public static let northMicroVision = VLArchitecture(
+        vocab: 262_144, mergedTokens: 256, grid: 16, hidden: 2048,
+        patches: 1024, patchDim: 1536, deepstackPerToken: 3,
+        imageSide: 512, patchSize: 16, temporalPatchSize: 2,
+        imStart: "<|START_OF_TURN_TOKEN|>", imEnd: "<|END_OF_TURN_TOKEN|>",
+        userRole: "<|USER_TOKEN|>", assistantRole: "<|CHATBOT_TOKEN|>",
+        systemRole: "<|SYSTEM_TOKEN|>", roleSeparator: "",
+        visionStart: "<|VISION_START|>", visionEnd: "<|VISION_END|>",
+        imagePad: "<|IMAGE_PAD|>",
+        visionInput: .patches, visionOutput: "image_embeds",
+        ropeShifted: true)
 
     /// MinerU2.5-Pro (stock Qwen2-VL): a Qwen2-VL ViT (`.patches`, no deepstack) + Qwen2-0.5B
     /// decoder on the rope-shift rider. Fixed **portrait non-square** grid 32×24 merged (768

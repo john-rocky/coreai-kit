@@ -88,6 +88,65 @@ public struct VLModelID: Sendable, Hashable {
             path: "gpu-pipelined/minicpmv46_vision"),
         arch: .miniCPMV46)
 
+    /// LFM2.5-VL-450M: a SigLIP2-NaFlex tower (host-patchified 512x512 → `image_embeds`
+    /// [256, 1024]) + the LFM2 hybrid decoder. The zoo's smallest VLM: 658 MB for the pair,
+    /// device-gated on an iPhone 17 Pro — 112 tok/s decode with the image bound, 33.6 ms per
+    /// encode.
+    ///
+    /// iOS takes the **AOT** subtree, which is the configuration that was gated: a JIT
+    /// `.aimodel` specializes on device instead, and that path has not been measured here.
+    /// (`ModelID`'s own platform default is the `ios`/`macos` layout of the starter repos,
+    /// which this repo does not use, so the choice is made here.)
+    public static let lfm2VL450M = {
+        let repo = "mlboydaisuke/LFM2.5-VL-450M-CoreAI"
+        #if os(iOS)
+        let subtree = "ios-h18p"
+        #else
+        let subtree = "gpu-pipelined"
+        #endif
+        return VLModelID(
+            decoder: ModelID(repo, path: "\(subtree)/lfm2_5_vl_450m_decode_int8lin"),
+            vision: ModelID(repo, path: "\(subtree)/lfm2_5_vl_450m_vision_fp16"),
+            arch: .lfm2VL450M)
+    }()
+
+    /// LFM2.5-VL-3B: the same two-bundle shape as the 450M with a wider tower and a 128k
+    /// vocab. Pick it over the 450M when the answer has to hold detail; the 450M when the
+    /// budget has to hold an app.
+    /// Different QUANTIZATION per platform, not just a different subtree: the int8 decoder's
+    /// AOT `resources.bin` is 3.13 GiB and does not load on iOS, while int4's 2.03 GiB does —
+    /// and on this model int4 costs nothing (7/9 on the suite, the same cases as fp16). Mac
+    /// takes int8 because it has no wall to clear. Both are device- or Mac-gated as shipped.
+    public static let lfm2VL3B = {
+        let repo = "mlboydaisuke/LFM2.5-VL-3B-CoreAI"
+        #if os(iOS)
+        let decoder = "ios-h18p/lfm2_5_vl_3b_decode_int4lin"
+        let vision = "ios-h18p/lfm2_5_vl_3b_vision_fp16"
+        #else
+        let decoder = "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin"
+        let vision = "gpu-pipelined/lfm2_5_vl_3b_vision_fp16"
+        #endif
+        return VLModelID(
+            decoder: ModelID(repo, path: decoder),
+            vision: ModelID(repo, path: vision),
+            arch: .lfm2VL3B)
+    }()
+
+    /// North-Micro-Vision (Cohere, 2.4B, Apache-2.0): 11 languages, and token-exact against
+    /// fp32 on an iPhone 17 Pro. int8 on both platforms — int4 craters on this model.
+    public static let northMicroVision = {
+        let repo = "mlboydaisuke/North-Micro-Vision-CoreAI"
+        #if os(iOS)
+        let subtree = "ios-h18p"
+        #else
+        let subtree = "gpu-pipelined"
+        #endif
+        return VLModelID(
+            decoder: ModelID(repo, path: "\(subtree)/north_micro_vision_instruct_decode_int8lin"),
+            vision: ModelID(repo, path: "\(subtree)/north_micro_vision_instruct_vision_fp16"),
+            arch: .northMicroVision)
+    }()
+
     /// Presets by catalog id. A VL model is two bundles (decoder + vision tower) plus graph
     /// geometry — none of which ride catalog.json — so every `vlm` catalog entry pairs with
     /// a preset here; the id is the one the model's card shows.
@@ -97,6 +156,9 @@ public struct VLModelID: Sendable, Hashable {
         "qwen3-vl-8b": .qwen3VL8B,
         "holo2-4b": .holo2_4B,
         "minicpm-v-4.6": .miniCPMV46,
+        "lfm2.5-vl-450m": .lfm2VL450M,
+        "lfm2.5-vl-3b": .lfm2VL3B,
+        "north-micro-vision": .northMicroVision,
     ]
 
     /// A copy with both sub-bundle ids pinned to a Hub revision (nil = unchanged), so a

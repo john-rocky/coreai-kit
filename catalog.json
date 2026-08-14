@@ -139,6 +139,21 @@
       "engine": "pipelined"
     },
     {
+      "id": "lfm2.5-2.6b",
+      "name": "LFM2.5 2.6B",
+      "repo": "mlboydaisuke/LFM2.5-2.6B-CoreAI",
+      "revision": "79704a10ac98e49dabf7051543f151d6f5da3a83",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/lfm2_5_2_6b_decode_int8hu_block32_sym",
+          "sizeMB": 3474
+        }
+      },
+      "thinking": true,
+      "engine": "pipelined"
+    },
+    {
       "id": "granite-4.0-h-1b",
       "name": "Granite 4.0-H 1B",
       "repo": "mlboydaisuke/granite-4.0-h-CoreAI",
@@ -184,11 +199,11 @@
       "variants": {
         "macos": {
           "path": "int8",
-          "sizeMB": 2000
+          "sizeMB": 1092
         },
         "ios": {
           "path": "int8",
-          "sizeMB": 2000
+          "sizeMB": 1092
         }
       },
       "thinking": true,
@@ -255,7 +270,7 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 6000
+          "sizeMB": 6660
         }
       }
     },
@@ -327,7 +342,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8",
-          "sizeMB": 13000
+          "sizeMB": 14699
         }
       },
       "engine": "pipelined"
@@ -341,7 +356,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/gemma4_31b_qat_decode_int4linsym_msdpa_g8",
-          "sizeMB": 18000
+          "sizeMB": 20121
         }
       },
       "engine": "pipelined"
@@ -460,6 +475,57 @@
       }
     },
     {
+      "id": "lfm2.5-vl-450m",
+      "name": "LFM2.5-VL 450M",
+      "repo": "mlboydaisuke/LFM2.5-VL-450M-CoreAI",
+      "revision": "f6648f9c65402a4d5c280cae41b672f977e74e3a",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin",
+          "sizeMB": 658
+        },
+        "ios": {
+          "path": "ios-h18p/lfm2_5_vl_450m_decode_int8lin",
+          "sizeMB": 653
+        }
+      }
+    },
+    {
+      "id": "lfm2.5-vl-3b",
+      "name": "LFM2.5-VL 3B",
+      "repo": "mlboydaisuke/LFM2.5-VL-3B-CoreAI",
+      "revision": "a47ab9b270c17dcd71bbb48a147daf7c18072e0e",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin",
+          "sizeMB": 3915
+        },
+        "ios": {
+          "path": "ios-h18p/lfm2_5_vl_3b_decode_int4lin",
+          "sizeMB": 2815
+        }
+      }
+    },
+    {
+      "id": "north-micro-vision",
+      "name": "North Micro Vision",
+      "repo": "mlboydaisuke/North-Micro-Vision-CoreAI",
+      "revision": "d6e48e3c2eb26dd3ad29c9b58642a405d66f0d54",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/north_micro_vision_instruct_decode_int8lin",
+          "sizeMB": 3400
+        },
+        "ios": {
+          "path": "ios-h18p/north_micro_vision_instruct_decode_int8lin",
+          "sizeMB": 3500
+        }
+      }
+    },
+    {
       "id": "voxcpm-0.5b",
       "name": "VoxCPM 0.5B",
       "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",
@@ -545,7 +611,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1415
+          "sizeMB": 710
         }
       }
     },
@@ -665,7 +731,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 2460
+          "sizeMB": 1336
         }
       }
     },
@@ -682,7 +748,7 @@
         },
         "ios": {
           "path": "sortformer_float16.h18p.aimodelc",
-          "sizeMB": 451
+          "sizeMB": 238
         }
       }
     },
@@ -751,6 +817,23 @@
         "ios": {
           "path": "small/da3-small_float16.aimodel",
           "sizeMB": 54
+        }
+      }
+    },
+    {
+      "id": "shieldstral-3b",
+      "name": "Shieldstral 1.0 3B",
+      "repo": "mlboydaisuke/Shieldstral-CoreAI",
+      "revision": "5ec6faf69eb47e2e6b05527fd50c7cd65005b6a6",
+      "kind": "moderation",
+      "variants": {
+        "macos": {
+          "path": "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s512",
+          "sizeMB": 2530
+        },
+        "ios": {
+          "path": "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s256",
+          "sizeMB": 2530
         }
       }
     },
@@ -824,7 +907,7 @@
     },
     {
       "id": "adcsr-x4",
-      "name": "AdcSR ×4 Super-Resolution",
+      "name": "AdcSR \u00d74 Super-Resolution",
       "repo": "mlboydaisuke/AdcSR-CoreAI",
       "revision": "60a65ad223ea89385b0b4c880a306616112d55ce",
       "kind": "superResolution",
@@ -852,7 +935,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 883
+          "sizeMB": 464
         }
       },
       "engine": "static-shape"

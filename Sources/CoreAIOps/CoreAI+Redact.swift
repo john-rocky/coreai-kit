@@ -44,7 +44,11 @@ extension CoreAI {
 actor RedactOpModels {
     static let shared = RedactOpModels()
 
-    private var extractorLoad: Task<InformationExtractor, Error>?
+    /// GLiNER2-PII is a pinned preset rather than a catalog entry, so the cache holds one
+    /// id — it still rides the shared residency budget, which is the point.
+    static let presetID = "gliner2-pii"
+
+    private let extractors = ResidentCache<InformationExtractor>(kind: ResidentKind.extractor)
     private var turns: Task<Void, Never>?
 
     func redact(_ text: String, labels: [String], threshold: Float?) async throws -> String {
@@ -69,24 +73,18 @@ actor RedactOpModels {
         let previous = turns
         let turn = Task { [previous] in
             await previous?.value
-            return try await body()
+            return try await withPinnedModel(ResidentKind.extractor, Self.presetID) {
+                try await body()
+            }
         }
         turns = Task { _ = try? await turn.value }
         return try await turn.value
     }
 
     func extractor() async throws -> InformationExtractor {
-        if let load = extractorLoad { return try await load.value }
-        let load = Task<InformationExtractor, Error> {
+        try await extractors.value(for: Self.presetID) {
             try await InformationExtractor(
                 model: .gliner2PII, downloadProgress: OpDownloads.forward)
-        }
-        extractorLoad = load
-        do {
-            return try await load.value
-        } catch {
-            extractorLoad = nil
-            throw error
         }
     }
 }

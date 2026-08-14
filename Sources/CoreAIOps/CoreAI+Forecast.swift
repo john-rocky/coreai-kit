@@ -18,9 +18,11 @@ extension CoreAI {
     public static func forecast(
         _ series: [Float], options: OpOptions = OpOptions()
     ) async throws -> Forecast {
-        let forecaster = try await ForecastOpModels.shared.forecaster(
-            catalog: options.model ?? defaultForecastModel)
-        return try await forecaster.forecast(series)
+        let id = options.model ?? defaultForecastModel
+        let forecaster = try await ForecastOpModels.shared.forecaster(catalog: id)
+        return try await withPinnedModel(ResidentKind.forecaster, id) {
+            try await forecaster.forecast(series)
+        }
     }
 }
 
@@ -29,19 +31,11 @@ extension CoreAI {
 actor ForecastOpModels {
     static let shared = ForecastOpModels()
 
-    private var forecasterLoads: [String: Task<KitForecaster, Error>] = [:]
+    private let forecasters = ResidentCache<KitForecaster>(kind: ResidentKind.forecaster)
 
     func forecaster(catalog id: String) async throws -> KitForecaster {
-        if let load = forecasterLoads[id] { return try await load.value }
-        let load = Task<KitForecaster, Error> {
+        try await forecasters.value(for: id) {
             try await KitForecaster(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        forecasterLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            forecasterLoads[id] = nil
-            throw error
         }
     }
 }

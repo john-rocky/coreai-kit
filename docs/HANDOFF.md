@@ -15,11 +15,11 @@ nicer API over the same job.
 
 | Read | For | State |
 |---|---|---|
-| [`TASK_MAP.md`](TASK_MAP.md) | Which capabilities are worth having at all — measured demand, what Apple already ships, what only this kit has | Analysis, evidence attached |
+| [`TASK_MAP.md`](TASK_MAP.md) | Which capabilities are worth having at all — measured demand, what Apple already ships, what only this kit has | Analysis; **speech rows corrected 2026-08-05 from the SDK** |
 | [`APP_SCALE_INPUT.md`](APP_SCALE_INPUT.md) | The one pattern behind most of the remaining work: ops take the model's unit, apps hold a larger one | Analysis |
 | [`SHIPPABILITY_PLAN.md`](SHIPPABILITY_PLAN.md) | The four gaps between "it runs" and "you can ship it" | Plan, ready to build |
-| [`CAPABILITY_HANDOFF.md`](CAPABILITY_HANDOFF.md) | One of those four in detail — `CoreAI.capability(_:)`, plus the full ops list and how to describe them | Plan, ready to build |
-| [`SPEECH_API.md`](SPEECH_API.md) | The speech design — `listen()`, streaming, diarization back-fill | Design, has a precondition |
+| [`CAPABILITY_HANDOFF.md`](CAPABILITY_HANDOFF.md) | One of those four in detail — `CoreAI.capability(_:)`, plus the full ops list and how to describe them | **Built 2026-08-11**, except the device-age case |
+| [`SPEECH_API.md`](SPEECH_API.md) | The speech design — `listen()`, streaming, diarization back-fill | Design; **read the state block above first** — Apple ships the endpointer and the streaming transcriber, so most of this shrank |
 | [`BACKEND_ROUTING.md`](BACKEND_ROUTING.md) | Ops picking Apple's free backend when it suffices, the catalog model when it does not — the largest lever on entry cost | Design, gated on measurement |
 | [`EVERYWHERE_CONCEPT.md`](EVERYWHERE_CONCEPT.md) | Where routing leads: one API where every on-device AI task has an answer, plus the measured dependency structure and the light path it unlocks | Product concept |
 
@@ -29,6 +29,44 @@ Existing docs unaffected by any of this: [`GETTING_STARTED.md`](GETTING_STARTED.
 ## Build order
 
 Ordered by value per unit of work, not by how interesting it is.
+
+> ## State as of 2026-08-11
+>
+> Built, tested and pushed on branch `live-pipeline` (9 commits, 77 tests, iOS builds):
+> steps **4** (model residency) and **5** (`watch()`), plus work this plan did not have —
+> `LivePipeline` as a *shared* primitive with a thermal governor, video ops
+> (`CoreAI.scan`), `KitTracker`, `VoiceActivityDetector`, `capability()`, `coreai-doctor`,
+> and the transcription default moving to Apple's backend. Steps **1, 2, 3, 6, 7 are still
+> as written below**, with the corrections in the next paragraph.
+>
+> **What changed in the plan itself.** `TASK_MAP.md` and `SPEECH_API.md` were both written
+> before anyone read the iOS 27 `Speech.framework` interface. It ships `SpeechAnalyzer` +
+> `SpeechTranscriber` (streaming and word timestamps, both listed here as kit advantages)
+> and `SpeechDetector`, which is an endpointer — the component `SPEECH_API.md` calls "the
+> only genuinely new component" behind `listen()`. So **step 6 shrank**: `listen()` is now
+> mostly wiring Apple's modules, and the kit's speech value is diarization plus voice
+> cloning. The iOS Parakeet/Kokoro ports that step 6 lists as a precondition were
+> **dropped** — they made a free capability 1.3 GB cheaper.
+>
+> **Open, deliberately deferred** (owner decided 2026-08-04): the coordinate contract. Boxes
+> are normalised and that is not enough — the preview runs at the session preset's aspect
+> under `.resizeAspectFill` while the model is fed a 3:4 buffer, so drawing needs the
+> aspect-fill correction `Examples/DetectCamera`'s overlay does by hand. `TODO` at
+> `Sources/CoreAIKitCore/LivePipeline.swift` (`LiveResult` needs a frame size) and
+> `Examples/LiveCamera/Sources/CameraPreview.swift`. **This part of step 5 is not done.**
+>
+> **Never measured.** No device numbers for `LivePipeline` or `KitTracker` — `DeviceGate`
+> in `Examples/LiveCamera` was written for exactly this and has not been run to completion.
+> The 33–39 FPS in the README belongs to `DetectCamera`'s hand-rolled loop and must not be
+> quoted for `LivePipeline`. Power is still unmeasured, as the precondition below says.
+>
+> **Still unresolved, and it blocks `capability()`'s last case.** What Core AI reports on
+> hardware too old to run a bundle. `capability()` returns `unsupportedDevice` only for
+> facts knowable without a device (id absent from the catalog, model not published for the
+> platform, locale Apple cannot do). The age check is not implemented, per the precondition.
+>
+> **Try it on a device: `Examples/LiveCamera`.** Four tabs, one per live task, `-gate` for a
+> transcript instead of taps, `swift run live-cli` for the offline half with no device.
 
 1. **Text at scale** — chunking for `summarize` / `translate` / `proofread` / `extract`.
    No new API, no new model, no device. It makes calls that fail today stop failing.
@@ -60,10 +98,12 @@ adopted.
   known here. `AIModel.deviceArchitectureName` exists; its behaviour on unsupported hardware does
   not. Find out on a device before implementing `unsupportedDevice`. **A wrong answer hides the
   feature on devices that work, and nobody reports a feature they never saw.**
-- **Speech is not affordable on iPhone yet.** The stack is 4.3 GB because Parakeet (1.3 GB) and
-  Kokoro (341 MB) are macOS-only; with iOS variants published it is 2.1 GB. Both are already
-  converted — only the iOS export is missing. Treat this as a precondition for the speech work,
-  not a follow-up.
+- ~~**Speech is not affordable on iPhone yet.**~~ **Resolved 2026-08-05, by deleting the
+  problem rather than solving it.** The iOS Parakeet/Kokoro exports this called a precondition
+  were dropped: they would have made a capability Apple ships for free 1.3 GB cheaper.
+  `transcribe` routes to `SpeechAnalyzer` (0 bytes) and `transcribeMeeting` is Sortformer plus
+  Apple's transcriber at **238 MB**, measured. The 4.3 GB figure was also built on catalog
+  sizes that were wrong; see the size-measurement commit.
 - **Nothing here has been measured for power.** A live audio or camera pipeline runs the GPU
   continuously. A feature that drains a phone in an hour gets removed by whoever ships it, and no
   number on this map addresses that.

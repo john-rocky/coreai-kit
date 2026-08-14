@@ -151,21 +151,37 @@ public enum CoreAI {
         return String(text[start...end])
     }
 
-    /// Default speech-to-text model: multilingual and robust. Overridable per call, e.g.
-    /// `options: .model("parakeet-tdt-0.6b-v3")` for faster English-family transcription.
+    /// The catalog model `transcribe` uses when asked for one. **Not the default** — see
+    /// `transcribe` — because it is a 3.2 GB download on an iPhone for a capability the OS
+    /// already has.
     public static let defaultSpeechModel = "whisper-large-v3-turbo"
 
-    /// Audio file → plain-text transcript. Any audio format the system decodes;
-    /// resampled to 16 kHz mono internally. `language` nil = auto-detect.
+    /// Audio file → plain-text transcript. Any audio format the system decodes; resampled to
+    /// 16 kHz mono internally.
+    ///
+    /// **Runs on Apple's on-device transcriber by default, at no download cost.** iOS 27's
+    /// `SpeechAnalyzer` transcribes on device with OS-managed locale assets shared across
+    /// apps, and this package's own porting contract says to stop when the stock stack ships
+    /// the capability. `options: .model("whisper-large-v3-turbo")` opts into a catalog model
+    /// — worth it for a locale Apple lacks on the device in hand, or when the behaviour must
+    /// not change under an OS update, and not otherwise.
+    ///
+    /// `language` picks Apple's locale (`"ja"`, `"en-US"`); nil uses the device locale. With a
+    /// catalog model it is the model's own language hint, and nil means auto-detect.
     public static func transcribe(
         _ audioURL: URL, language: String? = nil, options: OpOptions = OpOptions()
     ) async throws -> String {
-        let transcriber = try await OpModels.shared.transcriber(
-            catalog: options.model ?? defaultSpeechModel)
         let samples = try AudioFile.pcm16kMono(audioURL)
-        let transcription = try await transcriber.transcribe(
-            samples: samples, language: language)
-        return transcription.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let id = options.model else {
+            let system = try await OpModels.shared.systemTranscriber(language: language)
+            return try await system.transcribe(samples: samples).text
+        }
+        let transcriber = try await OpModels.shared.transcriber(catalog: id)
+        return try await withPinnedModel(ResidentKind.transcriber, id) {
+            let transcription = try await transcriber.transcribe(
+                samples: samples, language: language)
+            return transcription.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
     /// Text → translation into the target language, preserving meaning, tone, and formatting.
@@ -205,13 +221,16 @@ public enum CoreAI {
 
 /// Process-wide cache of loaded op models, keyed by catalog id — ops are static calls, so
 /// this is what keeps the second op call from reloading the weights. Concurrent first
-/// calls share one load; a failed load is not cached (a later call retries).
+/// calls share one load; a failed load is not cached (a later call retries); a model idle
+/// long enough to be the least-recently-used one is dropped when the next load needs the
+/// room (`ModelResidency`).
 actor OpModels {
     static let shared = OpModels()
 
-    private var chatLoads: [String: Task<ChatSession, Error>] = [:]
+    private var systemTranscribers: [String: SystemTranscriber] = [:]
+    private let chats = ResidentCache<ChatSession>(kind: ResidentKind.chat)
+    private let transcribers = ResidentCache<KitTranscriber>(kind: ResidentKind.transcriber)
     private var chatTurns: [String: Task<Void, Never>] = [:]
-    private var transcriberLoads: [String: Task<KitTranscriber, Error>] = [:]
 
 
     /// One stateless free-text turn: reset the cached `ChatSession`, send the op's full
@@ -224,29 +243,30 @@ actor OpModels {
         let previous = chatTurns[id]
         let turn = Task { [previous] in
             await previous?.value
-            // One retry: a thinking model occasionally spends the whole budget in the
-            // think block and yields an empty answer — a fresh sample usually lands.
-            for attempt in 0..<2 {
-                await chat.reset()
-                var text = try await chat.respond(to: prompt)
-                // A thinking model occasionally skips its opening <think> tag, so the
-                // deliberation leaks into the response ending in a bare closing tag —
-                // keep only what follows the last close.
-                if let close = text.range(of: "</think>", options: .backwards) {
-                    text = String(text[close.upperBound...])
+            return try await withPinnedModel(ResidentKind.chat, id) {
+                // One retry: a thinking model occasionally spends the whole budget in the
+                // think block and yields an empty answer — a fresh sample usually lands.
+                for attempt in 0..<2 {
+                    await chat.reset()
+                    var text = try await chat.respond(to: prompt)
+                    // A thinking model occasionally skips its opening <think> tag, so the
+                    // deliberation leaks into the response ending in a bare closing tag —
+                    // keep only what follows the last close.
+                    if let close = text.range(of: "</think>", options: .backwards) {
+                        text = String(text[close.upperBound...])
+                    }
+                    text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty || attempt == 1 { return text }
                 }
-                text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty || attempt == 1 { return text }
+                return ""
             }
-            return ""
         }
         chatTurns[id] = Task { _ = try? await turn.value }
         return try await turn.value
     }
 
     func chat(catalog id: String) async throws -> ChatSession {
-        if let load = chatLoads[id] { return try await load.value }
-        let load = Task<ChatSession, Error> {
+        try await chats.value(for: id) {
             var configuration = ChatSession.Configuration()
             configuration.temperature = 0.7  // greedy makes qwen3 thinking models loop
             // Thinking counts against this budget and routinely runs 1-2k tokens on a
@@ -256,26 +276,22 @@ actor OpModels {
                 catalog: id, configuration: configuration,
                 downloadProgress: OpDownloads.forward)
         }
-        chatLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            chatLoads[id] = nil
-            throw error
-        }
+    }
+
+    /// Apple's transcriber, one per locale. Holds no weights, so it is not in the residency
+    /// budget — the assets it uses belong to the OS, not to this process.
+    func systemTranscriber(language: String?) async throws -> SystemTranscriber {
+        let locale = language.map { Locale(identifier: $0) } ?? .current
+        let key = locale.identifier
+        if let existing = systemTranscribers[key] { return existing }
+        let made = try await SystemTranscriber(locale: locale)
+        systemTranscribers[key] = made
+        return made
     }
 
     func transcriber(catalog id: String) async throws -> KitTranscriber {
-        if let load = transcriberLoads[id] { return try await load.value }
-        let load = Task<KitTranscriber, Error> {
+        try await transcribers.value(for: id) {
             try await KitTranscriber(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        transcriberLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            transcriberLoads[id] = nil
-            throw error
         }
     }
 }

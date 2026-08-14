@@ -47,20 +47,30 @@ enum VLPromptRenderer {
                 let text = plainText(instructions.segments)
                 if !text.isEmpty { system = text }
             case .prompt(let prompt):
-                body += "\(arch.imStart)user\n"
+                body += arch.imStart + arch.userRole + arch.roleSeparator
                     + userContent(prompt.segments, chosen: chosen, arch: arch)
-                    + "\(arch.imEnd)\n"
+                    + arch.imEnd + arch.roleSeparator
             case .response(let response):
-                body += "\(arch.imStart)assistant\n\(plainText(response.segments))\(arch.imEnd)\n"
+                body += arch.imStart + arch.assistantRole + arch.roleSeparator
+                    + plainText(response.segments) + arch.imEnd + arch.roleSeparator
             default:
                 continue  // reasoning/tool entries are not part of the VL chat path
             }
         }
 
-        let head = system.isEmpty ? "" : "\(arch.imStart)system\n\(system)\(arch.imEnd)\n"
-        let text = head + body + "\(arch.imStart)assistant\n"
+        let head = system.isEmpty ? "" :
+            arch.imStart + arch.systemRole + arch.roleSeparator + system
+            + arch.imEnd + arch.roleSeparator
+        let text = head + body + arch.imStart + arch.assistantRole + arch.roleSeparator
 
         var tokens = tokenizer.encode(text: text).map(Int32.init)
+        // The chat template these checkpoints ship starts with `bos_token`, but whether
+        // `encode` reproduces it depends on the tokenizer's post-processor, not on the model:
+        // LFM2.5-VL-450M's prepends BOS, the 3B's (plain ByteLevel) does not. Without it the
+        // 3B answers "F, F, F, F" — fluent degeneracy, no error. Add it when it is missing.
+        if let bos = tokenizer.bosTokenId.map(Int32.init), tokens.first != bos {
+            tokens.insert(bos, at: 0)
+        }
         guard chosen != nil else {
             return Rendered(tokens: tokens, imageStart: nil, image: nil)
         }

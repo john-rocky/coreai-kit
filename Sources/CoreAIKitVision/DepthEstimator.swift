@@ -5,11 +5,13 @@
 // replicated across the view slots and view 0's depth is returned.
 
 import CoreGraphics
+import CoreVideo
 import Foundation
 
 public final class DepthEstimator: @unchecked Sendable {
     private let graph: GraphModel
     private let preprocessor: ImagePreprocessor
+    private let pixelPreprocessor: PixelBufferPreprocessor
     private let imageInput: String
     private let imageShape: [Int]
     private let depthOutput: String
@@ -63,6 +65,7 @@ public final class DepthEstimator: @unchecked Sendable {
         let side = imageShape[imageShape.count - 1]
         self.preprocessor = ImagePreprocessor(
             size: side, mean: SIMD3(0, 0, 0), std: SIMD3(1, 1, 1))
+        self.pixelPreprocessor = PixelBufferPreprocessor(self.preprocessor)
     }
 
 
@@ -97,14 +100,42 @@ public final class DepthEstimator: @unchecked Sendable {
     /// Relative depth for one image (preprocessing included). Higher = closer or
     /// farther depending on the model's convention; `DepthMap.cgImage` normalizes.
     public func estimateDepth(for image: CGImage) async throws -> DepthMap {
-        let chw = try preprocessor.chw(from: image)
-        let views = imageShape.count == 5 ? imageShape[1] : 1
-        var pixels: [Float] = []
-        pixels.reserveCapacity(chw.count * max(views, 1))
-        for _ in 0..<max(views, 1) { pixels += chw }
+        try await estimateDepth(prepared(try preprocessor.chw(from: image)))
+    }
 
+    /// A frame preprocessed for this model, ready for `estimateDepth(_:)`. Lets a live
+    /// pipeline run the CPU stage on frame N+1 while the GPU is still on frame N.
+    public struct PreparedInput: Sendable {
+        let pixels: [Float]
+    }
+
+    /// Real-time CPU half: vImage straight off a 32BGRA capture buffer, no `CGImage` and
+    /// no `CIContext`. The live depth path used to render every frame into a bitmap before
+    /// the model saw it; this is the same arithmetic without the render.
+    public func prepare(_ pixelBuffer: CVPixelBuffer) throws -> PreparedInput {
+        prepared(try pixelPreprocessor.chw(from: pixelBuffer))
+    }
+
+    /// Real-time both-halves, for a caller that is not pipelining.
+    public func estimateDepth(for pixelBuffer: CVPixelBuffer) async throws -> DepthMap {
+        try await estimateDepth(prepare(pixelBuffer))
+    }
+
+    /// The legacy multi-view graph takes N view slots; a single photo fills them all and
+    /// view 0's depth comes back. Done once here so both input paths agree.
+    private func prepared(_ chw: [Float]) -> PreparedInput {
+        let views = max(imageShape.count == 5 ? imageShape[1] : 1, 1)
+        guard views > 1 else { return PreparedInput(pixels: chw) }
+        var pixels: [Float] = []
+        pixels.reserveCapacity(chw.count * views)
+        for _ in 0..<views { pixels += chw }
+        return PreparedInput(pixels: pixels)
+    }
+
+    /// GPU half of the real-time path.
+    public func estimateDepth(_ input: PreparedInput) async throws -> DepthMap {
         let outputs = try await graph.run(
-            [imageInput: .float32(pixels, shape: imageShape)])
+            [imageInput: .float32(input.pixels, shape: imageShape)])
         guard let depth = outputs[depthOutput] else {
             throw VisionError.missingOutput(depthOutput)
         }

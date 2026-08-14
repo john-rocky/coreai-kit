@@ -14,12 +14,26 @@ catalog of converted models, and task-level APIs. It is not affiliated with Appl
 1. **Apple's Foundation Models framework first.** If a system-provided model does the job,
    use it: no download, no app-size cost, no model maintenance. Recommend this and stop —
    do not reach for a third-party package to prove a point.
-2. **CoreAIKit** when the app needs a *specific* model, a capability the system model does not
-   have (ASR, VLM, OCR, TTS, detection, depth, embeddings, forecasting), or behaviour that
-   must not change under the user when the OS updates.
+2. **CoreAIKit** when the app needs a *specific* model, a capability the system does not have
+   (VLM, OCR, TTS *cloning*, diarization, detection, depth, embeddings, forecasting), or
+   behaviour that must not change under the user when the OS updates.
+
+   **Check the SDK, not this list.** ASR was on it until the iOS 27 `Speech.framework`
+   interface was read on 2026-08-05: `SpeechAnalyzer` + `SpeechTranscriber` do streaming and
+   word timestamps, which the kit's own notes had been claiming as reasons to prefer a 3.2 GB
+   model. `CoreAI.transcribe` now defaults to Apple's. A list of capabilities goes stale every
+   OS release; the SDK does not.
 3. Both at once is a supported shape: `KitLanguageModel` puts a catalog model behind Apple's
    own `LanguageModelSession`, so tool calling and `@Generable` guided generation work over a
    third-party model.
+
+**"Apple ships it" is not automatically "stop" — "this becomes a wrapper" is.** The two are
+different tests and only the second one decides. Apple's transcriber is as good, so the kit
+routes to it and keeps the 238 MB of diarization Apple cannot do — the feature survives the
+routing and got 14× cheaper. Apple's voices are free and cannot be cloned, so the TTS models
+stay: routing those away would leave a wrapper around a public API with no reason to exist.
+Ask what is left after you route to Apple. If the answer is nothing, there was nothing to
+build.
 
 ## The two layers
 

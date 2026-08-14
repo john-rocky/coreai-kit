@@ -5,6 +5,175 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
+## [Unreleased]
+
+### Added
+
+- **`CoreAI.capability(_:)` — the question the kit could not be asked.** `prepare` is an
+  instruction ("fetch this now"); before an app can decide whether to *offer* a feature it
+  needs "can this happen, and what will it cost the user". Answers `.ready`,
+  `.needsDownload(bytes:)`, `.needsSystemAssets(what:)`, `.insufficientStorage(needs:free:)`
+  or `.unsupportedDevice(reason:)` — offline, without touching the network, so a gallery of
+  every op is not 23 round trips. `capabilities()` answers for all of them at once.
+
+  `.needsSystemAssets` is new against the design: with transcription on Apple's backend, the
+  honest answer for `transcribe` is neither "ready" nor a size — the OS may fetch a locale
+  pack, and those bytes are shared with every app rather than charged to this one.
+
+- **`coreai-doctor` — what will this app download.** `swift run coreai-doctor path/to/App`
+  scans the sources for op calls and totals the models behind them, counting a model shared by
+  three ops once. It asks `CoreAI.Op` rather than reimplementing the mapping, which is what
+  keeps it right when a default changes — and the first thing it found was that `watch`,
+  `watchDepth` and `scan` were missing from that enum, so an app using the live camera was
+  being reported as having nothing to download.
+
+- **`ModelStore.remoteSize(of:)` / `localSize(of:)` / `isCached(_:)` / `downloadPlan(for:)`** —
+  sizes measured from the Hub rather than typed by hand, and the file list an adopter needs to
+  hand to Apple's Background Assets. A Swift package cannot ship the downloader extension that
+  framework requires; it can say exactly what to enqueue, which
+  [`docs/BACKGROUND_ASSETS.md`](docs/BACKGROUND_ASSETS.md) walks through.
+
+- **Errors for the three failures a shipped app actually hits** — `insufficientStorage`,
+  `unsupportedDevice`, `systemAssetsUnavailable`. Every existing case was the vocabulary of
+  someone who knows how a model repository is laid out (`notAHuggingFaceRepo`,
+  `variantNotFound`), and none of them fire on the developer's machine, where the device is
+  supported, the disk has room and the model is cached from the last run.
+
+### Fixed
+
+- **A supported language in an unsupported region no longer hides transcription.** A device
+  set to English-in-Japan reports `en_JP`, which is in nobody's supported-locale list, while
+  ten English locales sit installed — strict matching declared the feature unsupported on a
+  machine where it plainly worked. Resolution now falls back to the language, preferring the
+  requested region, then the language's likely region via ICU (`en` → `en_US`), then anything
+  installed. A language Apple genuinely cannot do is still refused rather than silently
+  swapped for another. Found the first time this ran on a real machine.
+
+### Changed
+
+- **Transcription runs on Apple's on-device transcriber by default, at no download cost.**
+  `CoreAI.transcribe` used to pull Whisper — 3.2 GB on an iPhone — for a capability iOS 27
+  ships in `SpeechAnalyzer` + `SpeechTranscriber`, with OS-managed locale assets shared
+  across apps. This package's own porting contract has a gate for exactly that ("Apple's
+  stock stack does not already ship this capability. If it does, stop") and speech-to-text
+  was the clearest case of it in the catalog. Measured on this machine: 45 supported locales,
+  ten already installed, a 3.9 s clip transcribed in 0.18 s.
+
+  `options: .model("whisper-large-v3-turbo")` opts back in, for a locale Apple lacks on the
+  device in hand, behaviour that must not change under an OS update, or an offline guarantee.
+
+- **`CoreAI.transcribeMeeting` is now 238 MB rather than 3.4 GB.** Who spoke when is the one
+  speech capability Apple ships nothing for — `Speech.framework` has no speaker API at all —
+  so Sortformer is a real download and the transcription it is paired with is free. The new
+  `SpeechToText` protocol is the seam: `SystemTranscriber` and `KitTranscriber` are
+  interchangeable, and `MeetingTranscriber(asr:)` takes either.
+
+  Text-to-speech is deliberately **not** changed. Apple's voices are free but cannot be
+  cloned, so the catalog TTS models still do something the system cannot, and defaulting them
+  away would leave a wrapper with no reason to exist.
+
+### Added
+
+- **`VoiceActivityDetector`** — where speech starts and stops, which the speech design calls
+  the only genuinely new component behind `listen()`. Everything else in the live speech path
+  is composition of models that exist; deciding that a pause ended an utterance is not
+  something a model does, and Apple's nearest offering (`SNClassifySoundRequest`) is a
+  classifier over second-long windows, not an endpointer. Energy against an adaptive noise
+  floor, with hysteresis, a hangover across stop consonants, and `minimumSilence` exposed
+  because it is the latency choice and there is no correct value for it. No model, no
+  dependency. `segments(in:)` is useful with no microphone in sight: it cuts a two-hour
+  recording at pauses, which is how you feed a model whose window is thirty seconds.
+
+  Two things the tests changed. `minimumSpeech` was being applied to the *padded* clip, so a
+  40 ms click became 440 ms of "speech" and passed the filter that exists to reject it — the
+  padding is for the model's benefit and must not decide what counts. And an utterance could
+  stay open indefinitely: an energy detector cannot tell a fan from a voice, so a step in room
+  level held one open forever and what eventually reached the model was longer than its
+  window. `maximumSpeech` bounds it, splitting mid-word rather than handing over a clip
+  nothing can take.
+
+- **`KitTracker`** — detections in, stable identities out. A detector is stateless by
+  construction, so "is that the same person as last frame" is a question no model answers and
+  Apple ships nothing for; every counting, dwell-time or follow-the-object feature needs it
+  and rebuilds it. Hungarian association (optimal, not greedy — greedy swaps identities
+  exactly when two objects cross), constant-velocity prediction against real elapsed time,
+  and a second association pass over low-confidence detections so a partly-occluded object
+  keeps its id. No model, no framework, 18 tests.
+
+  Two bugs the tests caught, both of which would have shipped: assignment crashed whenever
+  there were more tracks than detections — which is every frame where something leaves — and
+  IoU-only association fell apart at low frame rates. The second one matters most: box
+  overlap between consecutive frames drops from 0.82 at 30 fps to 0.25 at 5 fps for the same
+  motion, and 5 fps is what this package's own thermal governor produces on a hot phone. It
+  worked on the desk and would have assigned a new id to every object in the user's hand.
+  Association now falls back to centre distance, gated by how far the object could actually
+  have travelled in the elapsed time.
+
+- **`CoreAI.watch()` / `watchDepth()` — the camera as an op.** `CameraFeed` has vended frames
+  since the beginning and no op consumed them, so every live example wrote its own two-stage
+  task pipeline, stale-frame policy and stats window. That loop is now `LivePipeline`
+  (CoreAIKitCore, Foundation only) with `LiveVision` over it, and `CoreAI.watch()` on top:
+  detections per frame, normalized boxes, `result.stats` carrying *measured* frame rate,
+  median latency, dropped frames and thermal state. Attach an `AVCaptureVideoPreviewLayer`
+  to `watch.captureSession` and the preview costs nothing.
+
+- **Thermal governor, on by default.** A sustained camera-plus-model loop is the hottest
+  thing an app can do on a phone. `LiveGovernor` halves the target frame rate at a
+  `.serious` thermal state and quarters it at `.critical` — `thermalBackoff: 1` opts out,
+  which is appropriate only for a bench run.
+
+- **Event triggers — `CoreAI.watch(for:)`.** A small detector runs continuously and decides;
+  the expensive model runs on the frames that matter. `.label("person")`, `.anything()`, or
+  `.when { … }`, each carrying a cooldown, because a predicate over a live stream is true for
+  as long as the object is in shot. Yields a rendered `CGImage` only when it fires.
+
+- **`KitDetector` real-time path** — `prepare(_:)` / `detect(_:)` over a 32BGRA capture
+  buffer, plus `inputSize`. `Examples/DetectCamera` hand-wrote an enum to put RF-DETR and
+  YOLOX behind one prepare/detect surface; that abstraction now lives in the package where
+  it belongs.
+
+- **`CoreAI.scan(videoAt:)` — a video file as a timeline.** `recognizeAction` answers one
+  question about a whole clip; an app holding an hour of footage usually wants to know
+  *where*. `scan` samples, runs a model per sample, and stamps the results; `scan(videoAt:for:)`
+  is the offline twin of `watch(for:)`, with the cooldown counted in video time. Unlike the
+  live path a scan drops nothing — it was asked for a specific set of samples and delivers
+  all of them.
+
+- **`VideoFile.stream` picks its reader from the sample rate.** Seeking costs per sample,
+  sequential decode costs per clip, and the two cross over near one sample per second of
+  30 fps source. Measured on an M4 Max over a 60 s clip: at 15 samples/s sequential is
+  **17× faster** (0.48 s vs 8.20 s), at 0.1 samples/s seeking is **4.2× faster** (0.11 s vs
+  0.47 s). `.automatic` chooses; `.seeking` / `.sequential` override. The sequential path
+  rides OS 27's `AVAssetReader.outputProvider`, so it suspends rather than blocking a thread.
+
+- **Scene-change sampling.** `minimumChange` skips frames too similar to the last one kept
+  (mean absolute difference on a 32×32 grey thumbnail). On an 8 s clip that is a slow zoom
+  over one photo, 2 samples/s runs the detector 16 times and `--changes` runs it once.
+
+- **`Examples/LiveCamera`** — the four live tasks as four tabs on an iPhone, with the
+  measured stats and the thermal governor visible on screen, plus `swift run live-cli` for
+  the offline half (video scan and the preprocessing benchmark) with no device.
+
+### Fixed
+
+- **Live depth no longer renders a bitmap per frame.** `LiveVision.depth` fed the estimator
+  through `CIContext.createCGImage`; it now takes the capture buffer directly through the new
+  `PixelBufferPreprocessor` (vImage scale + vDSP channel split, scratch reused). Measured on
+  an M4 Max, 640×480 → 224², release build: **0.13 ms against 0.78 ms**, about 6×. The two
+  paths agree bit-for-bit on flat colour, so this is not a change in what the model sees —
+  only in what it costs to hand it over. `DepthEstimator` gains the matching
+  `prepare(_:)` / `estimateDepth(_:)` real-time pair, and `ObjectDetector`'s previously
+  private fast path is now the shared implementation.
+
+- **Op models are now evictable.** `OpModels` and its six siblings cached every load and
+  never released one, so an app calling three ops in sequence kept three models resident and
+  was jetsammed on a phone — the capacity planning the op layer exists to remove. All
+  thirteen caches now share `ResidentCache`, admitting loads through a process-wide
+  `ModelResidency`: least-recently-used models are dropped to make room, a model an op is
+  currently running on is never dropped, memory pressure drops everything idle, and a
+  re-load after eviction is a cache miss rather than an error. `CoreAI.evictModels()` and
+  `CoreAI.residentModels()` expose it.
+
 ## [0.3.0] — 2026-07-28
 
 ### Added

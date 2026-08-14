@@ -34,19 +34,23 @@ extension CoreAI {
         _ query: String, in documents: [String], topK: Int = 5,
         options: OpOptions = OpOptions()
     ) async throws -> [SearchHit] {
-        let embedder = try await SearchOpModels.shared.embedder(
-            catalog: options.model ?? defaultEmbeddingModel)
-        let queryVector = try await embedder.embed(query: query)
-        var hits: [SearchHit] = []
-        hits.reserveCapacity(documents.count)
-        for (index, document) in documents.enumerated() {
-            let vector = try await embedder.embed(document: document)
-            hits.append(
-                SearchHit(
-                    index: index, document: document,
-                    score: TextEmbedder.cosineSimilarity(queryVector, vector)))
+        let id = options.model ?? defaultEmbeddingModel
+        let embedder = try await SearchOpModels.shared.embedder(catalog: id)
+        // Pinned across the whole sweep: embedding a corpus is many calls on one model,
+        // and losing it halfway would reload the weights mid-search.
+        return try await withPinnedModel(ResidentKind.embedder, id) {
+            let queryVector = try await embedder.embed(query: query)
+            var hits: [SearchHit] = []
+            hits.reserveCapacity(documents.count)
+            for (index, document) in documents.enumerated() {
+                let vector = try await embedder.embed(document: document)
+                hits.append(
+                    SearchHit(
+                        index: index, document: document,
+                        score: TextEmbedder.cosineSimilarity(queryVector, vector)))
+            }
+            return Array(hits.sorted { $0.score > $1.score }.prefix(topK))
         }
-        return Array(hits.sorted { $0.score > $1.score }.prefix(topK))
     }
 }
 
@@ -55,11 +59,10 @@ extension CoreAI {
 actor SearchOpModels {
     static let shared = SearchOpModels()
 
-    private var embedderLoads: [String: Task<TextEmbedder, Error>] = [:]
+    private let embedders = ResidentCache<TextEmbedder>(kind: ResidentKind.embedder)
 
     func embedder(catalog id: String) async throws -> TextEmbedder {
-        if let load = embedderLoads[id] { return try await load.value }
-        let load = Task<TextEmbedder, Error> {
+        try await embedders.value(for: id) {
             let entry = try await ModelCatalog.entry(forID: id, expecting: .textEmbedding)
             guard let model = entry.modelID else {
                 throw CoreAIKitError.modelNotAvailableOnPlatform(id: id)
@@ -68,13 +71,6 @@ actor SearchOpModels {
             // is EmbeddingGemma-shaped, which is also `TextEmbedder`'s default.
             return try await TextEmbedder(
                 model: model, downloadProgress: OpDownloads.forward)
-        }
-        embedderLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            embedderLoads[id] = nil
-            throw error
         }
     }
 }

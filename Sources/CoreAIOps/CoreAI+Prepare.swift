@@ -27,6 +27,11 @@ extension CoreAI {
         case caption, detect, read, upscale, estimateDepth
         case recognizeAction, search, forecast
         case redact, extractEntities
+        /// Live camera and video-file ops. They were missing from this enum until
+        /// `coreai-doctor` reported an app using `watch()` as having nothing to download —
+        /// the mapping is what `capability`, `prepare` and the doctor all walk, so an op
+        /// absent from here is an op the kit cannot answer questions about.
+        case watch, watchDepth, scan
 
         /// One-line "input → output" contract of the op.
         public var summary: String {
@@ -51,6 +56,9 @@ extension CoreAI {
             case .forecast: "Number series → 128-step forecast"
             case .redact: "Text → text with PII replaced by labels"
             case .extractEntities: "Text → entities by zero-shot label"
+            case .watch: "Live camera → labeled boxes per frame"
+            case .watchDepth: "Live camera → relative depth per frame"
+            case .scan: "Video file → a time-stamped detection timeline"
             }
         }
 
@@ -73,6 +81,8 @@ extension CoreAI {
             case .search: CoreAI.defaultEmbeddingModel
             case .forecast: CoreAI.defaultForecastModel
             case .redact, .extractEntities: nil
+            case .watch, .scan: CoreAI.defaultDetectionModel
+            case .watchDepth: CoreAI.defaultDepthModel
             }
         }
     }
@@ -137,6 +147,12 @@ extension CoreAI {
                 catalog: options.model ?? defaultForecastModel)
         case .redact, .extractEntities:
             _ = try await RedactOpModels.shared.extractor()
+        case .watch, .scan:
+            _ = try await ImageOpModels.shared.detector(
+                catalog: options.model ?? defaultDetectionModel)
+        case .watchDepth:
+            _ = try await ImageOpModels.shared.depthEstimator(
+                catalog: options.model ?? defaultDepthModel)
         }
     }
 }

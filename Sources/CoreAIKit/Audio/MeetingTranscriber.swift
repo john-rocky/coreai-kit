@@ -1,16 +1,24 @@
-// MeetingTranscriber.swift — "who said what", fully on-device: the first kit API composed from
-// two catalog models instead of one. A `KitDiarizer` (Streaming Sortformer) segments the clip
-// into speaker turns, then the chosen `KitTranscriber` ASR transcribes each turn's audio slice —
-// no ASR word timestamps needed, the diarizer supplies the turn boundaries. This is the
-// coreai-audio app's device-verified "Diarize" pipeline promoted to a kit API so card snippets
-// stay honest.
+// MeetingTranscriber.swift — "who said what", fully on-device, and the one speech capability
+// Apple ships nothing for.
+//
+// A `KitDiarizer` (Streaming Sortformer) segments the clip into speaker turns, then a
+// `SpeechToText` transcribes each turn's slice — no ASR word timestamps needed, the diarizer
+// supplies the boundaries.
+//
+// **The ASR side defaults to Apple's**, which costs zero bytes of app download. That is the
+// whole shape of the thing: Apple transcribes, and the 238 MB this package adds is the part
+// Apple cannot do. Pointing it at a catalog model instead is a deliberate upgrade, not the
+// starting point — it turns a 238 MB feature into a 3.4 GB one.
 //
 // ```swift
-// let meeting = try await MeetingTranscriber(asr: "whisper-large-v3-turbo")
+// let meeting = try await MeetingTranscriber()                       // 238 MB total
 // let transcript = try await meeting.transcribe(samples: pcm16kMono)
 // print(transcript.text)
 // // Speaker 1 [0.3–4.1s]: With her white paint and her scarlet smokestack…
 // // Speaker 2 [4.6–6.3s]: …
+//
+// // Opt in to a catalog ASR when Apple's locale support or determinism is not enough:
+// let better = try await MeetingTranscriber(asr: KitTranscriber(catalog: "whisper-large-v3-turbo"))
 // ```
 
 import Foundation
@@ -59,18 +67,50 @@ public struct MeetingTranscriber: Sendable {
     static let minTurnSec = 0.3
 
     let diarizer: KitDiarizer
-    let transcriber: KitTranscriber
+    let transcriber: any SpeechToText
 
-    /// Compose from already-loaded models (mix any diarizer with any ASR).
-    public init(diarizer: KitDiarizer, transcriber: KitTranscriber) {
+    /// The ASR this was built with, for a transcript header — `system-speech(en-US)` or a
+    /// catalog id.
+    public var asrID: String { transcriber.id }
+
+    /// Compose from an already-loaded diarizer and any transcriber.
+    public init(diarizer: KitDiarizer, transcriber: any SpeechToText) {
         self.diarizer = diarizer
         self.transcriber = transcriber
     }
 
-    /// Loads both models by their catalog ids — the ids shown on the model cards. Downloads on
-    /// first use (progress via `downloadProgress`, both models), then loads from the local cache.
+    /// The default: Apple transcribes, Sortformer says who was talking.
+    ///
+    /// Downloads the diarizer on first use (238 MB) and nothing else — the locale assets
+    /// Apple's transcriber needs are the OS's, shared with every app, and do not count
+    /// against this one.
     public init(
-        asr asrID: String = "whisper-large-v3-turbo",
+        locale: Locale = .current,
+        diarizer diarizerID: String = "sortformer-diar-v2",
+        store: ModelStore = .default,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        self.diarizer = try await KitDiarizer(
+            catalog: diarizerID, store: store, downloadProgress: downloadProgress)
+        self.transcriber = try await SystemTranscriber(locale: locale)
+    }
+
+    /// Explicit ASR — a catalog model, or anything else conforming to `SpeechToText`.
+    public init(
+        asr transcriber: any SpeechToText,
+        diarizer diarizerID: String = "sortformer-diar-v2",
+        store: ModelStore = .default,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        self.diarizer = try await KitDiarizer(
+            catalog: diarizerID, store: store, downloadProgress: downloadProgress)
+        self.transcriber = transcriber
+    }
+
+    /// Both by catalog id, the pre-`SystemTranscriber` shape.
+    @available(*, deprecated, message: "Apple's transcriber is the default and costs no download; pass a KitTranscriber to `asr:` only when a catalog model is genuinely needed.")
+    public init(
+        asr asrID: String,
         diarizer diarizerID: String = "sortformer-diar-v2",
         store: ModelStore = .default,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
@@ -100,7 +140,7 @@ public struct MeetingTranscriber: Sendable {
             let b = min(samples.count, Int((seg.endSec + Self.turnPadSec) * sr))
             guard b - a >= minTurn else { continue }
             let text = try await transcriber.transcribe(
-                samples: Array(samples[a..<b]), language: language
+                samples: Array(samples[a..<b]), language: language, onPartial: nil
             ).text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
             let label = speakerLabel[seg.speaker] ?? (speakerLabel.count + 1)

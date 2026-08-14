@@ -18,6 +18,9 @@ let package = Package(
         // models — the stable task-level API. Re-exports the model layer, so this one
         // product + `import CoreAIOps` is the whole quick path.
         .library(name: "CoreAIOps", targets: ["CoreAIOps"]),
+        // Answers "what will this app download" before someone has to answer it in a meeting.
+        // An executable, so linking the libraries never drags it in.
+        .executable(name: "coreai-doctor", targets: ["coreai-doctor"]),
     ],
     dependencies: [
         // Patched community fork of apple/coreai-models — adds hybrid/SSM bundle support to
@@ -82,9 +85,13 @@ let package = Package(
             name: "CoreAIOps",
             dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings"]
         ),
+        .executableTarget(
+            name: "coreai-doctor",
+            dependencies: ["CoreAIOps"]
+        ),
         .testTarget(
             name: "CoreAIKitTests",
-            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings"]
+            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings", "CoreAIOps"]
         ),
     ]
 )

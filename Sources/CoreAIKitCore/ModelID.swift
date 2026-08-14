@@ -65,6 +65,7 @@ extension ModelID {
     // ("main") that an app downloaded before the fix would keep serving the broken bundle
     // forever. Pinning moves the cache path, which forces the fixed asset down. Bump these
     // alongside catalog.json when the repos are re-exported.
+    private static let shieldstralRevision = "5ec6faf69eb47e2e6b05527fd50c7cd65005b6a6"
     private static let rfdetrRevision = "d059657852216f473516d5f437d0f9848fa95ca0"
     private static let clipRevision = "01a6965ddfa33a11d7a4bd299077c2672c0a72cc"
 
@@ -86,6 +87,19 @@ extension ModelID {
     /// Flat repo (bundle at root). Same bundle on both platforms.
     public static let qwen3Reranker0_6B = ModelID(
         "mlboydaisuke/Qwen3-Reranker-0.6B-CoreAI", path: "")
+    /// Shieldstral-1.0-3B policy-conditioned safety classifier (Apache-2.0, int4lin, 2.53 GB).
+    /// One forward returns P(violation); the policy is a string the caller writes. Two grids
+    /// share the same weights and differ only in how long a document they accept: S=512 leaves
+    /// ~450 tokens for it, S=256 ~196 and runs in half the time.
+    public static let shieldstral3B = ModelID(
+        "mlboydaisuke/Shieldstral-CoreAI",
+        path: "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s512",
+        revision: shieldstralRevision)
+    /// The short-grid variant of ``shieldstral3B``: same weights, ~2x faster, shorter documents.
+    public static let shieldstral3BShort = ModelID(
+        "mlboydaisuke/Shieldstral-CoreAI",
+        path: "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s256",
+        revision: shieldstralRevision)
     /// RF-DETR object detection, nano 384px (Apache-2.0, fp32, no NMS). Same bundle on both platforms.
     public static let rfdetrNano = ModelID(
         "mlboydaisuke/RF-DETR-CoreAI", path: "rfdetr-nano_float32.aimodel",

@@ -13,6 +13,20 @@ import Foundation
 /// buffer again after yielding it and the consumer only reads, so the transfer is safe.
 public struct CameraFrame: @unchecked Sendable {
     public let pixelBuffer: CVPixelBuffer
+
+    /// The frame as a `CGImage`, for the moments that need one — a still to hand a
+    /// vision-language model, a thumbnail to keep. Costs a render, so a per-frame pipeline
+    /// should stay on the buffer and call this only when it has decided the frame matters.
+    ///
+    /// Holding a `CameraFrame` is safe: the buffer is retained, so its contents stay valid
+    /// after the capture callback returns. It does hold one buffer out of the capture pool,
+    /// which costs dropped frames — not corrupted ones — while it is held.
+    public func cgImage() -> CGImage? {
+        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        return CameraFrame.context.createCGImage(image, from: image.extent)
+    }
+
+    private static let context = CIContext()
 }
 
 public final class CameraFeed: NSObject, @unchecked Sendable {
@@ -111,8 +125,11 @@ public final class CameraFeed: NSObject, @unchecked Sendable {
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
         ]
         if let size = dataOutputSize {
-            settings[kCVPixelBufferWidthKey as String] = Int(size.width)
-            settings[kCVPixelBufferHeightKey as String] = Int(size.height)
+            // Rounded down to even: `setVideoSettings` raises an `NSInvalidArgumentException`
+            // on an odd width or height, and an ObjC exception is not something Swift can
+            // catch — the app is simply gone. One pixel is not worth a crash.
+            settings[kCVPixelBufferWidthKey as String] = max(2, Int(size.width) & ~1)
+            settings[kCVPixelBufferHeightKey as String] = max(2, Int(size.height) & ~1)
         }
         output.videoSettings = settings
         output.alwaysDiscardsLateVideoFrames = true

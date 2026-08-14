@@ -54,7 +54,7 @@ Vision framework request, the model is resolved (and cached) behind the op:
 ```swift
 import CoreAIOps
 
-let text  = try await CoreAI.transcribe(voiceMemoURL)   // speech → text (Whisper v3 turbo)
+let text  = try await CoreAI.transcribe(voiceMemoURL)   // speech → text (Apple's, 0 bytes)
 let tldr  = try await CoreAI.summarize(text)            // also: extract / translate / redact …
 let boxes = try await CoreAI.detect(in: photo)          // [Detection] — RF-DETR, no NMS
 let reply = try await CoreAI.speak(tldr)                // text → speech (PCM + sample rate)
@@ -64,7 +64,19 @@ Twenty ops, one shape — the [Cookbook](docs/COOKBOOK.md) maps every "I want to
 its snippet. Adding the one `CoreAIOps` product is enough: it re-exports the model
 layer, so the `import` above also covers everything below. First-use downloads are
 observable process-wide (`CoreAI.onDownload { … }`) and prefetchable behind a loading
-UI (`try await CoreAI.prepare(.transcribe, .caption)`).
+UI (`try await CoreAI.prepare(.transcribe, .caption)`) — and answerable before you offer
+the feature at all:
+
+```swift
+switch await CoreAI.capability(.transcribeMeeting) {
+case .ready:                     showButton()          // nothing to fetch
+case .needsDownload(let bytes):  showPrompt(bytes)     // "Meeting notes needs 238 MB"
+case .needsSystemAssets:         showFirstRunNotice()  // the OS's bytes, not the app's
+case .insufficientStorage, .unsupportedDevice: hideFeature()
+}
+```
+
+`swift run coreai-doctor path/to/YourApp` totals it for a whole app before you ship.
 
 **Model-level APIs** when you want control — pick the model, stream, attach tools:
 
@@ -161,11 +173,11 @@ whole transcript — including across a divergence, e.g. a re-rendered transcrip
 
 | Product | What it gives you |
 |---|---|
-| `CoreAIKit` | `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats + guided generation), `KitLanguageModel` (FoundationModels provider with tool calling + guided generation) |
-| `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, image preprocessing |
+| `CoreAIKit` | `VoiceActivityDetector` (where speech starts and stops), `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats + guided generation), `KitLanguageModel` (FoundationModels provider with tool calling + guided generation) |
+| `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, `LiveVision` (camera → model, with the frame policy and thermal governor already written), `KitTracker` (detections → stable ids across frames), image preprocessing |
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
-| `CoreAIOps` | Twenty anchored task-level ops — text (`CoreAI.summarize`, `.extract` typed by `@Generable`, `.translate`, `.proofread`, `.redact`), audio (`.transcribe`, `.transcribeMeeting`, `.describeAudio`, `.speak`, `.compose`, `.separate`), image (`.caption`, `.detect`, `.read`, `.upscale`, `.estimateDepth`), plus `.recognizeAction`, `.search`, `.forecast` — each resolving a catalog model behind a stable API ([Cookbook](docs/COOKBOOK.md)) |
+| `CoreAIOps` | Twenty anchored task-level ops — text (`CoreAI.summarize`, `.extract` typed by `@Generable`, `.translate`, `.proofread`, `.redact`), audio (`.transcribe`, `.transcribeMeeting`, `.describeAudio`, `.speak`, `.compose`, `.separate`), image (`.caption`, `.detect`, `.read`, `.upscale`, `.estimateDepth`), plus `.recognizeAction`, `.search`, `.forecast` — each resolving a catalog model behind a stable API ([Cookbook](docs/COOKBOOK.md)). Live camera: `CoreAI.watch()` / `.watchDepth()` per frame, `CoreAI.watch(for: .label("person"))` to run an expensive model only on the frames that matter |
 
 Beyond this package: [**coreai-model-zoo**](https://github.com/john-rocky/coreai-model-zoo) is
 where the models and their conversion recipes live, and
@@ -194,6 +206,7 @@ Vision
 - `Examples/VisualIntel` — your own CLIP / RF-DETR behind the system **Visual Intelligence** search (iOS camera / iPad+Mac screenshot)
 - `Examples/PhotoSearch` — semantic photo search with CLIP (iOS)
 - `Examples/DetectCamera` — real-time object detection with RF-DETR, no NMS (iOS; nano 33–39 FPS end-to-end on iPhone 17 Pro via the zero-copy capture pipeline)
+- `Examples/LiveCamera` — the four live tasks as four tabs: `watch()`, `watchDepth()`, a trigger gating a VLM, and `scan(videoAt:)` over a video file, with the measured stats and thermal governor on screen (iOS; `swift run live-cli` covers the offline half with no device)
 - `Examples/DepthCamera` — live camera depth with Depth Anything 3 (iOS)
 - `Examples/UpscaleDemo` — one-step diffusion super-resolution with AdcSR
 - `Examples/ActionCamera` — video action recognition with V-JEPA 2 (world model)

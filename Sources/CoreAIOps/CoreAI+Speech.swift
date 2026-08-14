@@ -30,7 +30,7 @@ extension CoreAI {
 actor SpeechOpModels {
     static let shared = SpeechOpModels()
 
-    private var speakerLoads: [String: Task<KitSpeaker, Error>] = [:]
+    private let speakers = ResidentCache<KitSpeaker>(kind: ResidentKind.speaker)
     private var speakerTurns: [String: Task<Void, Never>] = [:]
 
     func speak(catalog id: String, text: String) async throws -> SpokenAudio {
@@ -38,23 +38,17 @@ actor SpeechOpModels {
         let previous = speakerTurns[id]
         let turn = Task { [previous] in
             await previous?.value
-            return try await speaker.synthesize(text)
+            return try await withPinnedModel(ResidentKind.speaker, id) {
+                try await speaker.synthesize(text)
+            }
         }
         speakerTurns[id] = Task { _ = try? await turn.value }
         return try await turn.value
     }
 
     func speaker(catalog id: String) async throws -> KitSpeaker {
-        if let load = speakerLoads[id] { return try await load.value }
-        let load = Task<KitSpeaker, Error> {
+        try await speakers.value(for: id) {
             try await KitSpeaker(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        speakerLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            speakerLoads[id] = nil
-            throw error
         }
     }
 }

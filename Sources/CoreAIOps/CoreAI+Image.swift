@@ -74,9 +74,11 @@ extension CoreAI {
     public static func detect(
         in image: CGImage, scoreThreshold: Float = 0.5, options: OpOptions = OpOptions()
     ) async throws -> [Detection] {
-        let detector = try await ImageOpModels.shared.detector(
-            catalog: options.model ?? defaultDetectionModel)
-        return try await detector.detect(in: image, scoreThreshold: scoreThreshold)
+        let id = options.model ?? defaultDetectionModel
+        let detector = try await ImageOpModels.shared.detector(catalog: id)
+        return try await withPinnedModel(ResidentKind.detector, id) {
+            try await detector.detect(in: image, scoreThreshold: scoreThreshold)
+        }
     }
 
     /// Image file → labeled bounding boxes. EXIF orientation is baked into the bitmap
@@ -127,9 +129,11 @@ extension CoreAI {
     public static func upscale(
         _ image: CGImage, options: OpOptions = OpOptions()
     ) async throws -> CGImage {
-        let resolver = try await ImageOpModels.shared.upscaler(
-            catalog: options.model ?? defaultUpscaleModel)
-        return try await resolver.upscale(image)
+        let id = options.model ?? defaultUpscaleModel
+        let resolver = try await ImageOpModels.shared.upscaler(catalog: id)
+        return try await withPinnedModel(ResidentKind.upscaler, id) {
+            try await resolver.upscale(image)
+        }
     }
 
     /// Default depth model: Depth Anything 3 Small.
@@ -140,9 +144,11 @@ extension CoreAI {
     public static func estimateDepth(
         in image: CGImage, options: OpOptions = OpOptions()
     ) async throws -> DepthMap {
-        let estimator = try await ImageOpModels.shared.depthEstimator(
-            catalog: options.model ?? defaultDepthModel)
-        return try await estimator.estimateDepth(for: image)
+        let id = options.model ?? defaultDepthModel
+        let estimator = try await ImageOpModels.shared.depthEstimator(catalog: id)
+        return try await withPinnedModel(ResidentKind.depth, id) {
+            try await estimator.estimateDepth(for: image)
+        }
     }
 }
 
@@ -153,13 +159,13 @@ extension CoreAI {
 actor ImageOpModels {
     static let shared = ImageOpModels()
 
-    private var visionLoads: [String: Task<KitVisionModel, Error>] = [:]
+    private let visionModels = ResidentCache<KitVisionModel>(kind: ResidentKind.vision)
+    private let detectors = ResidentCache<KitDetector>(kind: ResidentKind.detector)
+    private let readers = ResidentCache<DocReader>(kind: ResidentKind.reader)
+    private let upscalers = ResidentCache<SuperResolver>(kind: ResidentKind.upscaler)
+    private let depthEstimators = ResidentCache<DepthEstimator>(kind: ResidentKind.depth)
     private var visionTurns: [String: Task<Void, Never>] = [:]
-    private var detectorLoads: [String: Task<KitDetector, Error>] = [:]
-    private var readerLoads: [String: Task<DocReader, Error>] = [:]
     private var readerTurns: [String: Task<Void, Never>] = [:]
-    private var upscalerLoads: [String: Task<SuperResolver, Error>] = [:]
-    private var depthLoads: [String: Task<DepthEstimator, Error>] = [:]
 
     /// The catalog's OCR drivers behind one `read(_:)`.
     enum DocReader {
@@ -184,17 +190,19 @@ actor ImageOpModels {
         let previous = visionTurns[id]
         let turn = Task { [previous] in
             await previous?.value
-            let session = LanguageModelSession(model: model)
-            let reply = try await session.respond(
-                to: Prompt {
-                    "\(style.instruction) Reply with only the description — no preambles "
-                        + "or questions."
-                    Attachment(image, orientation: orientation)
-                },
-                // Qwen3-VL thinks by default and the deliberation counts against this
-                // budget — a tight cap truncates the turn before the description starts.
-                options: GenerationOptions(maximumResponseTokens: 2048))
-            return reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return try await withPinnedModel(ResidentKind.vision, id) {
+                let session = LanguageModelSession(model: model)
+                let reply = try await session.respond(
+                    to: Prompt {
+                        "\(style.instruction) Reply with only the description — no "
+                            + "preambles or questions."
+                        Attachment(image, orientation: orientation)
+                    },
+                    // Qwen3-VL thinks by default and the deliberation counts against this
+                    // budget — a tight cap truncates the turn before the description starts.
+                    options: GenerationOptions(maximumResponseTokens: 2048))
+                return reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         }
         visionTurns[id] = Task { _ = try? await turn.value }
         return try await turn.value
@@ -205,72 +213,41 @@ actor ImageOpModels {
         let previous = readerTurns[id]
         let turn = Task { [previous] in
             await previous?.value
-            return try await reader.read(image)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return try await withPinnedModel(ResidentKind.reader, id) {
+                try await reader.read(image)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
         }
         readerTurns[id] = Task { _ = try? await turn.value }
         return try await turn.value
     }
 
     func detector(catalog id: String) async throws -> KitDetector {
-        if let load = detectorLoads[id] { return try await load.value }
-        let load = Task<KitDetector, Error> {
+        try await detectors.value(for: id) {
             try await KitDetector(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        detectorLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            detectorLoads[id] = nil
-            throw error
         }
     }
 
     func upscaler(catalog id: String) async throws -> SuperResolver {
-        if let load = upscalerLoads[id] { return try await load.value }
-        let load = Task<SuperResolver, Error> {
+        try await upscalers.value(for: id) {
             try await SuperResolver(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        upscalerLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            upscalerLoads[id] = nil
-            throw error
         }
     }
 
     func depthEstimator(catalog id: String) async throws -> DepthEstimator {
-        if let load = depthLoads[id] { return try await load.value }
-        let load = Task<DepthEstimator, Error> {
+        try await depthEstimators.value(for: id) {
             try await DepthEstimator(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        depthLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            depthLoads[id] = nil
-            throw error
         }
     }
 
     func visionModel(catalog id: String) async throws -> KitVisionModel {
-        if let load = visionLoads[id] { return try await load.value }
-        let load = Task<KitVisionModel, Error> {
+        try await visionModels.value(for: id) {
             try await KitVisionModel(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        visionLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            visionLoads[id] = nil
-            throw error
         }
     }
 
     func reader(catalog id: String) async throws -> DocReader {
-        if let load = readerLoads[id] { return try await load.value }
-        let load = Task<DocReader, Error> {
+        try await readers.value(for: id) {
             let entry = try await ModelCatalog.entry(forID: id, expecting: .ocr)
             switch entry.id {
             case "glm-ocr":
@@ -287,13 +264,6 @@ actor ImageOpModels {
                         catalog: entry.id, downloadProgress: OpDownloads.forward))
             default: throw CoreAIKitError.modelNotInCatalog(id: id)
             }
-        }
-        readerLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            readerLoads[id] = nil
-            throw error
         }
     }
 }

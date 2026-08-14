@@ -339,61 +339,21 @@ public final class ObjectDetector: @unchecked Sendable {
     // MARK: - CVPixelBuffer preprocessing (reused scratch, no CGImage)
 
     private let prepLock = NSLock()
-    private var scaledBGRA: [UInt8] = []
-    private var channelScratch: [Float] = []
+    private var pixelPreprocessor: PixelBufferPreprocessor?
 
+    /// Built on first use rather than in the initializers: three of them set `inputSize` by
+    /// different routes (single graph, split backbone/head, catalog), and one lazily-built
+    /// instance behind the existing lock beats keeping four constructions in step.
     private func chwFloats(from pixelBuffer: CVPixelBuffer) throws -> [Float] {
-        guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA
-        else {
-            throw VisionError.bundleLayout("detect(in:) expects a 32BGRA pixel buffer")
+        let preprocessor = prepLock.withLock { () -> PixelBufferPreprocessor in
+            if let pixelPreprocessor { return pixelPreprocessor }
+            // The RF-DETR graphs fold ImageNet normalization in, so this stage emits raw
+            // [0, 1] — identity mean/std, matching `preprocessor`.
+            let made = PixelBufferPreprocessor(size: inputSize)
+            pixelPreprocessor = made
+            return made
         }
-        let side = inputSize
-        let pixelCount = side * side
-
-        prepLock.lock()
-        defer { prepLock.unlock() }
-        if scaledBGRA.count != pixelCount * 4 {
-            scaledBGRA = [UInt8](repeating: 0, count: pixelCount * 4)
-            channelScratch = [Float](repeating: 0, count: pixelCount)
-        }
-
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-        guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else {
-            throw VisionError.imageRenderFailed
-        }
-        var src = vImage_Buffer(
-            data: base,
-            height: vImagePixelCount(CVPixelBufferGetHeight(pixelBuffer)),
-            width: vImagePixelCount(CVPixelBufferGetWidth(pixelBuffer)),
-            rowBytes: CVPixelBufferGetBytesPerRow(pixelBuffer))
-
-        var chw = [Float](repeating: 0, count: 3 * pixelCount)
-        let err = scaledBGRA.withUnsafeMutableBytes { dst -> vImage_Error in
-            var dstBuf = vImage_Buffer(
-                data: dst.baseAddress, height: vImagePixelCount(side),
-                width: vImagePixelCount(side), rowBytes: side * 4)
-            return vImageScale_ARGB8888(&src, &dstBuf, nil, vImage_Flags(kvImageNoFlags))
-        }
-        guard err == kvImageNoError else {
-            throw VisionError.imageRenderFailed
-        }
-
-        // BGRA byte order: B=0, G=1, R=2 -> planar R, G, B in [0, 1]
-        var a = Float(1.0 / 255.0)
-        var b = Float(0)
-        let n = vDSP_Length(pixelCount)
-        scaledBGRA.withUnsafeBufferPointer { raw in
-            chw.withUnsafeMutableBufferPointer { out in
-                for (plane, offset) in [(0, 2), (1, 1), (2, 0)] {
-                    vDSP_vfltu8(raw.baseAddress! + offset, 4, &channelScratch, 1, n)
-                    vDSP_vsmsa(
-                        channelScratch, 1, &a, &b,
-                        out.baseAddress! + plane * pixelCount, 1, n)
-                }
-            }
-        }
-        return chw
+        return try preprocessor.chw(from: pixelBuffer)
     }
 
     /// Original COCO category ids (with the official gaps) to names.

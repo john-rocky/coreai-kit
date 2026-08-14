@@ -19,17 +19,26 @@ extension CoreAI {
     public static func recognizeAction(
         videoAt url: URL, topK: Int = 3, options: OpOptions = OpOptions()
     ) async throws -> [ActionRecognizer.Prediction] {
-        let recognizer = try await VideoOpModels.shared.recognizer(
-            catalog: options.model ?? defaultActionModel)
-        return try await recognizer.classify(videoAt: url, topK: topK)
+        let id = options.model ?? defaultActionModel
+        let recognizer = try await VideoOpModels.shared.recognizer(catalog: id)
+        return try await withPinnedModel(ResidentKind.recognizer, id) {
+            try await recognizer.classify(videoAt: url, topK: topK)
+        }
     }
 
     /// Frames → ranked action labels (any frame count; resampled to 16).
     public static func recognizeAction(
         frames: [CGImage], topK: Int = 3, options: OpOptions = OpOptions()
     ) async throws -> [ActionRecognizer.Prediction] {
-        let recognizer = try await VideoOpModels.shared.recognizer(
-            catalog: options.model ?? defaultActionModel)
+        let id = options.model ?? defaultActionModel
+        let recognizer = try await VideoOpModels.shared.recognizer(catalog: id)
+        // `frames` is [CGImage] — not Sendable, so the pin wraps the load rather than the
+        // call, and the classification runs in the caller's isolation as it did before.
+        await ModelResidency.shared.pin(ResidentModel(kind: ResidentKind.recognizer, id: id))
+        defer {
+            ModelResidency.shared.unpinLater(
+                ResidentModel(kind: ResidentKind.recognizer, id: id))
+        }
         return try await recognizer.classify(frames: frames, topK: topK)
     }
 }
@@ -39,19 +48,11 @@ extension CoreAI {
 actor VideoOpModels {
     static let shared = VideoOpModels()
 
-    private var recognizerLoads: [String: Task<ActionRecognizer, Error>] = [:]
+    private let recognizers = ResidentCache<ActionRecognizer>(kind: ResidentKind.recognizer)
 
     func recognizer(catalog id: String) async throws -> ActionRecognizer {
-        if let load = recognizerLoads[id] { return try await load.value }
-        let load = Task<ActionRecognizer, Error> {
+        try await recognizers.value(for: id) {
             try await ActionRecognizer(catalog: id, downloadProgress: OpDownloads.forward)
-        }
-        recognizerLoads[id] = load
-        do {
-            return try await load.value
-        } catch {
-            recognizerLoads[id] = nil
-            throw error
         }
     }
 }
