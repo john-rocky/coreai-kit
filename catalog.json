@@ -305,6 +305,21 @@
       "engine": "pipelined"
     },
     {
+      "id": "qwen3.8-27b",
+      "name": "Qwen3.8-27B (dense)",
+      "repo": "mlboydaisuke/Qwen3.8-27B-CoreAI",
+      "revision": "df6b93ab22749065914cb33fdd8c4ce3fad60103",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/qwen3_8_27b_decode_int8hu_block32_sym",
+          "sizeMB": 28000
+        }
+      },
+      "thinking": true,
+      "engine": "pipelined"
+    },
+    {
       "id": "glm-4.7-flash",
       "name": "GLM-4.7-Flash (MoE+MLA)",
       "repo": "mlboydaisuke/GLM-4.7-Flash-CoreAI",
@@ -907,7 +922,7 @@
     },
     {
       "id": "adcsr-x4",
-      "name": "AdcSR \u00d74 Super-Resolution",
+      "name": "AdcSR ×4 Super-Resolution",
       "repo": "mlboydaisuke/AdcSR-CoreAI",
       "revision": "60a65ad223ea89385b0b4c880a306616112d55ce",
       "kind": "superResolution",

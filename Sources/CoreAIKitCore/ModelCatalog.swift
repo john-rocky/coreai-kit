@@ -371,6 +371,12 @@ public struct ModelCatalog: Sendable, Codable {
                     path: "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym", sizeMB: 28000)],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
+                id: "qwen3.8-27b", name: "Qwen3.8-27B (dense)",
+                repo: "mlboydaisuke/Qwen3.8-27B-CoreAI", kind: .chat,
+                variants: ["macos": .init(
+                    path: "gpu-pipelined/qwen3_8_27b_decode_int8hu_block32_sym", sizeMB: 28000)],
+                thinking: true, engine: "pipelined"),
+            CatalogEntry(
                 id: "glm-4.7-flash", name: "GLM-4.7-Flash (MoE+MLA)",
                 repo: "mlboydaisuke/GLM-4.7-Flash-CoreAI", kind: .chat,
                 variants: ["macos": .init(
