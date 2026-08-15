@@ -53,6 +53,7 @@ enum BuiltinPins {
         "qwen3.5-2b": "3aa6c97d9545b9f7de6307b953a81db38cb660af",
         "qwen3.6-27b": "e745d8f071e1730c91473ae38ffbe449bc1c0645",
         "qwen3.6-35b-a3b": "700470f9d982175e249fc7aec0d29a81c96c8ef9",
+        "qwen3.8-27b": "927bbeed505949f99a24811f795f838427a6fe0f",
         "rf-detr": "d059657852216f473516d5f437d0f9848fa95ca0",
         "shieldstral-3b": "5ec6faf69eb47e2e6b05527fd50c7cd65005b6a6",
         "sortformer-diar-v2": "bd063df510a0354714a67c2caa91529de8ceda5c",
