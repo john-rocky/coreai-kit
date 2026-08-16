@@ -53,5 +53,10 @@ jobs:
         # The offline fallback is what ships when the catalog fetch fails; an unpinned entry
         # there downloads from the model repo's main branch instead of the reviewed bytes.
         run: python3 scripts/gen-builtin-pins.py --check
+      - name: Docs agree with the catalog
+        run: python3 scripts/check-doc-counts.py
+      - name: Probe classification holds
+        # The next-SDK gate's verdict logic; it published a false red once.
+        run: ./scripts/test-classify-probe.sh
       - name: llms.txt lists every example
         run: python3 scripts/gen_llms_txt.py --check

@@ -70,16 +70,15 @@ jobs:
             swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
             2>&1 | tee /tmp/next-sdk-gate.out || rc=$?
 
-          if [ "$rc" -eq 0 ] && [ -s /tmp/next-sdk-gate.out ]; then
-            echo "probe generated text under the strict loader"
-            echo "status=ready" >> "$GITHUB_OUTPUT"
-          elif grep -qE 'expected AICode versioned location|Failed to convert to versioned IR|cannot unwrap empty .?odiec_module_t' /tmp/next-sdk-gate.out; then
-            echo "probe hit the versioned-IR rejection (FB23666783)"
-            echo "status=not-ready" >> "$GITHUB_OUTPUT"
+          # Exits non-zero, writing no status, when the run said nothing about
+          # the models. Failing here skips the publish step below, so the
+          # badge keeps whatever it last said. See scripts/classify-probe.sh.
+          if STATUS=$(../../scripts/classify-probe.sh /tmp/next-sdk-gate.out "$rc"); then
+            echo "$STATUS" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::Probe failed (exit $rc) without the versioned-IR signature —" \
-                 "this is an infrastructure failure, not a model verdict." \
-                 "The badge is left untouched; fix the runner and re-dispatch."
+            echo "::error::The probe said nothing about the models (reason above)." \
+                 "Treating this as an infrastructure failure: the badge is left" \
+                 "untouched. Fix the runner and re-dispatch."
             exit 1
           fi
       - name: Publish status badge, open an issue on state change
