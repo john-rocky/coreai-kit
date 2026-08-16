@@ -33,25 +33,54 @@ jobs:
     # JSON on the `gate-status` branch, and a STATE FLIP opens an issue. That
     # way a known-migrating state doesn't send a failure mail every night, and
     # the moment the state changes (e.g. a beta fixes FB23666783) is loud.
+    #
+    # A verdict is only ever written when the probe actually reached the loader.
+    # Anything else — a missing Xcode, a broken toolchain, a failed download —
+    # is INCONCLUSIVE: the run goes red and the badge is left alone. Folding
+    # infrastructure failure into "not-ready" published a false red on
+    # 2026-08-15, when DEVELOPER_DIR pointed at an uninstalled beta and the
+    # probe never ran at all.
     runs-on: [self-hosted, macOS]
     timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.5.app
     steps:
       - uses: actions/checkout@v4
+      - name: The pinned Xcode is installed
+        # First thing that breaks when a beta is replaced on the runner. Say so
+        # in one line instead of letting every later step fail on `xcrun`.
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR is not installed on this runner." \
+                 "Install that beta, or point DEVELOPER_DIR at the one that is" \
+                 "(.github/workflows/*.yml all pin the same path)."
+            ls -d /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
+          swift --version
       - name: Probe a pinned catalog model under the beta 5 SDK loader
         id: probe
         # Serialized on the machine-wide GPU lock — the macOS 27 beta driver
         # panics under parallel GPU load.
         run: |
+          set -o pipefail
           cd Examples/ChatDemo
-          if python3 ../../scripts/with-gpu-lock.py -- \
-              swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
-              | tee /tmp/next-sdk-gate.out \
-            && test -s /tmp/next-sdk-gate.out; then
+          rc=0
+          python3 ../../scripts/with-gpu-lock.py -- \
+            swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
+            2>&1 | tee /tmp/next-sdk-gate.out || rc=$?
+
+          if [ "$rc" -eq 0 ] && [ -s /tmp/next-sdk-gate.out ]; then
+            echo "probe generated text under the strict loader"
             echo "status=ready" >> "$GITHUB_OUTPUT"
-          else
+          elif grep -qE 'expected AICode versioned location|Failed to convert to versioned IR|cannot unwrap empty .?odiec_module_t' /tmp/next-sdk-gate.out; then
+            echo "probe hit the versioned-IR rejection (FB23666783)"
             echo "status=not-ready" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Probe failed (exit $rc) without the versioned-IR signature —" \
+                 "this is an infrastructure failure, not a model verdict." \
+                 "The badge is left untouched; fix the runner and re-dispatch."
+            exit 1
           fi
       - name: Publish status badge, open an issue on state change
         env:
@@ -70,13 +99,26 @@ jobs:
             echo "state unchanged: $MSG"
             exit 0
           fi
+
+          # Announce before recording. If the issue can't be filed, the badge
+          # keeps its old value and the next run retries the whole flip —
+          # rather than banking the new state and silently never notifying.
+          TITLE="Next-SDK model gate: ${PREV_MSG:-unknown} -> $MSG"
+          BODY=$(printf 'The strict (beta 5 SDK) loader probe changed state: **%s -> %s**.\n\nRun: %s\nContext: FB23666783 — pre-b2 `.aimodel` exports are rejected by the versioned-IR loader.\nIf this flipped to *compatible* on a new beta, verify whether Apple shipped a legacy-IR path; if it flipped back to *rejected*, a re-export or OS change regressed.' \
+            "${PREV_MSG:-unknown}" "$MSG" \
+            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          DUP=$(gh issue list --repo "${{ github.repository }}" --state open --search "$TITLE in:title" \
+                  --json title,number --jq "[.[] | select(.title == \"$TITLE\")][0].number" 2>/dev/null || echo "")
+          if [ -n "$DUP" ]; then
+            echo "an open issue already tracks this flip: #$DUP"
+            gh issue comment "$DUP" --repo "${{ github.repository }}" --body "$BODY"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "$TITLE" --body "$BODY"
+          fi
+
           NEW=$(MSG="$MSG" COLOR="$COLOR" python3 -c 'import json,os; print(json.dumps({"schemaVersion":1,"label":"next-SDK models","message":os.environ["MSG"],"color":os.environ["COLOR"]}))')
           gh api -X PUT "repos/${{ github.repository }}/contents/next-sdk.json" \
             -f branch=gate-status \
             -f message="next-sdk status: $MSG" \
             -f content="$(printf '%s' "$NEW" | base64)" \
             ${SHA:+-f sha=$SHA}
-          BODY=$(printf 'The strict (beta 5 SDK) loader probe changed state: **%s -> %s**.\n\nRun: %s\nContext: FB23666783 — pre-b2 `.aimodel` exports are rejected by the versioned-IR loader.\nIf this flipped to *compatible* on a new beta, verify whether Apple shipped a legacy-IR path; if it flipped back to *rejected*, a re-export or OS change regressed.' \
-            "${PREV_MSG:-unknown}" "$MSG" \
-            "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
-          gh issue create --title "Next-SDK model gate: ${PREV_MSG:-unknown} -> $MSG" --body "$BODY"

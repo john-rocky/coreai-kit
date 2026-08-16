@@ -1,0 +1,33 @@
+#!/bin/sh
+# Refuse a commit whose generated files no longer match their source.
+#
+# catalog.json has two derived copies — the built-in offline fallback in Swift,
+# and llms.txt — and CI compares both byte for byte. Enrolling a model without
+# regenerating them is the single most common way this repo goes red: it
+# accounted for 13 of the 17 failed runs between 2026-08-14 and 2026-08-16, each
+# one costing a red push plus a follow-up commit. The checks are the same ones
+# ci.yml runs, minus pin-catalog.py, which queries the Hub once per entry and is
+# far too slow for a hook.
+#
+# Install with: scripts/install-hooks.sh
+# Bypass with:  git commit --no-verify
+
+set -e
+
+root=$(git rev-parse --show-toplevel)
+failed=""
+
+if ! python3 "$root/scripts/gen-builtin-pins.py" --check; then
+	failed="$failed  python3 scripts/gen-builtin-pins.py\n"
+fi
+
+if ! python3 "$root/scripts/gen_llms_txt.py" --check; then
+	failed="$failed  python3 scripts/gen_llms_txt.py\n"
+fi
+
+if [ -n "$failed" ]; then
+	printf '\npre-commit: generated files are stale. Regenerate, stage, re-commit:\n\n'
+	printf "$failed"
+	printf '\n'
+	exit 1
+fi

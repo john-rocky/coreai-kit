@@ -22,6 +22,17 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.5.app
     steps:
       - uses: actions/checkout@v4
+      - name: The pinned Xcode is installed
+        # First thing that breaks when a beta is replaced on the runner. Say so
+        # in one line instead of letting every later step fail on `xcrun`.
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR is not installed on this runner." \
+                 "Install that beta, or point DEVELOPER_DIR at the one that is" \
+                 "(.github/workflows/*.yml all pin the same path)."
+            ls -d /Applications/Xcode*.app 2>/dev/null || true
+            exit 1
+          fi
       - name: Build
         run: swift build
       - name: Unit tests
