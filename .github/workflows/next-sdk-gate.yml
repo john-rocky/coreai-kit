@@ -108,7 +108,7 @@ jobs:
             "${PREV_MSG:-unknown}" "$MSG" \
             "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           DUP=$(gh issue list --repo "${{ github.repository }}" --state open --search "$TITLE in:title" \
-                  --json title,number --jq "[.[] | select(.title == \"$TITLE\")][0].number" 2>/dev/null || echo "")
+                  --json title,number --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty" 2>/dev/null || echo "")
           if [ -n "$DUP" ]; then
             echo "an open issue already tracks this flip: #$DUP"
             gh issue comment "$DUP" --repo "${{ github.repository }}" --body "$BODY"
