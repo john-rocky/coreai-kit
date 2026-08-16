@@ -36,10 +36,10 @@ jobs:
     runs-on: [self-hosted, macOS]
     timeout-minutes: 60
     env:
-      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.3.app
+      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.5.app
     steps:
       - uses: actions/checkout@v4
-      - name: Probe a pinned catalog model under the beta 3 SDK loader
+      - name: Probe a pinned catalog model under the beta 5 SDK loader
         id: probe
         # Serialized on the machine-wide GPU lock — the macOS 27 beta driver
         # panics under parallel GPU load.
@@ -76,7 +76,7 @@ jobs:
             -f message="next-sdk status: $MSG" \
             -f content="$(printf '%s' "$NEW" | base64)" \
             ${SHA:+-f sha=$SHA}
-          BODY=$(printf 'The strict (beta 3 SDK) loader probe changed state: **%s -> %s**.\n\nRun: %s\nContext: FB23666783 — pre-b2 `.aimodel` exports are rejected by the versioned-IR loader.\nIf this flipped to *compatible* on a new beta, verify whether Apple shipped a legacy-IR path; if it flipped back to *rejected*, a re-export or OS change regressed.' \
+          BODY=$(printf 'The strict (beta 5 SDK) loader probe changed state: **%s -> %s**.\n\nRun: %s\nContext: FB23666783 — pre-b2 `.aimodel` exports are rejected by the versioned-IR loader.\nIf this flipped to *compatible* on a new beta, verify whether Apple shipped a legacy-IR path; if it flipped back to *rejected*, a re-export or OS change regressed.' \
             "${PREV_MSG:-unknown}" "$MSG" \
             "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           gh issue create --title "Next-SDK model gate: ${PREV_MSG:-unknown} -> $MSG" --body "$BODY"

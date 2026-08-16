@@ -29,7 +29,7 @@ jobs:
     runs-on: [self-hosted, macOS]
     timeout-minutes: 30
     env:
-      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.3.app
+      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.5.app
     steps:
       - uses: actions/checkout@v4
       - name: Build
