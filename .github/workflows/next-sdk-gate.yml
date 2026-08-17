@@ -58,6 +58,20 @@ jobs:
             exit 1
           fi
           swift --version
+      # What this probe can and cannot detect, as of 2026-08-17. It loads the
+      # catalog's pinned qwen3-0.6b, and that pin has named a RESCUED bundle
+      # since 2026-07-21 — `producer: coreai-core 1.0.0b2`, created 04:16Z that
+      # day, which is the strip_debug_info recovery. A b2 bundle loads under
+      # any SDK, so `ready` is the only verdict reachable by measurement and
+      # the red state has been unreachable since that pin bump. What the badge
+      # actually reports is "the published catalog still loads under the next
+      # SDK" — worth knowing nightly — and not "pre-b2 exports are rejected",
+      # which is what its label says. Answering the label's question needs an
+      # unrescued 0.4.0-IR bundle kept as a fixture.
+      #
+      # The general shape: bumping a pin underneath a gate silently changes
+      # what the gate measures, and a gate that can no longer fail looks
+      # exactly like a gate that is passing.
       - name: Probe a pinned catalog model under the beta 5 SDK loader
         id: probe
         # Serialized on the machine-wide GPU lock — the macOS 27 beta driver
