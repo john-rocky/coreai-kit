@@ -43,8 +43,9 @@ public enum KitParakeetError: Error, LocalizedError {
 /// tokenizer. Serial use (one transcription at a time) — the host TDT loop owns the LSTM state.
 public final class KitParakeetModel: @unchecked Sendable {
     // TDT / model constants (config + gate_e2e.py).
-    private static let blank = 8192
-    private static let vocab = 8193                 // token logits width
+    // v3 has 8193 token logits with blank at 8192; the v2 checkpoint has 1025 with blank at
+    // 1024. Nothing else in the TDT loop differs, so the width is read off the joint graph
+    // rather than assumed — a wrong blank id here decodes to plausible-looking garbage.
     private static let durations: [Int] = [0, 1, 2, 3, 4]
     private static let hidden = 640                 // predictor/joint width
     private static let lstmLayers = 2               // predictor LSTM state is [2, 1, 640]
@@ -55,6 +56,8 @@ public final class KitParakeetModel: @unchecked Sendable {
     private let joint: GraphModel
     private let mel: ParakeetMelPreprocessor
     private let tokenizer: any Tokenizer
+    private let vocab: Int                          // token logits width
+    private let blank: Int                          // last index of that width
 
     // MARK: - Init
 
@@ -99,6 +102,8 @@ public final class KitParakeetModel: @unchecked Sendable {
         self.encoder = try await GraphModel(contentsOf: paths.encoder, computeUnits: computeUnits)
         self.predict = try await GraphModel(contentsOf: paths.predict, computeUnits: computeUnits)
         self.joint = try await GraphModel(contentsOf: paths.joint, computeUnits: computeUnits)
+        self.vocab = joint.shape(ofOutput: "token_logits")?.last ?? 8193
+        self.blank = self.vocab - 1
         // Bucket = the encoder's declared mel length (so the frontend always fills the graph).
         let bucket = encoder.shape(ofInput: "mel")?.last ?? 2885
         self.mel = try ParakeetMelPreprocessor.parakeet(bucketFrames: bucket)
@@ -129,7 +134,7 @@ public final class KitParakeetModel: @unchecked Sendable {
         // Greedy TDT loop (gate_e2e.py, ported verbatim). LSTM state [2,1,640]; init with start=blank.
         var h = [Float](repeating: 0, count: Self.lstmLayers * H)
         var c = [Float](repeating: 0, count: Self.lstmLayers * H)
-        var dec = try await predictStep(token: Self.blank, h: &h, c: &c)   // dec_out [640]
+        var dec = try await predictStep(token: blank, h: &h, c: &c)   // dec_out [640]
 
         var frame = 0
         var emitted: [Int] = []
@@ -141,13 +146,13 @@ public final class KitParakeetModel: @unchecked Sendable {
                 "dec_out": .float32(dec, shape: [1, H]),
                 "enc_frame": .float32(encFrame, shape: [1, H]),
             ])
-            let tokLogits = try output(jout, "token_logits")        // [8193]
+            let tokLogits = try output(jout, "token_logits")        // [vocab]
             let durLogits = try output(jout, "dur_logits")          // [5]
-            let token = argmax(tokLogits, 0, Self.vocab)
+            let token = argmax(tokLogits, 0, vocab)
             var dur = Self.durations[argmax(durLogits, 0, Self.durations.count)]
-            if token == Self.blank && dur == 0 { dur = 1 }          // forward-progress guard
+            if token == blank && dur == 0 { dur = 1 }          // forward-progress guard
             frame += dur
-            if token != Self.blank {
+            if token != blank {
                 emitted.append(token)
                 dec = try await predictStep(token: token, h: &h, c: &c)   // advance LSTM only on non-blank
                 if let onPartial {
