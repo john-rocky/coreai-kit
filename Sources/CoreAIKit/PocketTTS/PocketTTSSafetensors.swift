@@ -82,6 +82,17 @@ struct PocketTTSSafeTensors {
         }
     }
 
+    /// The same read as `int64s`, for the tensors the loader indexes rather than iterates.
+    /// The offsets guard in `init` admits an empty range (`offs[0] == offs[1]` is a legal,
+    /// if useless, declaration), so a subscript on the result is not safe on its own.
+    func int64Scalar(_ name: String) throws -> Int64 {
+        let v = try int64s(name)
+        guard let first = v.first else {
+            throw PocketTTSError.message("tensor '\(name)' is empty; expected at least one I64")
+        }
+        return first
+    }
+
     func int64s(_ name: String) throws -> [Int64] {
         guard let e = entries[name] else { throw PocketTTSError.message("missing tensor '\(name)'") }
         guard e.dtype == "I64" else { throw PocketTTSError.message("tensor '\(name)' is \(e.dtype), expected I64") }
@@ -224,7 +235,7 @@ struct PocketTTSVoiceState {
         for layer in 0..<PocketTTSModel.nLayers {
             let cache = try st.floats("transformer.layers.\(layer).self_attn/cache")
             let shape = try st.shape("transformer.layers.\(layer).self_attn/cache")
-            let off = try st.int64s("transformer.layers.\(layer).self_attn/offset")[0]
+            let off = try st.int64Scalar("transformer.layers.\(layer).self_attn/offset")
             offsets.insert(Int(off))
             guard shape.count == 5, shape[0] == 2, shape[1] == 1,
                   shape[3] == PocketTTSModel.nHeads, shape[4] == PocketTTSModel.headDim else {
@@ -233,6 +244,15 @@ struct PocketTTSVoiceState {
             let sVoice = shape[2]
             guard sVoice <= PocketTTSModel.sMax, Int(off) <= sVoice else {
                 throw PocketTTSError.message("voice '\(name)': \(sVoice) positions exceed S_MAX=\(PocketTTSModel.sMax)")
+            }
+            // The shape and the byte range are two independent claims in the header, and the
+            // loop below indexes on the shape. A header that is in bounds of the file but
+            // shorter than the shape it declares would otherwise run off the end of `cache`.
+            let declared = shape.reduce(1, *)
+            guard cache.count == declared else {
+                throw PocketTTSError.message(
+                    "voice '\(name)' layer \(layer): cache holds \(cache.count) floats, "
+                    + "but its shape \(shape) declares \(declared)")
             }
             // cache[kv, 0, s, h, d] -> packed[layer, 0, h, s, d]
             let vBase = sVoice * PocketTTSModel.nHeads * PocketTTSModel.headDim   // start of cache[1]
