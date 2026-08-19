@@ -62,7 +62,7 @@ Importing `CoreAIOps` re-exports the model layer, so one import covers both.
 
 ## The catalog is data — read it, do not invent it
 
-`catalog.json` holds **53 entries**, each `{id, kind, name, repo, revision, variants}`. Ids look
+`catalog.json` holds **59 entries**, each `{id, kind, name, repo, revision, variants}`. Ids look
 like `qwen3-0.6b`, `qwen3.5-2b`, `youtu-llm-2b`, `lfm2.5-1.2b` — lowercase, hyphenated.
 
 - **Never guess a catalog id.** Read `catalog.json`, or call `ModelCatalog` at runtime. A
@@ -73,6 +73,10 @@ like `qwen3-0.6b`, `qwen3.5-2b`, `youtu-llm-2b`, `lfm2.5-1.2b` — lowercase, hy
   reviewed change (`scripts/pin-catalog.py --check` is what CI enforces).
 - Weights download from Hugging Face on **first use** and cache. They are not vendored in the
   package and must not be committed into an app repo.
+- `catalog.json` has two **generated** copies — the built-in offline fallback and `llms.txt` —
+  and CI compares both byte for byte. Editing the catalog means re-running
+  `scripts/gen-builtin-pins.py` and `scripts/gen_llms_txt.py` in the same commit. Run
+  `scripts/install-hooks.sh` once per clone and a pre-commit hook checks this for you.
 
 ## What breaks on a real device
 

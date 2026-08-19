@@ -103,7 +103,7 @@ public struct KitASRExecutor: LanguageModelExecutor {
                     debugDescription: "Audio + prompt no longer fits the model context."))
         }
 
-        let metadata: [String: any Sendable & Codable & Equatable] = [
+        let metadata: [String: any ConvertibleToGeneratedContent] = [
             "modelID": modelID, "requestID": request.id.uuidString,
         ]
         let usageInput = LanguageModelExecutorGenerationChannel.Usage.Input(

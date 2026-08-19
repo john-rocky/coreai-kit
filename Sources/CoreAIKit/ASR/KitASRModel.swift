@@ -63,7 +63,7 @@ public struct KitASRModel: LanguageModel {
     let runtime: ASRRuntime
     let modelID: String
 
-    public var capabilities: LanguageModelCapabilities { LanguageModelCapabilities(capabilities: []) }
+    public var capabilities: LanguageModelCapabilities { LanguageModelCapabilities([]) }
 
     public var executorConfiguration: KitASRExecutor.Configuration {
         KitASRExecutor.Configuration(runtime: runtime, modelID: modelID)

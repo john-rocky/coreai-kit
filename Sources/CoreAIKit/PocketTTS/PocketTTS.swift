@@ -202,12 +202,21 @@ public final class PocketTTS: @unchecked Sendable {
     // MARK: - synthesis
 
     /// Synthesize the whole clip as mono Float PCM at 24 kHz.
+    ///
+    /// The gain is applied once, to the finished clip, because `PocketTTSVoiceGain.apply`
+    /// clamps against the peak of whatever buffer it is handed. Applied per chunk, a chunk
+    /// whose peak exceeds 0.99/g is scaled down while its quieter neighbour is not, and the
+    /// two land at different levels across the seam. That is only reachable for the voices
+    /// with gain above unity (cosette 3.33, marius 2.38), which is why it went unnoticed:
+    /// the ten-minute seam measurement ran on alba, whose 0.81 can never engage the clamp.
+    /// Upstream `pocket-tts-swift` applies it outside the chunk loop for the same reason.
     public func synthesize(_ text: String, voice: String, seed: UInt64 = 0,
                            applyGain: Bool = true) async throws -> [Float] {
         var out: [Float] = []
-        _ = try await generate(text, voice: voice, seed: seed, applyGain: applyGain) {
+        _ = try await generate(text, voice: voice, seed: seed, applyGain: false) {
             out.append(contentsOf: $0)
         }
+        if applyGain { _ = PocketTTSVoiceGain.apply(&out, voice: voice) }
         return out
     }
 

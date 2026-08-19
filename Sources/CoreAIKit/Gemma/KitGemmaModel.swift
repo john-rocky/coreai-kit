@@ -102,7 +102,7 @@ public struct KitGemmaModel: LanguageModel {
         if profile.rules.contains(where: { $0.kind == .thinking }) {
             capabilities.append(.reasoning)
         }
-        return LanguageModelCapabilities(capabilities: capabilities)
+        return LanguageModelCapabilities(capabilities)
     }
 
     public var executorConfiguration: KitGemmaExecutor.Configuration {

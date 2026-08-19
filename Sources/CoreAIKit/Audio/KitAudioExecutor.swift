@@ -139,7 +139,7 @@ public struct KitAudioExecutor: LanguageModelExecutor {
         await dispatch(parser.flush())
 
         // 4) Metadata + usage once, attached to the kind this turn produced.
-        let metadata: [String: any Sendable & Codable & Equatable] = [
+        let metadata: [String: any ConvertibleToGeneratedContent] = [
             "modelID": modelID,
             "requestID": request.id.uuidString,
         ]

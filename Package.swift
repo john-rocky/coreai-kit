@@ -36,7 +36,11 @@ let package = Package(
         // (bogus first token per turn). For local engine work, swap in
         // .package(path: "../coreai/coreai-models") — branch zoo-0.2 matches this tag.
         // 0.2.1-zoo adds the iOS dynamic-KV capacity guard (apple/coreai-models#124, kit #5).
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.1-zoo"),
+        // 0.2.2-zoo is 0.2.1-zoo plus one line: FoundationModels changed
+        // LanguageModelCapabilities.init to init(_:) between Xcode 27 beta 3 and beta 5, so the
+        // labelled call stopped compiling. Branched from the 0.2.1-zoo commit rather than
+        // zoo-0.2, so this is the only delta from the revision pinned before it.
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.2-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [

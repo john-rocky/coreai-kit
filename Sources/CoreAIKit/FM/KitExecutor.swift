@@ -309,7 +309,7 @@ public struct KitExecutor: LanguageModelExecutor {
 
         // 7) Metadata + usage once per turn, attached to the kind of entry this turn
         //    actually produced (see the note above step 4).
-        let metadata: [String: any Sendable & Codable & Equatable] = [
+        let metadata: [String: any ConvertibleToGeneratedContent] = [
             "modelID": modelID,
             "requestID": request.id.uuidString,
         ]
@@ -439,7 +439,7 @@ public struct KitExecutor: LanguageModelExecutor {
 
         // 7) Metadata + usage, end of turn (see the vanilla path note). A guided turn
         //    always produces response text, so both attach to `.response`.
-        let metadata: [String: any Sendable & Codable & Equatable] = [
+        let metadata: [String: any ConvertibleToGeneratedContent] = [
             "modelID": modelID,
             "requestID": request.id.uuidString,
         ]

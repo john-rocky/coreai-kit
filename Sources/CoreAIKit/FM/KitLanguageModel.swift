@@ -56,7 +56,7 @@ public struct KitLanguageModel: LanguageModel {
         if engine.supportsLogits {
             capabilities.append(.guidedGeneration)
         }
-        return LanguageModelCapabilities(capabilities: capabilities)
+        return LanguageModelCapabilities(capabilities)
     }
 
     public var executorConfiguration: KitExecutor.Configuration {
