@@ -19,6 +19,8 @@ import CoreAI
 import CoreAIKitVision
 import Foundation
 
+private typealias ND = PocketTTSND
+
 public struct PocketTTSPaths: Sendable {
     /// Graph precision of the flow-LM and flow decoder. The Mimi decoder is fp32 at either
     /// setting: twelve state tensors feeding back at 12.5 Hz is exactly where fp16 error
@@ -120,7 +122,7 @@ public final class PocketTTS: @unchecked Sendable {
         where !FileManager.default.fileExists(atPath: u.path) {
             throw PocketTTSError.message("missing asset \(u.lastPathComponent)")
         }
-        let t0 = nowNanos()
+        let t0 = ND.nowNanos()
         lm = try await PocketTTSAsset(url: paths.flowLM, unit: computeUnits)
         flow = try await PocketTTSAsset(url: paths.flowDecoder, unit: computeUnits)
         mimiAsset = try await PocketTTSAsset(url: paths.mimi, unit: computeUnits)
@@ -136,12 +138,12 @@ public final class PocketTTS: @unchecked Sendable {
             .filter { $0.hasSuffix(".safetensors") }
             .map { String($0.dropLast(".safetensors".count)) }
             .sorted()
-        loadSeconds = Double(nowNanos() - t0) / 1e9
+        loadSeconds = Double(ND.nowNanos() - t0) / 1e9
     }
 
     /// Graph-dtype NDArray from float32 host values.
     @inline(__always) private func gd(_ v: [Float], _ shape: [Int]) -> NDArray {
-        half ? ndHalf(v, shape) : nd(v, shape)
+        half ? ND.ndHalf(v, shape) : ND.nd(v, shape)
     }
 
     /// The 12 Mimi streaming-state buffers, host-owned for the lifetime of one run. The
@@ -188,12 +190,12 @@ public final class PocketTTS: @unchecked Sendable {
         states.insert(&state.c3, for: "c3"); states.insert(&state.c5, for: "c5")
         states.insert(&state.c6, for: "c6"); states.insert(&state.c8, for: "c8")
         states.insert(&state.c9, for: "c9"); states.insert(&state.c11, for: "c11")
-        let te = nowNanos()
+        let te = ND.nowNanos()
         var out = try await fMimi.run(inputs: ["latent": latent], states: states)
-        engineNanos &+= nowNanos() &- te
-        let tf = nowNanos()
-        let pcm = try take(&out, "pcm")
-        flattenNanos &+= nowNanos() &- tf
+        engineNanos &+= ND.nowNanos() &- te
+        let tf = ND.nowNanos()
+        let pcm = try ND.take(&out, "pcm")
+        flattenNanos &+= ND.nowNanos() &- tf
         return pcm
     }
 
@@ -249,7 +251,7 @@ public final class PocketTTS: @unchecked Sendable {
         chunks = []
 
         let chunkTexts = try chunker.chunk(text, voicePos: voiceState.positions)
-        let t0 = nowNanos()
+        let t0 = ND.nowNanos()
 
         for chunkText in chunkTexts {
             var cs = PocketTTSChunkStat()
@@ -266,14 +268,14 @@ public final class PocketTTS: @unchecked Sendable {
             let maxGenLen = PocketTTSModel.maxGenLen(tokens: tokens.count)
             precondition(voiceState.positions + tokens.count + maxGenLen <= PocketTTSModel.sMax,
                          "chunker invariant violated: \(voiceState.positions)+\(tokens.count)+\(maxGenLen) > \(PocketTTSModel.sMax)")
-            let tl = nowNanos()
+            let tl = ND.nowNanos()
             let textEmb = weights.embed(tokens)
-            lutN &+= nowNanos() &- tl
+            lutN &+= ND.nowNanos() &- tl
 
             // Fresh KV per chunk, re-seeded from the voice — upstream deep-copies it per
             // chunk, so a chunk never sees the previous chunk's text.
-            var kCache = makeState(voiceState.kSeed, shape: [6, 1, 16, PocketTTSModel.sMax, 64], half: half)
-            var vCache = makeState(voiceState.vSeed, shape: [6, 1, 16, PocketTTSModel.sMax, 64], half: half)
+            var kCache = ND.makeState(voiceState.kSeed, shape: [6, 1, 16, PocketTTSModel.sMax, 64], half: half)
+            var vCache = ND.makeState(voiceState.vSeed, shape: [6, 1, 16, PocketTTSModel.sMax, 64], half: half)
             var pos = Int32(voiceState.positions)
 
             // Windowed prefill over the static T_PRE=16 graph, carrying `pos` across windows.
@@ -282,18 +284,18 @@ public final class PocketTTS: @unchecked Sendable {
             var w = 0
             while w < tokens.count {
                 let width = min(PocketTTSModel.tPre, tokens.count - w)
-                let tm = nowNanos()
+                let tm = ND.nowNanos()
                 var win = [Float](repeating: 0, count: PocketTTSModel.tPre * PocketTTSModel.dModel)
                 for j in 0..<(width * PocketTTSModel.dModel) { win[j] = textEmb[w * PocketTTSModel.dModel + j] }
                 let winND = gd(win, [1, PocketTTSModel.tPre, PocketTTSModel.dModel])
-                let posND = nd([pos], [1])
-                marshN &+= nowNanos() &- tm
+                let posND = ND.nd([pos], [1])
+                marshN &+= ND.nowNanos() &- tm
                 var states = InferenceFunction.MutableViews()
                 states.insert(&kCache, for: "k_cache")
                 states.insert(&vCache, for: "v_cache")
-                let ta = nowNanos()
+                let ta = ND.nowNanos()
                 var out = try await fPrefill.run(inputs: ["text_emb": winND, "pos": posND], states: states)
-                preN &+= nowNanos() &- ta
+                preN &+= ND.nowNanos() &- ta
                 engineCalls += 1
                 _ = out.remove("cond")   // upstream discards the prefill latent too
                 pos += Int32(width)
@@ -315,47 +317,47 @@ public final class PocketTTS: @unchecked Sendable {
                 precondition(Int(pos) + i < PocketTTSModel.sMax,
                              "AR write position \(Int(pos) + i) reached S_MAX=\(PocketTTSModel.sMax)")
 
-                let tm = nowNanos()
+                let tm = ND.nowNanos()
                 let latND = gd(latent, [1, 1, PocketTTSModel.ldim])
                 let bosND = gd([isBOS], [1])
-                let posND = nd([pos + Int32(i)], [1])
-                marshN &+= nowNanos() &- tm
+                let posND = ND.nd([pos + Int32(i)], [1])
+                marshN &+= ND.nowNanos() &- tm
                 var states = InferenceFunction.MutableViews()
                 states.insert(&kCache, for: "k_cache")
                 states.insert(&vCache, for: "v_cache")
-                let ta = nowNanos()
+                let ta = ND.nowNanos()
                 var out = try await fStep.run(
                     inputs: ["latent_in": latND, "is_bos": bosND, "pos": posND], states: states)
-                stepN &+= nowNanos() &- ta
+                stepN &+= ND.nowNanos() &- ta
                 engineCalls += 1
                 isBOS = 0
                 guard let condND = out.remove("cond")?.ndArray else {
                     throw PocketTTSError.message("step: missing 'cond'")
                 }
-                var tf = nowNanos()
-                let eos = try take(&out, "eos_logit")[0]
-                flatN &+= nowNanos() &- tf
+                var tf = ND.nowNanos()
+                let eos = try ND.take(&out, "eos_logit")[0]
+                flatN &+= ND.nowNanos() &- tf
                 if eos > PocketTTSModel.eosThreshold, eosStep == nil { eosStep = i }
 
                 // `cond` goes straight from the step graph's output into the flow decoder's
                 // input — same dtype, no host round-trip.
-                let tn = nowNanos()
+                let tn = ND.nowNanos()
                 let nsND = gd(noise.nextNoise(count: PocketTTSModel.ldim), [1, PocketTTSModel.ldim])
-                marshN &+= nowNanos() &- tn
-                let tb = nowNanos()
+                marshN &+= ND.nowNanos() &- tn
+                let tb = ND.nowNanos()
                 var fout = try await fFlow.run(inputs: ["cond": condND, "noise": nsND])
-                flowN &+= nowNanos() &- tb
+                flowN &+= ND.nowNanos() &- tb
                 engineCalls += 1
-                tf = nowNanos()
-                latent = try take(&fout, "latent")
-                flatN &+= nowNanos() &- tf
+                tf = ND.nowNanos()
+                latent = try ND.take(&fout, "latent")
+                flatN &+= ND.nowNanos() &- tf
 
                 // The latent produced on the breaking step is DISCARDED.
                 if let e = eosStep, i >= e + framesAfterEOS { i += 1; break }
 
-                let tw = nowNanos()
-                let latMimiND = nd(latent, [1, PocketTTSModel.ldim])
-                marshN &+= nowNanos() &- tw
+                let tw = ND.nowNanos()
+                let latMimiND = ND.nd(latent, [1, PocketTTSModel.ldim])
+                marshN &+= ND.nowNanos() &- tw
                 let pcm = try await mimiFrame(latent: latMimiND, state: &mimiState,
                                               engineNanos: &mimiN, flattenNanos: &flatN)
                 engineCalls += 1
@@ -371,11 +373,11 @@ public final class PocketTTS: @unchecked Sendable {
             chunks.append(cs)
 
             if applyGain { _ = PocketTTSVoiceGain.apply(&chunkAudio, voice: voice) }
-            if firstChunk < 0 { firstChunk = Double(nowNanos() - t0) / 1e9 }
+            if firstChunk < 0 { firstChunk = Double(ND.nowNanos() - t0) / 1e9 }
             try await emit(chunkAudio)
         }
 
-        let total = Double(nowNanos() - t0) / 1e9
+        let total = Double(ND.nowNanos() - t0) / 1e9
         profile = ["wall": total * 1000, "prefill": Double(preN) / 1e6, "step": Double(stepN) / 1e6,
                    "flow": Double(flowN) / 1e6, "mimi": Double(mimiN) / 1e6,
                    "lut": Double(lutN) / 1e6, "marshal": Double(marshN) / 1e6,
