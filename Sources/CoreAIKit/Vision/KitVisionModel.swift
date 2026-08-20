@@ -223,12 +223,11 @@ public struct KitVisionModel: LanguageModel {
         let decoderURL = try await store.download(model.decoder, progress: downloadProgress)
         let visionRoot = try await store.download(model.vision, progress: downloadProgress)
         try await self.init(
-            decoderBundleAt: decoderURL,
-            visionModelAt: Self.resolveVisionModel(in: visionRoot),
-            arch: model.arch)
+            decoderBundleAt: decoderURL, visionModelAt: visionRoot, arch: model.arch)
     }
 
-    /// Loads a local decoder bundle directory + a local vision `.aimodel`.
+    /// Loads a local decoder bundle directory + a local vision graph (the `.aimodel`/`.aimodelc`
+    /// itself, or the bundle directory holding it).
     public init(
         decoderBundleAt decoderURL: URL, visionModelAt visionURL: URL, arch: VLArchitecture,
         modelID: String? = nil
@@ -243,18 +242,5 @@ public struct KitVisionModel: LanguageModel {
         self.runtime = runtime
         self.modelID = modelID
         self.profile = OutputProfile.detect(probing: runtime.tokenizer)
-    }
-
-    /// The `.aimodel` inside a downloaded vision bundle root (the single `*.aimodel` entry, or
-    /// the conventional `<root-name>.aimodel`).
-    private static func resolveVisionModel(in root: URL) throws -> URL {
-        let fm = FileManager.default
-        if let entries = try? fm.contentsOfDirectory(
-            at: root, includingPropertiesForKeys: nil),
-            let aimodel = entries.first(where: { $0.pathExtension == "aimodel" })
-        {
-            return aimodel
-        }
-        return root.appendingPathComponent("\(root.lastPathComponent).aimodel")
     }
 }

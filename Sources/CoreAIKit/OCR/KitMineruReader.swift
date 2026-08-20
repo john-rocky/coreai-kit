@@ -58,13 +58,11 @@ public final class KitMineruReader: @unchecked Sendable {
         layoutVisionDir: URL?, layoutDecoderDir: URL?
     ) async throws {
         runtime = try await VLRuntime(
-            decoderBundleAt: decoderDir,
-            visionModelAt: Self.aimodel(in: visionDir),
-            arch: .mineru)
+            decoderBundleAt: decoderDir, visionModelAt: visionDir, arch: .mineru)
         if let layoutVisionDir, let layoutDecoderDir {
             layoutRuntime = try await VLRuntime(
                 decoderBundleAt: layoutDecoderDir,
-                visionModelAt: Self.aimodel(in: layoutVisionDir),
+                visionModelAt: layoutVisionDir,
                 arch: .mineruLayout)
         } else {
             layoutRuntime = nil
@@ -304,18 +302,5 @@ public final class KitMineruReader: @unchecked Sendable {
         if let id = tokenizer.convertTokenToId(token) { return Int32(id) }
         let ids = tokenizer.encode(text: token)
         return ids.count == 1 ? Int32(ids[0]) : nil
-    }
-
-    private static func aimodel(in dir: URL) throws -> URL {
-        // The dir itself may be the model (a JIT `*.aimodel` or an AOT `*.aimodelc`), else it
-        // holds one. AOT (`.aimodelc`) wins so an iOS bundle carrying both prefers precompiled.
-        if dir.pathExtension == "aimodel" || dir.pathExtension == "aimodelc" { return dir }
-        let items = try FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil)
-        if let aotc = items.first(where: { $0.pathExtension == "aimodelc" }) { return aotc }
-        guard let model = items.first(where: { $0.pathExtension == "aimodel" }) else {
-            throw KitVisionError.bundleMissingMain
-        }
-        return model
     }
 }

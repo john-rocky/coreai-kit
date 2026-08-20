@@ -110,7 +110,9 @@ public final class AudioRuntime: @unchecked Sendable {
                 staticInputBuffers: ["audio_embeds": StaticInputBuffer(buffer)]))
 
         self.tokenizer = try await bundle.loadTokenizer()
-        self.encoder = try await GraphModel(contentsOf: encoderURL, computeUnits: encoderComputeUnits)
+        self.encoder = try await GraphModel(
+            contentsOf: try GraphBundle.resolve(in: encoderURL),
+            computeUnits: encoderComputeUnits)
         self.mel = try AudioMelPreprocessor.qwen2_5Omni()
     }
 

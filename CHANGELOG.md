@@ -41,6 +41,20 @@ policy.
 
 ### Fixed
 
+- **Every catalog VLM failed to load on iOS.** An iOS bundle built AOT holds one
+  `*.aimodelc` directory and no `.aimodel`. `KitVisionModel` looked for `.aimodel` alone,
+  found nothing, and fell back to a conventional `<name>.aimodel` — handing the runtime the
+  path of a file that was never published (`Asset … is malformed: Missing hash file`). The
+  only VLM that ran on a phone was Apple's own `SystemLanguageModel`.
+
+  The same resolver had been written five times across the kit, and three copies were wrong:
+  the ASR and audio encoders carried the identical fallback, and `KitDocReader` did not know
+  `.aimodelc` at all. Those three had no iOS AOT bundle published yet, so they were waiting
+  rather than working. All five now share `GraphBundle.resolve(in:)`, called inside
+  `VLRuntime` / `ASRRuntime` / `AudioRuntime` so a new caller cannot miss it. AOT still wins
+  over JIT when a bundle carries both — picking JIT pays on-device specialization every cold
+  start, which is the cost the AOT build exists to remove.
+
 - **A supported language in an unsupported region no longer hides transcription.** A device
   set to English-in-Japan reports `en_JP`, which is in nobody's supported-locale list, while
   ten English locales sit installed — strict matching declared the feature unsupported on a

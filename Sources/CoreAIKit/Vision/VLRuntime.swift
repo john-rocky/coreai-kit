@@ -61,7 +61,9 @@ public final class VLRuntime: @unchecked Sendable {
     /// expensive vision encode: re-run only when the attached image changes.
     private let attachedSegmentID = Mutex<String?>(nil)
 
-    /// Loads the decoder + vision bundles and wires the four static inputs.
+    /// Loads the decoder + vision bundles and wires the four static inputs. `visionURL` is
+    /// either the vision graph itself or the bundle directory holding it (see
+    /// `GraphBundle.resolve(in:)`).
     public init(
         decoderBundleAt decoderURL: URL,
         visionModelAt visionURL: URL,
@@ -130,7 +132,8 @@ public final class VLRuntime: @unchecked Sendable {
                 staticInputBuffers: staticInputs))
 
         self.tokenizer = try await bundle.loadTokenizer()
-        self.vision = try await GraphModel(contentsOf: visionURL, computeUnits: .gpu)
+        self.vision = try await GraphModel(
+            contentsOf: try GraphBundle.resolve(in: visionURL), computeUnits: .gpu)
 
         setTextOnlyShift()
     }

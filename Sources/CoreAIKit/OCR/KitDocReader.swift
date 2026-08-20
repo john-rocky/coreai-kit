@@ -67,14 +67,14 @@ public final class KitDocReader: @unchecked Sendable {
     }
 
     /// Loads local directories: the vision / decoder bundle dirs (each holding one
-    /// `*.aimodel`), the constant-table dir (`embed_tokens.f16`, `image_newline.f16`,
-    /// `view_seperator.f16`, `prompt_input_ids.i32`), and the tokenizer dir.
+    /// `*.aimodel`/`*.aimodelc`), the constant-table dir (`embed_tokens.f16`,
+    /// `image_newline.f16`, `view_seperator.f16`, `prompt_input_ids.i32`), and the tokenizer dir.
     public init(
         visionDir: URL, decoderDir: URL, assetsDir: URL, tokenizerDir: URL
     ) async throws {
         vision = try await GraphModel(
-            contentsOf: Self.aimodel(in: visionDir), computeUnits: .gpu)
-        decoder = try await DocDecoder(contentsOf: Self.aimodel(in: decoderDir))
+            contentsOf: try GraphBundle.resolve(in: visionDir), computeUnits: .gpu)
+        decoder = try await DocDecoder(contentsOf: try GraphBundle.resolve(in: decoderDir))
         embed = try Self.readF16(assetsDir.appendingPathComponent("embed_tokens.f16"))
         imageNewline = try Self.readF16(assetsDir.appendingPathComponent("image_newline.f16"))
         viewSeperator = try Self.readF16(assetsDir.appendingPathComponent("view_seperator.f16"))
@@ -220,16 +220,6 @@ public final class KitDocReader: @unchecked Sendable {
     }
 
     // MARK: - assets
-
-    private static func aimodel(in dir: URL) throws -> URL {
-        if dir.pathExtension == "aimodel" { return dir }
-        let entries = try FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil)
-        guard let found = entries.first(where: { $0.pathExtension == "aimodel" }) else {
-            throw VisionError.bundleLayout("no .aimodel found under \(dir.path)")
-        }
-        return found
-    }
 
     private static func readF16(_ url: URL) throws -> [Float16] {
         let data = try Data(contentsOf: url)

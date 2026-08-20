@@ -100,12 +100,11 @@ public struct KitASRModel: LanguageModel {
         let decoderURL = try await store.download(model.decoder, progress: downloadProgress)
         let encoderRoot = try await store.download(model.encoder, progress: downloadProgress)
         try await self.init(
-            decoderBundleAt: decoderURL,
-            encoderModelAt: Self.resolveEncoderModel(in: encoderRoot),
-            arch: model.arch)
+            decoderBundleAt: decoderURL, encoderModelAt: encoderRoot, arch: model.arch)
     }
 
-    /// Loads a local decoder bundle directory + a local encoder `.aimodel`.
+    /// Loads a local decoder bundle directory + a local encoder graph (the `.aimodel`/`.aimodelc`
+    /// itself, or the bundle directory holding it).
     public init(
         decoderBundleAt decoderURL: URL, encoderModelAt encoderURL: URL, arch: ASRArchitecture,
         encoderComputeUnits: GraphModel.ComputeUnits = .gpu, modelID: String? = nil
@@ -147,14 +146,4 @@ public struct KitASRModel: LanguageModel {
     }
 
     public func detachAudio() { runtime.detach() }
-
-    private static func resolveEncoderModel(in root: URL) throws -> URL {
-        let fm = FileManager.default
-        if let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil),
-            let aimodel = entries.first(where: { $0.pathExtension == "aimodel" })
-        {
-            return aimodel
-        }
-        return root.appendingPathComponent("\(root.lastPathComponent).aimodel")
-    }
 }

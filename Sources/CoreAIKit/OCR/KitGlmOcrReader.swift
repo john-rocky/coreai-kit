@@ -39,9 +39,7 @@ public final class KitGlmOcrReader: @unchecked Sendable {
     /// LanguageBundle dir (its model + tokenizer + metadata).
     public init(visionDir: URL, decoderDir: URL) async throws {
         runtime = try await VLRuntime(
-            decoderBundleAt: decoderDir,
-            visionModelAt: Self.aimodel(in: visionDir),
-            arch: .glmOcr)
+            decoderBundleAt: decoderDir, visionModelAt: visionDir, arch: .glmOcr)
     }
 
     /// OCR an image file (any format) → recognized text.
@@ -110,16 +108,5 @@ public final class KitGlmOcrReader: @unchecked Sendable {
         if let id = tokenizer.convertTokenToId(token) { return Int32(id) }
         let ids = tokenizer.encode(text: token)
         return ids.count == 1 ? Int32(ids[0]) : nil
-    }
-
-    private static func aimodel(in dir: URL) throws -> URL {
-        if dir.pathExtension == "aimodel" || dir.pathExtension == "aimodelc" { return dir }
-        let items = try FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil)
-        if let aotc = items.first(where: { $0.pathExtension == "aimodelc" }) { return aotc }
-        guard let model = items.first(where: { $0.pathExtension == "aimodel" }) else {
-            throw KitVisionError.bundleMissingMain
-        }
-        return model
     }
 }
