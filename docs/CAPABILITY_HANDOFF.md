@@ -108,6 +108,7 @@ first-use download of the default model, from `catalog.json`.
 | `CoreAI.extract(text, as: MyType.self)` | a typed Swift value, schema-constrained (`@Generable`) |
 | `CoreAI.translate(text, to:)` | translated text |
 | `CoreAI.proofread(text)` | corrected text |
+| `CoreAI.tidyTranscript(raw, styling:structure:context:)` | a raw ASR transcript as written text — `s1-mini`, 796 MB, not the 4B default |
 
 ### Speech and audio
 | Call | Gives you | Model | Size |

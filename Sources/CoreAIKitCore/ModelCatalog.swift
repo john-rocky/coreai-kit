@@ -42,6 +42,11 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// in plain language and the model returns P(violation) from ONE forward — a static
         /// graph with no decode loop, so nothing here resembles chat.
         case moderation
+        /// ASR text normalization (S1-mini): raw transcript → written text. Text in, text out
+        /// on a language bundle, but not `chat` — its system prompt and control line are the
+        /// trained input format, so the shared chat path (empty system prompt, free-text
+        /// instruction) cannot drive it.
+        case textNormalizer
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -641,6 +646,22 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "macos", sizeMB: 1340),
                     "ios": .init(path: "ios", sizeMB: 1336),
                 ]),
+            // ── ASR text normalization: the piece the ASR models above do not have. S1-mini
+            //    by Superwhisper rewrites a raw transcript as written text (fillers dropped,
+            //    false starts resolved, punctuation + inverse text normalization). Stock qwen3
+            //    graph, S=1 decode-only, so the same gpu-pipelined bundle drives both
+            //    platforms. Driven by `KitTextNormalizer` — NOT `ChatSession`: its system
+            //    prompt and control line are the trained input format. iPhone-verified, and
+            //    the one model here that carries a hard 1024-token prompt+generated ceiling on
+            //    iOS, which is why its op chunks. ──
+            CatalogEntry(
+                id: "s1-mini", name: "S1-mini by Superwhisper",
+                repo: "mlboydaisuke/S1-mini-CoreAI", kind: .textNormalizer,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/s1_mini_decode_int8lin", sizeMB: 796),
+                    "ios": .init(path: "gpu-pipelined/s1_mini_decode_int8lin", sizeMB: 796),
+                ],
+                engine: "pipelined"),
             // ── Speaker diarization: clip → who spoke when (up to 4 speakers, 80 ms frames).
             //    Flat repo, one graph per platform: the variant path names the JIT .aimodel
             //    (macOS) / AOT h18p .aimodelc (iOS) directly, so each platform downloads only

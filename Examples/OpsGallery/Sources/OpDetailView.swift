@@ -154,6 +154,10 @@ struct OpDetailView: View {
             Text("One document per line — ranked against the query.")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+        case .notInGallery:
+            Text("This op streams; it has its own example app.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

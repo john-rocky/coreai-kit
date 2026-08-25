@@ -1,6 +1,7 @@
-// GalleryView.swift — the twenty ops as cards, rendered straight from
-// `CoreAI.Op.allCases`: name, `summary`, and `defaultModelID` all come from the kit's
-// own registry, so a new op in the package appears here without app changes.
+// GalleryView.swift — the one-shot ops as cards, rendered straight from the kit's own
+// registry (`CoreAI.Op.gallery`): name, `summary`, and `defaultModelID` all come from
+// there, so a new op in the package appears here without app changes. The live-camera
+// and video-timeline ops are filtered out — they have their own example apps.
 
 import CoreAIOps
 import SwiftUI
@@ -12,7 +13,7 @@ struct GalleryView: View {
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12
                 ) {
-                    ForEach(CoreAI.Op.allCases, id: \.self) { op in
+                    ForEach(CoreAI.Op.gallery, id: \.self) { op in
                         NavigationLink(value: op) { OpCard(op: op) }
                             .buttonStyle(.plain)
                     }

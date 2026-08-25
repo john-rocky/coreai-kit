@@ -254,6 +254,7 @@ enum ResidentKind {
     static let embedder = "embedder"
     static let forecaster = "forecaster"
     static let extractor = "extractor"
+    static let normalizer = "normalizer"
 }
 
 /// The shared body of every op cache: concurrent first calls share one load, a failed load

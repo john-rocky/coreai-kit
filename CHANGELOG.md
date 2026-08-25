@@ -9,6 +9,29 @@ policy.
 
 ### Added
 
+- **`CoreAI.tidyTranscript(_:)` + `KitTextNormalizer` — the other half of the dictation
+  path.** The kit's ASR models all produce raw transcripts; nothing turned one into text a
+  person would send. S1-mini by Superwhisper (catalog `s1-mini`, 796 MB, iPhone-verified)
+  drops fillers, resolves false starts to whatever the speaker landed on, punctuates, and
+  writes spoken numbers, dates, times, currency and email addresses out. Steered by the
+  model's own three trained axes — `styling:` / `structure:` / `context:` — because it has no
+  free-text instruction.
+
+  It is deliberately **not** a flag on `proofread`, which is contracted to keep the wording as
+  close to the original as possible: this op deletes, is English-only, and returns the empty
+  string for filler-only input. And it does not ride `ChatSession`: that path sends an empty
+  system prompt so every text op can share one model, while S1-mini's system prompt and
+  control line are its trained input format, and `enable_thinking=False` is mandatory (leave
+  thinking on and every call returns "" — a pipeline that looks like it works).
+
+  **Long input is chunked and stitched**, which is the substance rather than a nicety: on iOS
+  the shipped engine caps a growing KV cache at 1024 tokens, and the rewrite runs about as
+  long as its input, so a whole meeting transcript passed in one call stops mid-sentence.
+  Measured on iPhone 17 Pro — a 611-token transcript produced 413 tokens, every one
+  token-identical to the Mac, then stopped at absolute position exactly 1024. Input is cut at
+  word boundaries into ~450-token pieces, evenly rather than packed. `Examples/Tidy` is the
+  runner (GUI + `tidy-cli`).
+
 - **`CoreAI.capability(_:)` — the question the kit could not be asked.** `prepare` is an
   instruction ("fetch this now"); before an app can decide whether to *offer* a feature it
   needs "can this happen, and what will it cost the user". Answers `.ready`,
@@ -40,6 +63,13 @@ policy.
   supported, the disk has room and the model is cached from the last run.
 
 ### Fixed
+
+- **`Examples/OpsGallery` no longer built.** `watch`, `watchDepth` and `scan` joined
+  `CoreAI.Op` (see `coreai-doctor` above) and the gallery's three switches over the enum were
+  never extended, so the app stopped compiling. The grid now renders `CoreAI.Op.gallery` —
+  everything except the streaming ops, which need a camera screen rather than a Run button and
+  have their own examples — and the switches cover them explicitly, so the next streaming op
+  cannot silently add a card whose button cannot work.
 
 - **Every catalog VLM failed to load on iOS.** An iOS bundle built AOT holds one
   `*.aimodelc` directory and no `.aimodel`. `KitVisionModel` looked for `.aimodel` alone,

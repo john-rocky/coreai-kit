@@ -21,6 +21,7 @@ from `Op.allCases`.
 | [pull typed values out of text](#work-with-text) | `CoreAI.extract(text, as: T.self)` | Text → typed value (`@Generable`) |
 | [translate](#work-with-text) | `CoreAI.translate(text, to: .english)` | Text → translation in a named language |
 | [fix grammar and typos](#work-with-text) | `CoreAI.proofread(text)` | Text → corrected text |
+| [clean up a dictation transcript](#work-with-text) | `CoreAI.tidyTranscript(raw)` | Raw ASR transcript → written text |
 | [redact PII](#work-with-text) | `CoreAI.redact(text)` | Text → text with PII replaced by labels |
 | [find names/emails/anything in text](#work-with-text) | `CoreAI.extractEntities(from:labels:)` | Text → entities by zero-shot label |
 | [chat with a local LLM, streaming](#chat-tools-and-guided-json) | `ChatSession` | Prompt ⇄ streamed conversation |
@@ -58,7 +59,7 @@ loading UI so the first real call starts instantly:
 
 ```swift
 CoreAI.onDownload { print("\($0.currentFile): \(Int($0.fraction * 100))%") }
-try await CoreAI.prepare(.transcribe, .caption)     // any of the twenty ops
+try await CoreAI.prepare(.transcribe, .caption)     // any of the ops
 ```
 
 ## Work with text
@@ -69,6 +70,7 @@ import CoreAIOps
 let tldr = try await CoreAI.summarize(article, style: .bullets)   // .concise / .oneLine
 let en   = try await CoreAI.translate(review, to: .english)       // any Language("…")
 let neat = try await CoreAI.proofread(draft)
+let said = try await CoreAI.tidyTranscript(rawDictation)          // fillers out, numbers written
 let safe = try await CoreAI.redact(supportEmail)                  // "[PERSON]", "[EMAIL]", …
 let ids  = try await CoreAI.extractEntities(from: email, labels: ["person", "order number"])
 ```
@@ -86,6 +88,24 @@ let order = try await CoreAI.extract(email, as: Order.self)
 The free-text ops default to qwen3-4B — the floor at which translate holds up. When
 speed matters more than fidelity: `options: .model("qwen3-0.6b")`. `redact` /
 `extractEntities` are zero-shot (GLiNER2): pass any labels, not just the PII defaults.
+
+`tidyTranscript` is **not** `proofread` with a different prompt — it is S1-mini by
+Superwhisper, a 0.6B model trained for exactly one job, and it *deletes* what a
+proofreader is contracted to keep:
+
+```swift
+try await CoreAI.tidyTranscript(
+    "so um i need to like send the the report by uh friday no wait make that thursday")
+// "I need to send the report by Thursday."
+```
+
+Steer it with the model's own three axes — `styling:` (`.casual` / `.semiCasual` /
+`.semiFormal` / `.formal`), `structure:` (`.prose` / `.lists`), `context:` (`.general` /
+`.email`) — there is no free-text instruction. English only. Filler-only input returns
+the **empty string**, which is the model working, so do not retry it. Long input is cut
+at word boundaries into ~450-token chunks and the rewrites are stitched: on iPhone the
+engine caps prompt + generated at 1024 tokens, and a whole meeting transcript passed in
+one call would stop mid-sentence.
 
 <p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/pii-gliner2.jpg" alt="PII redaction on device" width="300"><br><code>CoreAI.redact</code> — GLiNER2 on iPhone</p>
 

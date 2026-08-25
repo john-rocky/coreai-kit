@@ -67,6 +67,16 @@ The fix adds no API. It makes the existing one true:
 The same applies to `translate`, `proofread`, `extract` and `redact`: all of them are given a
 `String` today and all of them break at length.
 
+**One op has since been built this way, and it is worth reading before the other four are.**
+`CoreAI.tidyTranscript` (2026-08-25) chunks because its model leaves no choice: on iOS the
+engine caps prompt + generated at 1024 tokens, so a whole transcript does not degrade, it stops
+mid-sentence. What that came out as, in `KitTextNormalizer`: cut on **token count at word
+boundaries** rather than on structure — raw dictation has no punctuation to split on, which is
+the thing being added — pieces **evened out** rather than packed, so a long input never ends in
+a 50-token orphan the model rewrites with nothing around it, and `onPartial` after each piece
+because the wait is visible. The summarise-the-summaries shape above does not apply: a rewrite
+is per-piece and stitches, it does not fold.
+
 ## Documents — a PDF is the unit, an image is not
 
 `CoreAI.read(documentAt: url)` takes an image. Nothing in the package references `CGPDF` or a

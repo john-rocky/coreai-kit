@@ -18,6 +18,14 @@ enum Samples {
         next Tuesday to review the launch plan with the Kyoto team.
         """
 
+    /// A raw speech-to-text transcript, with what dictation actually produces: fillers,
+    /// a false start corrected mid-sentence, spoken numbers and a spoken date, and no
+    /// punctuation at all.
+    static let dictation =
+        "so um i need to like send the the report by uh friday no wait make that "
+        + "thursday and the invoice came to twenty three thousand four hundred and "
+        + "fifty dollars it's due on march third twenty twenty six"
+
     static let speakLine = "CoreAI kit turns one line of Swift into speech."
     static let composePrompt = "warm lo-fi hip hop loop, vinyl crackle, 90 BPM"
 

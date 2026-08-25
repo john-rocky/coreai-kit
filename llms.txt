@@ -33,7 +33,7 @@ let tldr = try await CoreAI.summarize(text)
   not in the iOS Simulator SDK.
 - Memory, not throughput, is the shipping constraint on a phone. A 4B-class model is tight.
 
-## Example apps (29, each buildable on its own)
+## Example apps (30, each buildable on its own)
 
 - [ActionCamera](https://john-rocky.github.io/coreai-kit/Examples/ActionCamera/): ActionCamera — Live action recognition from the camera, fully on-device: CameraFeed streams frames, a rolling 16-frame clip goes through ActionRecognizer (V-JEPA 2 ViT-L, SSv2 head — Meta's video world model) and the top actions come back with confidences
 - [AskVLM](https://john-rocky.github.io/coreai-kit/Examples/AskVLM/): Qwen3-VL (AskVLM) — your VLM as its own Visual Intelligence tab
@@ -60,6 +60,7 @@ let tldr = try await CoreAI.summarize(text)
 - [Speak](https://john-rocky.github.io/coreai-kit/Examples/Speak/): Speak — the text-to-speech runner (GUI + CLI, any tts catalog id)
 - [SpotlightApp](https://john-rocky.github.io/coreai-kit/Examples/SpotlightApp/): SpotlightApp — ask your own files, with your own local model
 - [SpotlightChat](https://john-rocky.github.io/coreai-kit/Examples/SpotlightChat/): SpotlightChat — Local RAG with Apple's SpotlightSearchTool (WWDC26) driven by your own model
+- [Tidy](https://john-rocky.github.io/coreai-kit/Examples/Tidy/): Tidy — Raw dictation in, written text out — S1-mini by Superwhisper on device
 - [Transcribe](https://john-rocky.github.io/coreai-kit/Examples/Transcribe/): Transcribe — on-device speech-to-text, any ASR model in the catalog
 - [UpscaleDemo](https://john-rocky.github.io/coreai-kit/Examples/UpscaleDemo/): UpscaleDemo — Minimal CoreAIKit example: AdcSR ×4 super-resolution on-device
 - [VLChat](https://john-rocky.github.io/coreai-kit/Examples/VLChat/): VLChat — the vision-language runner (GUI + CLI, any vlm catalog id)

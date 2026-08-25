@@ -22,7 +22,7 @@ extension CoreAI {
     /// `summary` / `defaultModelID` are the same one-liners the docs use, so an op
     /// picker or gallery renders straight from `Op.allCases`.
     public enum Op: Sendable, Hashable, CaseIterable {
-        case summarize, extract, translate, proofread
+        case summarize, extract, translate, proofread, tidyTranscript
         case transcribe, transcribeMeeting, describeAudio, speak, compose, separate
         case caption, detect, read, upscale, estimateDepth
         case recognizeAction, search, forecast
@@ -40,6 +40,7 @@ extension CoreAI {
             case .extract: "Text → typed value (@Generable)"
             case .translate: "Text → translation in a named language"
             case .proofread: "Text → corrected text"
+            case .tidyTranscript: "Raw ASR transcript → written text"
             case .transcribe: "Audio file → plain-text transcript"
             case .transcribeMeeting: "Audio file → speaker-attributed transcript"
             case .describeAudio: "Audio file → description of the sounds"
@@ -67,6 +68,7 @@ extension CoreAI {
         public var defaultModelID: String? {
             switch self {
             case .summarize, .extract, .translate, .proofread: CoreAI.defaultModel
+            case .tidyTranscript: CoreAI.defaultNormalizerModel
             case .transcribe, .transcribeMeeting: CoreAI.defaultSpeechModel
             case .describeAudio: CoreAI.defaultAudioModel
             case .speak: CoreAI.defaultVoiceModel
@@ -104,6 +106,9 @@ extension CoreAI {
         switch op {
         case .summarize, .extract, .translate, .proofread:
             _ = try await OpModels.shared.chat(catalog: options.model ?? defaultModel)
+        case .tidyTranscript:
+            _ = try await TidyOpModels.shared.normalizer(
+                catalog: options.model ?? defaultNormalizerModel)
         case .transcribe:
             _ = try await OpModels.shared.transcriber(
                 catalog: options.model ?? defaultSpeechModel)

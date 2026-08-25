@@ -51,6 +51,7 @@ From [`TASK_MAP.md`](TASK_MAP.md), with the demand figures that make each row wo
 | `extractEntities`, `redact` | `NaturalLanguage` | GLiNER2 | partly — Apple's taxonomy is fixed, the model's is not |
 | `search` | `NLEmbedding` | EmbeddingGemma | partly — quality gap is real |
 | `detect` | Vision (faces, rectangles, barcodes) | RF-DETR, YOLOX | **no** — different job; Vision does not do open vocabulary |
+| `tidyTranscript` | nothing — `NaturalLanguage` corrects spelling, it does not remove fillers or resolve false starts | S1-mini | n/a — no Apple equivalent |
 | `caption`, `estimateDepth`, `upscale`, `forecast`, `compose`, `separate`, `recognizeAction` | nothing | catalog only | n/a |
 
 ## The rule that keeps this honest

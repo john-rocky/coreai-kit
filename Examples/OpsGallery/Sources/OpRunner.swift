@@ -15,15 +15,24 @@ enum OpInputKind {
     case videoFile
     case series
     case queryAndDocs
+    /// Ops this gallery does not host. The live-camera ops are per-frame streams and
+    /// `scan` returns a timeline — a card with one Run button cannot express either.
+    /// `Examples/LiveCamera` and `Examples/ScanToType` are the apps for those.
+    case notInGallery
 }
 
 extension CoreAI.Op {
     var name: String { String(describing: self) }
 
+    /// The ops this gallery shows. `Op.allCases` also carries the live-camera and video
+    /// timeline ops, which need their own screens — without this filter a new streaming
+    /// op in the package silently adds a card whose Run button cannot work.
+    static var gallery: [CoreAI.Op] { allCases.filter { $0.inputKind != .notInGallery } }
+
     var inputKind: OpInputKind {
         switch self {
-        case .summarize, .extract, .translate, .proofread, .redact, .extractEntities,
-            .speak, .compose:
+        case .summarize, .extract, .translate, .proofread, .tidyTranscript, .redact,
+            .extractEntities, .speak, .compose:
             .text
         case .caption, .detect, .read, .upscale, .estimateDepth:
             .image
@@ -35,6 +44,8 @@ extension CoreAI.Op {
             .series
         case .search:
             .queryAndDocs
+        case .watch, .watchDepth, .scan:
+            .notInGallery
         }
     }
 
@@ -44,6 +55,7 @@ extension CoreAI.Op {
         case .extract: "curlybraces"
         case .translate: "globe"
         case .proofread: "checkmark.seal"
+        case .tidyTranscript: "text.quote"
         case .redact: "eye.slash"
         case .extractEntities: "person.text.rectangle"
         case .transcribe: "waveform"
@@ -60,6 +72,9 @@ extension CoreAI.Op {
         case .recognizeAction: "figure.run"
         case .search: "magnifyingglass"
         case .forecast: "chart.line.uptrend.xyaxis"
+        case .watch: "camera.viewfinder"
+        case .watchDepth: "camera.metering.center.weighted"
+        case .scan: "film"
         }
     }
 
@@ -68,6 +83,7 @@ extension CoreAI.Op {
         switch self {
         case .speak: Samples.speakLine
         case .compose: Samples.composePrompt
+        case .tidyTranscript: Samples.dictation
         default: Samples.article
         }
     }
@@ -126,6 +142,10 @@ func runOp(_ op: CoreAI.Op, _ s: OpInputSnapshot) async throws -> OpResult {
         return .text(try await CoreAI.translate(s.text, to: .japanese))
     case .proofread:
         return .text(try await CoreAI.proofread(s.text))
+    case .tidyTranscript:
+        // Filler-only input normalizes to the empty string — that is the model working.
+        let tidied = try await CoreAI.tidyTranscript(s.text)
+        return .text(tidied.isEmpty ? "(nothing but filler \u{2014} empty by design)" : tidied)
     case .redact:
         return .text(try await CoreAI.redact(s.text))
     case .extractEntities:
@@ -195,6 +215,11 @@ func runOp(_ op: CoreAI.Op, _ s: OpInputSnapshot) async throws -> OpResult {
         }
         let forecast = try await CoreAI.forecast(s.series)
         return .forecast(history: s.series, mean: Array(forecast.mean.prefix(32)))
+
+    case .watch, .watchDepth, .scan:
+        throw GalleryError.missingInput(
+            "CoreAI.\(op.name) is a streaming op \u{2014} see Examples/LiveCamera and "
+                + "Examples/ScanToType.")
     }
 }
 

@@ -24,6 +24,7 @@ Every other example app in one place, on two shelves:
 | App | Kind | What it runs |
 |---|---|---|
 | [Transcribe](Transcribe/) | speech-to-text | Any `asr` catalog model (Whisper / Qwen3-ASR / Parakeet): record, choose, or demo clip → transcript. GUI + `swift run transcribe-cli`. |
+| [Tidy](Tidy/) | ASR text normalization | Any `textNormalizer` catalog model (S1-mini by Superwhisper): raw dictation → written text, steered by the model's styling / structure / context axes. GUI + `swift run tidy-cli`. |
 | [ChatDemo](ChatDemo/) | chat | Minimal multiplatform chat over `ChatSession`; pick a starter model, it downloads and streams. |
 | [VLChat](VLChat/) | vision-language | Any `vlm` catalog model (Qwen3-VL 2B/4B/8B, Holo2 GUI grounding): pick a photo, ask about it. GUI + `swift run vlchat-cli`. |
 | [Speak](Speak/) | text-to-speech | Any `tts` catalog model (VoxCPM / VoxCPM2 / Kokoro): type a sentence, hear it. GUI + `swift run speak-cli`. |

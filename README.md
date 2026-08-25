@@ -13,7 +13,7 @@ Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 
 ### How the catalog is verified — and how you re-check it yourself
 
 The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 59 catalog entries:
+this is *what was checked, by whom, and can you check it again.* All 60 catalog entries:
 
 - **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
   that were gated — never "whatever is on `main` today." CI re-checks every pin
@@ -60,7 +60,7 @@ let boxes = try await CoreAI.detect(in: photo)          // [Detection] — RF-DE
 let reply = try await CoreAI.speak(tldr)                // text → speech (PCM + sample rate)
 ```
 
-Twenty ops, one shape — the [Cookbook](docs/COOKBOOK.md) maps every "I want to …" to
+Twenty-four ops, one shape — the [Cookbook](docs/COOKBOOK.md) maps every "I want to …" to
 its snippet. Adding the one `CoreAIOps` product is enough: it re-exports the model
 layer, so the `import` above also covers everything below. First-use downloads are
 observable process-wide (`CoreAI.onDownload { … }`) and prefetchable behind a loading
@@ -177,7 +177,7 @@ whole transcript — including across a divergence, e.g. a re-rendered transcrip
 | `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, `LiveVision` (camera → model, with the frame policy and thermal governor already written), `KitTracker` (detections → stable ids across frames), image preprocessing |
 | `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
 | `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
-| `CoreAIOps` | Twenty anchored task-level ops — text (`CoreAI.summarize`, `.extract` typed by `@Generable`, `.translate`, `.proofread`, `.redact`), audio (`.transcribe`, `.transcribeMeeting`, `.describeAudio`, `.speak`, `.compose`, `.separate`), image (`.caption`, `.detect`, `.read`, `.upscale`, `.estimateDepth`), plus `.recognizeAction`, `.search`, `.forecast` — each resolving a catalog model behind a stable API ([Cookbook](docs/COOKBOOK.md)). Live camera: `CoreAI.watch()` / `.watchDepth()` per frame, `CoreAI.watch(for: .label("person"))` to run an expensive model only on the frames that matter |
+| `CoreAIOps` | Twenty-four anchored task-level ops — text (`CoreAI.summarize`, `.extract` typed by `@Generable`, `.translate`, `.proofread`, `.tidyTranscript` (raw dictation → written text), `.redact`), audio (`.transcribe`, `.transcribeMeeting`, `.describeAudio`, `.speak`, `.compose`, `.separate`), image (`.caption`, `.detect`, `.read`, `.upscale`, `.estimateDepth`), plus `.recognizeAction`, `.search`, `.forecast` — each resolving a catalog model behind a stable API ([Cookbook](docs/COOKBOOK.md)). Live camera: `CoreAI.watch()` / `.watchDepth()` per frame, `CoreAI.watch(for: .label("person"))` to run an expensive model only on the frames that matter |
 
 Beyond this package: [**coreai-model-zoo**](https://github.com/john-rocky/coreai-model-zoo) is
 where the models and their conversion recipes live, and
@@ -188,7 +188,7 @@ ecosystem — Apple's own tooling, other people's converters, sample apps, and b
 
 Task ops
 
-- `Examples/OpsGallery` — all twenty ops as cards: pick an input, run the one-line call, see the result (iPhone + Mac)
+- `Examples/OpsGallery` — every one-shot op as a card: pick an input, run the one-line call, see the result (iPhone + Mac)
 - `Examples/OpsDemo` — task-level ops: one voice memo → transcript, summary, typed action items, translation, spoken reply; or one image → caption, detections, OCR (`swift run`)
 
 Text & chat
@@ -216,6 +216,7 @@ Vision
 Audio & speech
 
 - `Examples/Transcribe` — speech→text (Whisper large-v3-turbo, Qwen3-ASR, Parakeet TDT)
+- `Examples/Tidy` — the other half of dictation: raw transcript → written text (S1-mini by Superwhisper — fillers, false starts, spoken numbers and dates)
 - `Examples/Meeting` — who-said-what: Sortformer diarization + per-turn ASR in one API
 - `Examples/Speak` — text-to-speech (Kokoro, VoxCPM)
 - `Examples/Music` — text→music with Stable Audio Open Small (~12× realtime on iPhone)

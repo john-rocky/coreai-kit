@@ -7,6 +7,7 @@
 //   swift run OpsDemo                    # text + search ops on built-in samples
 //   swift run OpsDemo voice-memo.wav     # full speech -> text -> speech pipeline
 //   swift run OpsDemo photo.jpg          # caption + detect + document OCR
+//   swift run OpsDemo transcript.txt     # raw ASR transcript -> written text (chunked)
 
 import CoreAIOps
 import Foundation
@@ -44,6 +45,13 @@ let email = """
 
 let typos = "Their going to recieve the package tommorow, weather or not its raining."
 
+/// What dictation actually produces: fillers, a false start corrected mid-sentence, spoken
+/// numbers and a spoken date, and no punctuation anywhere.
+let dictation =
+    "so um i need to like send the the report by uh friday no wait make that thursday "
+    + "and the invoice came to twenty three thousand four hundred and fifty dollars "
+    + "it's due on march third twenty twenty six"
+
 let notes = [
     "Book flights to Sapporo for the snow festival and reserve a hotel near Odori Park.",
     "The quarterly report needs the updated revenue table before Thursday's review.",
@@ -68,9 +76,22 @@ enum OpsDemo {
         switch url.pathExtension.lowercased() {
         case "jpg", "jpeg", "png", "heic", "tiff", "webp":
             try await imagePipeline(url)
+        case "txt", "md":
+            try await transcriptPipeline(url)
         default:
             try await voiceMemoPipeline(url)
         }
+    }
+
+    /// A raw transcript file in, written text out. The point of pointing this at a long one:
+    /// `tidyTranscript` cuts past ~450 input tokens into word-boundary chunks and stitches the
+    /// rewrites, because on iPhone the engine caps prompt + generated at 1024 tokens and a
+    /// whole meeting transcript would otherwise stop mid-sentence.
+    static func transcriptPipeline(_ url: URL) async throws {
+        let raw = try String(contentsOf: url, encoding: .utf8)
+        print("> CoreAI.tidyTranscript(raw)  [\(raw.count) characters in]")
+        let clean = try await CoreAI.tidyTranscript(raw)
+        print("[clean] \(clean)")
     }
 
     /// One voice memo in, six op results out — audio at both ends.
@@ -79,8 +100,11 @@ enum OpsDemo {
         let text = try await CoreAI.transcribe(memo)
         print("[transcript] \(text)\n")
 
-        print("> CoreAI.proofread(text)")
-        let clean = try await CoreAI.proofread(text)
+        // The transcript is raw dictation, so the op for this position is the ASR text
+        // normalizer, not `proofread`: it drops fillers and false starts and writes spoken
+        // numbers and dates out, which `proofread` is contracted NOT to do.
+        print("> CoreAI.tidyTranscript(text)")
+        let clean = try await CoreAI.tidyTranscript(text)
         print("[clean] \(clean)\n")
 
         print("> CoreAI.summarize(clean, style: .oneLine)")
@@ -140,6 +164,14 @@ enum OpsDemo {
         print("> CoreAI.proofread(typos)")
         let clean = try await CoreAI.proofread(typos)
         print("[clean] \(clean)\n")
+
+        print("> CoreAI.tidyTranscript(dictation)")
+        let tidied = try await CoreAI.tidyTranscript(dictation)
+        print("[tidy] \(tidied)\n")
+
+        print("> CoreAI.tidyTranscript(\"um\")  // filler only")
+        let empty = try await CoreAI.tidyTranscript("um")
+        print("[tidy] \(empty.isEmpty ? "(empty string — correct)" : empty)\n")
 
         print("> CoreAI.search(\"What should I plan for the trip?\", in: notes, topK: 2)")
         for hit in try await CoreAI.search("What should I plan for the trip?", in: notes, topK: 2) {

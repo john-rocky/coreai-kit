@@ -46,14 +46,14 @@ let hits = try await CoreAI.search(query, in: paragraphs)       // semantic rank
 let wave = try await CoreAI.speak(reply)                        // text → speech (PCM)
 ```
 
-Twenty ops in all — also `proofread`, `extractEntities`, `transcribeMeeting` (who said
+Twenty-four ops in all — also `proofread`, `tidyTranscript`, `extractEntities`, `transcribeMeeting` (who said
 what), `describeAudio`, `compose` (text → music), `separate` (vocals / instrumental),
 `upscale`, `estimateDepth`, `recognizeAction`, and `forecast` (time series). The
 [Cookbook](COOKBOOK.md) maps every "I want to …" to its snippet; `Examples/OpsDemo`
 runs the core pipeline end to end.
 
 First use of an op downloads its model (cached afterwards). Watch and front-load that
-from one place — no progress parameter on twenty ops:
+from one place — no progress parameter on two dozen ops:
 
 ```swift
 CoreAI.onDownload { print("\($0.currentFile): \(Int($0.fraction * 100))%") }

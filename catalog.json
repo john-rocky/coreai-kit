@@ -751,6 +751,24 @@
       }
     },
     {
+      "id": "s1-mini",
+      "name": "S1-mini by Superwhisper",
+      "repo": "mlboydaisuke/S1-mini-CoreAI",
+      "revision": "cf2e14841fbdbbbf4cbca29ff3e49cddd75392c0",
+      "kind": "textNormalizer",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/s1_mini_decode_int8lin",
+          "sizeMB": 796
+        },
+        "ios": {
+          "path": "gpu-pipelined/s1_mini_decode_int8lin",
+          "sizeMB": 796
+        }
+      },
+      "engine": "pipelined"
+    },
+    {
       "id": "sortformer-diar-v2",
       "name": "Streaming Sortformer v2 (4-spk)",
       "repo": "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI",
