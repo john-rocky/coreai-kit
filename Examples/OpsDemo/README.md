@@ -12,6 +12,25 @@ app code: ops are the stable API and the kit resolves a catalog model behind the
 swift run OpsDemo                    # text + search ops on built-in samples (qwen3 4B + EmbeddingGemma)
 swift run OpsDemo voice-memo.wav     # speech -> text -> speech (downloads Whisper + VoxCPM once)
 swift run OpsDemo photo.jpg          # caption + detect + read (Qwen3-VL 2B, RF-DETR, GLM-OCR)
+swift run OpsDemo transcript.txt     # raw ASR transcript -> written text (S1-mini, chunked)
+```
+
+The memo path cleans the transcript with `CoreAI.tidyTranscript`, not `proofread`: the input
+is raw dictation, and the op for that position drops fillers and false starts and writes
+spoken numbers and dates out — which `proofread` is contracted *not* to do.
+
+A `.txt` / `.md` argument runs that op alone, which is where long input is worth watching. A
+695-token meeting transcript is cut into word-boundary chunks and stitched (13.6 s on an M4
+Max), because on iPhone the engine caps prompt + generated at 1024 tokens:
+
+```
+> CoreAI.tidyTranscript(raw)  [3480 characters in]
+[clean] Okay, let me just get all of this down before I forget it. We had the quarterly
+review this morning, and there were basically three things that came out of it.
+
+First, the pipeline numbers are actually better than we thought. We closed 19 deals in Q3,
+not 17. The discrepancy was two deals that got booked on October 1 instead of September 30.
+…
 ```
 
 Real pipeline output (Mac, ~38 s warm for the five text ops):
