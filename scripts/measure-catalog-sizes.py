@@ -28,6 +28,11 @@ Two ways this was wrong before it was right, both worth knowing before trusting 
     a file — which is exactly the shape of the errors this was written to find.
 
 Reads file metadata only; no weights are downloaded.
+
+`--write` moves a number that ~39 model cards quote back at the reader. The cards are
+generated from this file by the zoo's `scripts/gen-cards`, and nothing re-runs it for you:
+on 2026-08-25 five cards were found advertising a download size the catalog no longer
+agreed with, one of them by almost 2x. Correct sizes here, then regenerate there.
 """
 
 from __future__ import annotations

@@ -60,6 +60,14 @@ Ordered by value per unit of work, not by how interesting it is.
 > The 33–39 FPS in the README belongs to `DetectCamera`'s hand-rolled loop and must not be
 > quoted for `LivePipeline`. Power is still unmeasured, as the precondition below says.
 >
+> **Also never measured (2026-08-25): `tidyTranscript` on a phone.** The S1-mini *bundle* is
+> device-verified — 276/276 + 27/27 token-exact vs the Mac, and the 1024-token ceiling was
+> measured there. The *op path over it* was only run on a Mac. So `KitTextNormalizer`'s
+> `contextTokens = 1024` and its 450-token chunk budget are derived from the engine source
+> plus that evidence, not observed: nobody has watched a chunk complete on iOS, or checked
+> that the stitched result matches the Mac's. Nothing in the docs claims otherwise — keep it
+> that way. `Examples/Tidy` builds for iOS and is what to run.
+>
 > **Still unresolved, and it blocks `capability()`'s last case.** What Core AI reports on
 > hardware too old to run a bundle. `capability()` returns `unsupportedDevice` only for
 > facts knowable without a device (id absent from the catalog, model not published for the
