@@ -68,8 +68,20 @@ Ordered by value per unit of work, not by how interesting it is.
 > **Try it on a device: `Examples/LiveCamera`.** Four tabs, one per live task, `-gate` for a
 > transcript instead of taps, `swift run live-cli` for the offline half with no device.
 
+0. **`CoreAI.transcribe(_:normalize:)`** — chain ASR into the text normalizer in one call.
+   `CoreAI.tidyTranscript` shipped 2026-08-25 and is the real product shape's second half;
+   the first half is that nobody wants to call two ops. Deliberately deferred until the op
+   was proven on its own, and it stays deferred until two things are answered rather than
+   assumed: **two models resident at once** (the ASR model plus 796 MB, on a phone, which
+   is what `ModelResidency` exists to arbitrate), and **what the flag means with no
+   `options.model`** — that path goes to the *system* transcriber, so the composed call
+   spans an Apple backend and a catalog model. Cheapest of anything on this list, and the
+   one with the most ways to be quietly wrong.
+
 1. **Text at scale** — chunking for `summarize` / `translate` / `proofread` / `extract`.
    No new API, no new model, no device. It makes calls that fail today stop failing.
+   `KitTextNormalizer` is the worked example — see `APP_SCALE_INPUT.md` §Text for what its
+   chunker settled on and why structure-splitting is not it.
    *(`APP_SCALE_INPUT.md` §Text)*
 2. **`capability(_:)`** — the query the kit cannot be asked. Most of the value lands without
    solving the device-support question; do the rest of it first and that part last.
