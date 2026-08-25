@@ -1,0 +1,12 @@
+# The Xcode this repository's CI builds, tests and measures with.
+#
+# One place to edit when the runner moves to a new seed or to a release build.
+# scripts/check-xcode-pin.sh enforces it, and every workflow takes DEVELOPER_DIR
+# from here instead of repeating the path three times.
+#
+# XCODE_BUILD is the ProductBuildVersion, not the folder name. The folder name is
+# whatever a human typed when they dragged the app in; the build version is what
+# actually produced the green.
+
+XCODE_PATH=/Applications/Xcode-27.0.0-Beta.5.app
+XCODE_BUILD=27A5237l

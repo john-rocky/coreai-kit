@@ -42,22 +42,20 @@ jobs:
     # probe never ran at all.
     runs-on: [self-hosted, macOS]
     timeout-minutes: 60
-    env:
-      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.5.app
     steps:
       - uses: actions/checkout@v4
-      - name: The pinned Xcode is installed
-        # First thing that breaks when a beta is replaced on the runner. Say so
-        # in one line instead of letting every later step fail on `xcrun`.
-        run: |
-          if [ ! -d "$DEVELOPER_DIR" ]; then
-            echo "::error::$DEVELOPER_DIR is not installed on this runner." \
-                 "Install that beta, or point DEVELOPER_DIR at the one that is" \
-                 "(.github/workflows/*.yml all pin the same path)."
-            ls -d /Applications/Xcode*.app 2>/dev/null || true
-            exit 1
-          fi
-          swift --version
+      - name: The pinned Xcode is the one being used
+        # Sets DEVELOPER_DIR for every later step from .xcode-pin, and refuses to
+        # continue unless that Xcode is installed, is the build the pin names, and
+        # has not been superseded by a release build of the same train. The old
+        # check tested `[ -d ]` alone, which cannot go red at GA: the release Xcode
+        # lands in /Applications/Xcode.app and the beta stays put.
+        run: ./scripts/check-xcode-pin.sh
+      - name: Toolchain in use
+        # Its own step on purpose: DEVELOPER_DIR is exported through GITHUB_ENV,
+        # which the step that writes it does not see. Printed here it is the
+        # toolchain the probe actually runs under.
+        run: swift --version
       # What this probe can and cannot detect, as of 2026-08-17. It loads the
       # catalog's pinned qwen3-0.6b, and that pin has named a RESCUED bundle
       # since 2026-07-21 — `producer: coreai-core 1.0.0b2`, created 04:16Z that

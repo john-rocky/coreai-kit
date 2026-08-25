@@ -24,25 +24,19 @@ concurrency:
 jobs:
   build-test:
     # Self-hosted: the CoreAI framework needs macOS 27 beta, which no hosted runner
-    # image carries. DEVELOPER_DIR must name an Xcode whose SDK matches the installed
-    # OS build, or the test bundle fails to dlopen FoundationModels.
+    # image carries. The Xcode is named once in .xcode-pin — its SDK must match the
+    # installed OS build, or the test bundle fails to dlopen FoundationModels.
     runs-on: [self-hosted, macOS]
     timeout-minutes: 30
-    env:
-      DEVELOPER_DIR: /Applications/Xcode-27.0.0-Beta.5.app
     steps:
       - uses: actions/checkout@v4
-      - name: The pinned Xcode is installed
-        # First thing that breaks when a beta is replaced on the runner. Say so
-        # in one line instead of letting every later step fail on `xcrun`.
-        run: |
-          if [ ! -d "$DEVELOPER_DIR" ]; then
-            echo "::error::$DEVELOPER_DIR is not installed on this runner." \
-                 "Install that beta, or point DEVELOPER_DIR at the one that is" \
-                 "(.github/workflows/*.yml all pin the same path)."
-            ls -d /Applications/Xcode*.app 2>/dev/null || true
-            exit 1
-          fi
+      - name: The pinned Xcode is the one being used
+        # Sets DEVELOPER_DIR for every later step from .xcode-pin, and refuses to
+        # continue unless that Xcode is installed, is the build the pin names, and
+        # has not been superseded by a release build of the same train. The old
+        # check tested `[ -d ]` alone, which cannot go red at GA: the release Xcode
+        # lands in /Applications/Xcode.app and the beta stays put.
+        run: ./scripts/check-xcode-pin.sh
       - name: Build
         run: swift build
       - name: Unit tests
@@ -58,5 +52,9 @@ jobs:
       - name: Probe classification holds
         # The next-SDK gate's verdict logic; it published a false red once.
         run: ./scripts/test-classify-probe.sh
+      - name: Xcode pin logic holds
+        # The gate that decides which SDK every other job trusts. Its GA case
+        # cannot be exercised until GA, so it is exercised against fixtures.
+        run: ./scripts/test-check-xcode-pin.sh
       - name: llms.txt lists every example
         run: python3 scripts/gen_llms_txt.py --check
