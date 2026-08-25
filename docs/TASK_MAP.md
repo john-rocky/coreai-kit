@@ -14,7 +14,7 @@ first-use download; **(Mac)** means no iOS variant is published yet.
 
 | Task | Demand | Apple ships | Kit ships | Verdict |
 |---|---|---|---|---|
-| Speech → text | **5,972** | `SpeechAnalyzer` + `SpeechTranscriber` — 45 locales, OS-managed assets shared between apps, streaming, **and word timestamps** | Whisper 3.2 GB · Nemotron-streaming 1.3 GB · Parakeet 1.3 GB **(Mac)** · Qwen3-ASR 3.1 GB **(Mac)** | **Corrected 2026-08-05, from the SDK.** Two of the three advantages claimed here were already Apple's: `timeIndexedProgressiveTranscription` is a preset. What is left is a locale Apple lacks on the device in hand, behaviour that must not move under an OS update, and an offline guarantee. `CoreAI.transcribe` now defaults to Apple's and the catalog model is opt-in |
+| Speech → text | **5,972** | `SpeechAnalyzer` + `SpeechTranscriber` — 45 locales, OS-managed assets shared between apps, streaming, **and word timestamps** | Whisper 3.2 GB · Nemotron-streaming 1.3 GB · Parakeet 1.3 GB **(Mac)** · Qwen3-ASR 3.1 GB **(Mac)** | **Corrected 2026-08-05, from the SDK.** Two of the three advantages claimed here were already Apple's: `timeIndexedProgressiveTranscription` is a preset. What is left is a locale Apple lacks on the device in hand, behaviour that must not move under an OS update, and an offline guarantee. `CoreAI.transcribe` now defaults to Apple's and the catalog model is opt-in. **Corrected again 2026-08-25**: Parakeet is Apple's now too — `apple/coreai-models` merged the TDT 0.6B v3 recipe (#136, 08-07) and live streaming over it (#184, 08-21), on a package that builds for iOS as well as macOS. The kit's Parakeet is a macOS-only bundle, and pointing at it as something Apple lacks is no longer true |
 | Text → speech | **4,080** | `AVSpeechSynthesizer`, and `PersonalVoice` only for accessibility | VibeVoice 1.4 GB · VoxCPM 1.7 GB · Kokoro 341 MB **(Mac)** · VoxCPM2 5.7 GB | Apple's voices are free but cannot be cloned. **Deliberately not moved to the system backend**: doing so would leave a wrapper around a public API with no reason to exist. The clone is what earns the download |
 | Who spoke when | — (no Apple API to measure) | **nothing** — `Speech.framework` contains no speaker API; the analyzer runs exactly three modules and none of them is one | Sortformer **238 MB** (measured; the 451 MB here was the macOS figure doubled) | **Apple has no answer at all.** Still true after reading the iOS 27 SDK, and now the only speech row where that holds |
 | Speaker-attributed transcript | — | **nothing** | `MeetingTranscriber` (Sortformer + Apple's transcriber) = **238 MB** | Composition, not a model, and now the cheapest thing here rather than the most expensive. The thing to lead with |
@@ -27,6 +27,8 @@ first-use download; **(Mac)** means no iOS variant is published yet.
 Nemotron 2.5 GB + VibeVoice 1.4 GB + Sortformer 451 MB ≈ **4.3 GB**. With Parakeet and Kokoro
 ported it would be ≈ **2.1 GB**. Nothing else on this map changes adoption economics that much
 for that little work — both models are already ported, just not for iOS.
+**Superseded for Parakeet, 2026-08-07**: Apple ships that export itself now, so the iPhone
+number moves whether or not this kit does anything. Kokoro is the half that is still ours.
 
 ## Image and video
 
@@ -89,8 +91,11 @@ is whether anything survives the routing, not whether Apple has the capability.
 **3. Two tasks should never be built**: face detection and person segmentation. Apple's are
 free, on-device, and better. Their demand numbers are real but they are not the kit's demand.
 
-**4. The cheapest high-value work is an iOS port, not a new model.** Parakeet and Kokoro exist
-and are macOS-only; publishing iOS variants halves the cost of the highest-demand domain.
+**4. ~~The cheapest high-value work is an iOS port, not a new model.~~** Half of this expired
+on 2026-08-07. Apple's own Parakeet recipe landed then (`apple/coreai-models` #136), with live
+streaming three weeks later (#184), and that package builds for iOS. Porting the kit's Parakeet
+to iOS would now be catching up rather than filling a gap. Kokoro is still macOS-only and the
+argument still holds for it.
 
 ---
 

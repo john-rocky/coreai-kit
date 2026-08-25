@@ -61,4 +61,4 @@ repeatedly, hold the `KitTranscriber` and call `transcribe(samples:)` on it per 
 |---|---|---|---|
 | `whisper-large-v3-turbo` | Whisper large-v3-turbo | macOS + iOS | 100 languages, auto-detect, ≤30 s window |
 | `qwen3-asr-1.7b` | Qwen3-ASR 1.7B | macOS | LLM-engine ASR, 52 languages |
-| `parakeet-tdt-0.6b-v3` | Parakeet-TDT 0.6B v3 | macOS | TDT transducer, fastest of the three |
+| `parakeet-tdt-0.6b-v3` | Parakeet-TDT 0.6B v3 | macOS | TDT transducer, fastest of the three. Apple ships this model itself since `coreai-models` #136 (08-07), with live streaming in #184 — on iOS too. Reach for this entry when you want it inside the kit's one-call ASR surface, not because it is otherwise unavailable |

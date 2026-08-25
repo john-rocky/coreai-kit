@@ -7,6 +7,8 @@ policy.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-25
+
 ### Added
 
 - **`CoreAI.tidyTranscript(_:)` + `KitTextNormalizer` — the other half of the dictation
@@ -198,7 +200,41 @@ policy.
   measured stats and the thermal governor visible on screen, plus `swift run live-cli` for
   the offline half (video scan and the preprocessing benchmark) with no device.
 
+### Changed
+
+- **Parakeet is no longer described as something Apple does not have.** `apple/coreai-models`
+  merged its own Parakeet TDT 0.6B v3 export on 2026-08-07 (#136) and live streaming over it
+  on 08-21 (#184), in a package that builds for iOS as well as macOS. Three places here —
+  `docs/TASK_MAP.md`, `docs/SPEECH_API.md` and `Examples/Transcribe/README.md` — argued from
+  a macOS-only Parakeet, and one of them called an iOS port "the cheapest high-value work on
+  the map". Corrected in place with the date, rather than deleted: the catalog entry is
+  still a macOS-only bundle and that is still worth saying out loud. Kokoro is the half of
+  that argument that survives.
+
 ### Fixed
+
+- **0.3.0 does not compile against the current Xcode 27 SDK; this release does.**
+  FoundationModels renamed `LanguageModelCapabilities.init(capabilities:)` to `init(_:)`
+  between Xcode 27 beta 3 and beta 5, which is five call sites here and one in the model
+  fork. `docs/STABILITY.md` tells adopters to depend on a tag because shipping apps depend
+  on this package — so between 2026-08-16 and today, the documented way to adopt CoreAIKit
+  was the one way that failed, and it failed at compile time with an error naming Apple's
+  type rather than anything of ours. `main` has been buildable since; nothing was tagged.
+  If you are pinned to `from: "0.3.0"`, move to `0.4.0`.
+
+- **Three examples were resolving Apple's package, not the patched fork.** `DocChat`,
+  `FMToolDemo` and `GuidedDemo` carried a `Package.resolved` pinning
+  `apple/coreai-models` 0.1.0 — a lockfile from before the fork existed. Every example
+  depends on the kit by path, so the kit's own `exact:` requirement won them back on the
+  first resolve; nobody had run one. All 25 lockfiles now record `0.2.2-zoo`.
+
+- **CI can no longer pass by pinning an Xcode nobody uses.** Every workflow checked that
+  `$DEVELOPER_DIR` was a directory and nothing else. At GA that check stops meaning
+  anything: the release Xcode installs alongside the beta, the beta's folder keeps
+  existing, and the gates keep publishing green for an SDK no shipping app is built with.
+  `.xcode-pin` now names path *and* ProductBuildVersion in one place, and
+  `scripts/check-xcode-pin.sh` refuses to run the job unless the installed build is the
+  one the pin claims and no release build of the same Xcode train has appeared beside it.
 
 - **Live depth no longer renders a bitmap per frame.** `LiveVision.depth` fed the estimator
   through `CIContext.createCGImage`; it now takes the capture buffer directly through the new

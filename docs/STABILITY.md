@@ -11,8 +11,16 @@ Releases follow [SemVer](https://semver.org). Pre-1.0:
 - **Minor** (`0.X.0`): may change or remove API. Anything breaking is called out in
   [`CHANGELOG.md`](../CHANGELOG.md) with a migration note.
 
-Pin the package with `from: "0.2.0"` (or `exact:` if you want zero surprises) — every
+Pin the package with `from: "0.4.0"` (or `exact:` if you want zero surprises) — every
 release is a tag on this repo.
+
+**While the OS is in beta, a tag can stop compiling without anyone touching it.**
+FoundationModels renamed `LanguageModelCapabilities.init(capabilities:)` to `init(_:)`
+between Xcode 27 beta 3 and beta 5, and 0.3.0 — the latest tag at the time — stopped
+building on the newer SDK. `main` was fixed the same day; the tag was not, for nine days.
+That is a real cost of the promise on this page, so the rule from 0.4.0 on: **an SDK change
+that breaks the newest tag is released as a new tag, not left on `main`.** If you hit a
+compile error naming an Apple type, check for a newer tag before anything else.
 
 ## The catalog contract
 

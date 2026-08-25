@@ -145,6 +145,11 @@ On iPhone today the speech stack is Nemotron-streaming 2.5 GB + VibeVoice 1.4 GB
 Sortformer 451 MB ≈ **4.3 GB**. The light models are macOS-only: Parakeet 1.3 GB and Kokoro
 341 MB have no iOS variant published.
 
+> **Half-expired, 2026-08-07.** Apple merged its own Parakeet TDT 0.6B v3 export
+> (`apple/coreai-models` #136) and then live streaming over it (#184, 08-21), in a package
+> that builds for iOS. The Parakeet half of this dependency is no longer something this kit
+> has to supply. Kokoro is unchanged.
+
 With those two ported, the same stack is ≈ **2.1 GB**. Both models are already converted; only
 the iOS variant is missing. **Nothing else on the map moves adoption cost that far for that
 little work**, and a 4.3 GB first-use download is not something an engineer adds on a Tuesday

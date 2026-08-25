@@ -56,5 +56,10 @@ jobs:
         # The gate that decides which SDK every other job trusts. Its GA case
         # cannot be exercised until GA, so it is exercised against fixtures.
         run: ./scripts/test-check-xcode-pin.sh
+      - name: The prepared GA wording edit still applies
+        # Seven sentences say "beta" and stop being true on the day 27 ships.
+        # The edit is written; this fails if someone rewords a line underneath
+        # it, so it goes stale here rather than on the morning it is needed.
+        run: python3 scripts/ga-wording.py --check
       - name: llms.txt lists every example
         run: python3 scripts/gen_llms_txt.py --check
