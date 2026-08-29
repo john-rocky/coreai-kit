@@ -7,6 +7,18 @@ policy.
 
 ## [Unreleased]
 
+### Changed
+
+- **The model-fork pin moves to `0.2.3-zoo`** (was `0.2.2-zoo`) — in the manifest and in every
+  lockfile: the 27 SwiftPM `Package.resolved` files and the SiriAsk Xcode workspace lockfile,
+  which the 0.4.0 sweep did not reach and which still recorded `0.1.1-zoo`. `0.2.3-zoo` is
+  upstream `main` through apple/coreai-models#207 (2026-08-28) with the zoo patches rebased on
+  top; the tags before it sat on upstream at #90 (just after 0.2.0). The change a running app can see is
+  upstream #121: the pipelined composite sampler reused one execution descriptor across
+  in-flight steps and garbled output at temperature > 0 (word repetitions, doubled
+  punctuation). No tag before `0.2.3-zoo` has that fix. One call site followed upstream #122's
+  rename (`CoreAIRunner(from:)` → `CoreAIRunner(bundle:)`); nothing in the kit's own API moved.
+
 ## [0.4.0] — 2026-08-25
 
 ### Added

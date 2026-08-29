@@ -23,24 +23,19 @@ let package = Package(
         .executable(name: "coreai-doctor", targets: ["coreai-doctor"]),
     ],
     dependencies: [
-        // Patched community fork of apple/coreai-models — adds hybrid/SSM bundle support to
-        // the pipelined engine so flagship hybrid models (Qwen3.5/3.6, LFM2.5, Granite 4)
-        // load. See https://github.com/john-rocky/coreai-models (tag v0.1.0-zoo).
-        // v0.1.1-zoo adds the D1 engine fix: a consumer that breaks the stream at EOS now stops the
-        // pipelined engine (instead of running to maxTokens), so a SECOND consecutive generation no
-        // longer collides with the still-running first one ("something went wrong" on turn 2).
-        // v0.2.0-zoo: upstream 0.2.0 (implicit prefix caching / reset(to:) / async
-        // generate / cancel API / pipeline buffer-rotation fix) merged with the zoo
-        // patches (hybrid extra states, chunked prefill via "prefill" fn,
-        // per-token/static inputs, D1 EOS stop), plus the sampler/stream ordering fix
-        // (bogus first token per turn). For local engine work, swap in
-        // .package(path: "../coreai/coreai-models") — branch zoo-0.2 matches this tag.
-        // 0.2.1-zoo adds the iOS dynamic-KV capacity guard (apple/coreai-models#124, kit #5).
-        // 0.2.2-zoo is 0.2.1-zoo plus one line: FoundationModels changed
-        // LanguageModelCapabilities.init to init(_:) between Xcode 27 beta 3 and beta 5, so the
-        // labelled call stopped compiling. Branched from the 0.2.1-zoo commit rather than
-        // zoo-0.2, so this is the only delta from the revision pinned before it.
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.2-zoo"),
+        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.3-zoo is
+        // upstream main through #207 (2026-08-28) plus the zoo patches to the pipelined
+        // engine: hybrid/SSM extra states so Qwen3.5/3.6, LFM2.5 and Granite 4 load,
+        // chunked prefill via a static-chunk "prefill" function, per-token/static inputs,
+        // decode-only S=1 bundles (apple/coreai-models#212), the iOS dynamic-KV capacity
+        // guard (apple/coreai-models#124), EOS stop when the consumer breaks the stream,
+        // and the sampler-behind-logits ordering drain. Everything else is byte-for-byte
+        // upstream. See https://github.com/john-rocky/coreai-models.
+        // 0.2.2-zoo and earlier predate upstream #121 (per-call sampler execution
+        // descriptor; garbled text at temperature > 0 under pipelined decode).
+        // For local engine work swap in .package(path: "../coreai-models") — branch
+        // zoo-0.4 matches this tag.
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.3-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [

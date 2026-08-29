@@ -106,7 +106,7 @@ struct ModelRuntime: Sendable {
         // .fixedSize (4096 upfront) makes every generation ride the broken shape.
         // So: keep .auto (growing) and keep per-turn prompt+maxTokens inside 1024
         // at the app layer until the compiler-level fix lands.
-        let runner = CoreAIRunner(from: bundle, variant: engineVariant.factoryOverride)
+        let runner = CoreAIRunner(bundle: bundle, variant: engineVariant.factoryOverride)
         async let engineLoad = runner.makeInferenceEngine()
         async let tokenizerLoad = bundle.loadTokenizer()
         let (engine, tokenizer) = try await (engineLoad, tokenizerLoad)
