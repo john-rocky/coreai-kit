@@ -124,6 +124,10 @@ Ask the human:
 
 - Publishing anything to Hugging Face, or pushing to a namespace you were not handed.
 - Bumping a catalog revision pin.
+- Bumping the `coreai-models` fork pin in `Package.swift`. When it is bumped, the hermetic
+  tests cannot see an engine behavior change; before it lands, run two `ChatSession` turns on
+  a hybrid bundle (Qwen3.5 / LFM2.5 / Granite 4) on a Mac — the second turn is where a hybrid
+  engine change shows (0.2.3-zoo's partial-reset refusal was found that way, not by CI).
 - Posting publicly about the package, or filing issues/PRs against `apple/*`.
 - Reporting device numbers you did not measure on that device.
 
