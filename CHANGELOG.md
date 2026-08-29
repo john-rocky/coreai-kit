@@ -9,14 +9,17 @@ policy.
 
 ### Changed
 
-- **The model-fork pin moves to `0.2.3-zoo`** (was `0.2.2-zoo`) — in the manifest and in every
+- **The model-fork pin moves to `0.2.4-zoo`** (was `0.2.2-zoo`) — in the manifest and in every
   lockfile: the 27 SwiftPM `Package.resolved` files and the SiriAsk Xcode workspace lockfile,
   which the 0.4.0 sweep did not reach and which still recorded `0.1.1-zoo`. `0.2.3-zoo` is
   upstream `main` through apple/coreai-models#207 (2026-08-28) with the zoo patches rebased on
   top; the tags before it sat on upstream at #90 (just after 0.2.0). The change a running app can see is
   upstream #121: the pipelined composite sampler reused one execution descriptor across
   in-flight steps and garbled output at temperature > 0 (word repetitions, doubled
-  punctuation). No tag before `0.2.3-zoo` has that fix. One call site followed upstream #122's
+  punctuation). No tag before `0.2.3-zoo` has that fix. `0.2.4-zoo` then drops the fork's own
+  sampler-ordering drain, which that upstream fix made redundant — on a Mac, qwen3-0.6b decodes
+  **+43–52% faster** (drain vs. none, interleaved, greedy output token-identical, 12-turn
+  reset/generate loops clean); iOS is not measured yet. One call site followed upstream #122's
   rename (`CoreAIRunner(from:)` → `CoreAIRunner(bundle:)`); nothing in the kit's own API moved.
 
 ### Fixed

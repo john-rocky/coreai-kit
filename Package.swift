@@ -23,19 +23,21 @@ let package = Package(
         .executable(name: "coreai-doctor", targets: ["coreai-doctor"]),
     ],
     dependencies: [
-        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.3-zoo is
+        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.4-zoo is
         // upstream main through #207 (2026-08-28) plus the zoo patches to the pipelined
         // engine: hybrid/SSM extra states so Qwen3.5/3.6, LFM2.5 and Granite 4 load,
         // chunked prefill via a static-chunk "prefill" function, per-token/static inputs,
         // decode-only S=1 bundles (apple/coreai-models#212), the iOS dynamic-KV capacity
-        // guard (apple/coreai-models#124), EOS stop when the consumer breaks the stream,
-        // and the sampler-behind-logits ordering drain. Everything else is byte-for-byte
-        // upstream. See https://github.com/john-rocky/coreai-models.
+        // guard (apple/coreai-models#124), and EOS stop when the consumer breaks the
+        // stream. Everything else is byte-for-byte upstream. See
+        // https://github.com/john-rocky/coreai-models.
+        // 0.2.4-zoo drops the fork's sampler-ordering drain, which upstream #121 made
+        // redundant: macOS decode +43-52% (qwen3-0.6b, drain vs. none); iOS not measured.
         // 0.2.2-zoo and earlier predate upstream #121 (per-call sampler execution
         // descriptor; garbled text at temperature > 0 under pipelined decode).
         // For local engine work swap in .package(path: "../coreai-models") — branch
         // zoo-0.4 matches this tag.
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.3-zoo"),
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.4-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [
