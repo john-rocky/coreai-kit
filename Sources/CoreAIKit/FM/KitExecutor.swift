@@ -155,17 +155,18 @@ public struct KitExecutor: LanguageModelExecutor {
         //    pipeline consumed after the consumer broke (post-EOS drain) and turns a
         //    divergence (e.g. a re-rendered transcript) into a pure extension instead of
         //    the engine's divergence full-reset. nil mirror (fresh executor / prior error)
-        //    → reset(to: 0). Engines that can't rewind (recurrent/SSM) degrade internally.
-        let common: Int
+        //    → reset(to: 0). Engines that can't rewind (recurrent/SSM) degrade to a full
+        //    reset in rewind(to:), which reports 0 kept — see EngineRewind.swift.
+        let wanted: Int
         if let kv = kvTokens {
-            common = min(
+            wanted = min(
                 Self.commonPrefixLength(kv, promptTokens),
                 max(0, promptTokens.count - 1),
                 engine.processedTokenCount)
         } else {
-            common = 0
+            wanted = 0
         }
-        try await engine.reset(to: common)
+        let common = try await engine.rewind(to: wanted)
         let kvBase = Array(promptTokens[..<common])
         let fed = Array(promptTokens[common...])
         if common > 0 {
@@ -363,16 +364,16 @@ public struct KitExecutor: LanguageModelExecutor {
 
         // 3) KV reuse: same rewind-then-full-feed contract as the vanilla path (the
         //    sequential engine's implicit caching skips the processed prefix internally).
-        let common: Int
+        let wanted: Int
         if let kv = kvTokens {
-            common = min(
+            wanted = min(
                 Self.commonPrefixLength(kv, promptTokens),
                 max(0, promptTokens.count - 1),
                 engine.processedTokenCount)
         } else {
-            common = 0
+            wanted = 0
         }
-        try await engine.reset(to: common)
+        let common = try await engine.rewind(to: wanted)
         if common > 0 {
             kitFMDebug("guided KV fast path: reusing \(common) tokens")
         }

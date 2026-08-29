@@ -356,19 +356,19 @@ public actor ChatSession {
             // PREFIX REUSE: rewind the engine to the longest common prefix with the tokens
             // already cached, then feed the FULL rendered sequence — the engine's implicit
             // prefix caching prefills only what lies beyond its recorded history.
-            // reset(to:) on the known-good prefix turns a divergence (thinking models drop
+            // rewind(to:) on the known-good prefix turns a divergence (thinking models drop
             // the previous turn's <think> block from the re-render) into a pure extension
             // instead of the engine's divergence full-reset; engines that can't rewind
-            // mid-sequence (recurrent/SSM hybrids) degrade to a full reset internally.
-            // Constrained turns reset fully, as before. Lossless either way.
+            // mid-sequence (recurrent/SSM hybrids) degrade to a full reset — see
+            // EngineRewind.swift. Constrained turns reset fully, as before. Lossless either way.
             let want = schema == nil
                 ? min(Self.commonPrefixLength(full, kvTokens), max(0, full.count - 1))
                 : 0
             let resetTarget = min(want, runtime.engine.processedTokenCount)
             let resetStart = SuspendingClock.now
-            try await runtime.engine.reset(to: resetTarget)
+            let kept = try await runtime.engine.rewind(to: resetTarget)
             kitFMDebug(
-                "reset(to: \(resetTarget)) took "
+                "rewind(to: \(resetTarget)) kept \(kept), took "
                     + String(
                         format: "%.3fs", ProcessStats.seconds(from: resetStart, to: .now))
                     + " (mirror \(kvTokens.count), prompt \(full.count), "

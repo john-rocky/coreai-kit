@@ -19,6 +19,18 @@ policy.
   punctuation). No tag before `0.2.3-zoo` has that fix. One call site followed upstream #122's
   rename (`CoreAIRunner(from:)` → `CoreAIRunner(bundle:)`); nothing in the kit's own API moved.
 
+### Fixed
+
+- **Hybrid models kept their second turn.** `0.2.3-zoo` refuses a partial `reset(to:)` on
+  models with recurrent state (Qwen3.5/3.6, LFM2.5, Granite 4, Nemotron-H — upstream #132
+  throws `invalidState` where the earlier fork tags quietly fell back to a full reset), and
+  the kit asks for exactly that rewind on every turn after the first. Reproduced on
+  Qwen3.5-0.8B: turn 1 answered, turn 2 failed with *Partial reset is not supported for
+  hybrid models with recurrent state*. `ChatSession` and the FoundationModels executor now
+  rewind through one helper that falls back to a full reset when the engine says it cannot
+  rewind, and report the tokens actually kept. A full reset costs a re-prefill of the
+  prompt, nothing else — the kit feeds the full sequence either way.
+
 ## [0.4.0] — 2026-08-25
 
 ### Added
