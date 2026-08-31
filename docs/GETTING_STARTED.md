@@ -70,7 +70,7 @@ and stream.
 import CoreAIKit
 
 let chat = try await ChatSession(model: .qwen3_0_6B)   // downloads on first use
-for try await event in chat.streamResponse(to: "What is the capital of Japan?") {
+for try await event in await chat.streamResponse(to: "What is the capital of Japan?") {
     switch event {
     case .response(let delta): print(delta, terminator: "")
     case .thinking(let delta): break   // qwen3 reasoning, if you want to show it

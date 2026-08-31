@@ -117,7 +117,7 @@ Streaming chat with history, live stats, and a stop button — `ChatSession`:
 import CoreAIOps
 
 let chat = try await ChatSession(model: .qwen3_0_6B)
-for try await event in chat.streamResponse(to: "What is the capital of Japan?") {
+for try await event in await chat.streamResponse(to: "What is the capital of Japan?") {
     if case .response(let delta) = event { print(delta, terminator: "") }
 }
 ```

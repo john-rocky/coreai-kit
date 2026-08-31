@@ -53,7 +53,7 @@ Model level — pick the model, stream, attach tools:
 import CoreAIKit
 
 let chat = try await ChatSession(catalog: "qwen3.5-2b")
-for try await event in chat.streamResponse(to: "Hello!") {
+for try await event in await chat.streamResponse(to: "Hello!") {
     if case .response(let delta) = event { print(delta, terminator: "") }
 }
 ```
