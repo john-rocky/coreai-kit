@@ -250,6 +250,14 @@ Tagged releases, SemVer, a pinned model catalog (each entry carries the verified
 Hugging Face revision), and CI + a nightly end-to-end gate on macOS 27 beta. See
 [`docs/STABILITY.md`](docs/STABILITY.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
+## Maintainer
+
+[**Daisuke Majima (MLBoy)**](https://github.com/john-rocky) — who also ports the
+[coreai-model-zoo](https://github.com/john-rocky/coreai-model-zoo) this kit serves, runs
+[devicemark](https://devicemark.github.io/) (on-device LLM leaderboard), and wrote the
+Japanese textbook [The Art of Core AI](https://zenn.dev/mlboydaisuke/books/coreai-textbook).
+Models: [huggingface.co/mlboydaisuke](https://huggingface.co/mlboydaisuke).
+
 ## License
 
 BSD-3-Clause. See `LICENSE` and `NOTICE.txt` (portions adapted from
