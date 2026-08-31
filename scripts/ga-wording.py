@@ -16,6 +16,8 @@ prepared edit that silently no longer applies is worse than no prepared edit —
 on the morning it is needed nobody has time to find out why it did nothing.
 
 After GA, run --apply, commit, and delete this script along with its CI step.
+The full GA-day runbook (OS + Xcode pin flip, gates, the 0.4.x tag) is
+docs/GA_DAY.md; this script is its step 3.
 """
 
 import argparse
