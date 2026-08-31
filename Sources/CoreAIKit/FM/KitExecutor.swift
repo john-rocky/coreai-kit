@@ -226,12 +226,13 @@ public struct KitExecutor: LanguageModelExecutor {
         }
         state.beginTurn(base: kvBase, fed: fed, pump: pump)
 
-        // 5) Stream: incremental UTF-8-safe detok (U+FFFD hold + one retained context
-        //    token, same contract as Apple's adapter) feeding the tag parser; text goes
-        //    out the moment it decodes.
+        // 5) Stream: incremental UTF-8-safe detok (StreamingDetokenizer — holds only a
+        //    trailing in-progress character, so a stray invalid byte cannot starve the
+        //    turn) feeding the tag parser; text goes out the moment it decodes.
         var parser = StreamingTagParser(profile: profile)
-        var pendingTokens: [Int] = []
-        var previousDecodedText = ""
+        var detok = StreamingDetokenizer { [tokenizer = self.tokenizer] in
+            tokenizer.decode(tokens: $0)
+        }
         var generatedCount = 0
         var reasoningEventCount = 0
         var sentResponseText = false
@@ -260,24 +261,9 @@ public struct KitExecutor: LanguageModelExecutor {
                 // not folded into Usage.Output (matches Apple's reference adapter).
                 generatedCount += 1
 
-                pendingTokens.append(Int(tokenId))
-                let decodedText = tokenizer.decode(tokens: pendingTokens)
-                let common = decodedText.commonPrefix(with: previousDecodedText)
-                let delta = String(decodedText.dropFirst(common.count))
-                // Check U+FFFD on the full decode, not the delta: consecutive partial
-                // tokens can decode to identical replacement strings, making the delta
-                // empty and hiding the incomplete state.
-                if decodedText.unicodeScalars.contains(where: { $0 == "\u{FFFD}" }) {
-                    previousDecodedText = decodedText
-                    continue
-                }
-                await dispatch(parser.consume(delta))
-                // Retain one token of context: SentencePiece-style tokenizers need a
-                // predecessor to infer leading spaces, and one token bounds the
-                // re-decode to O(1) per step.
-                if let last = pendingTokens.last {
-                    pendingTokens = [last]
-                    previousDecodedText = tokenizer.decode(tokens: [last])
+                let delta = detok.consume(Int(tokenId))
+                if !delta.isEmpty {
+                    await dispatch(parser.consume(delta))
                 }
             }
         } catch InferenceRuntimeError.contextLengthExceeded(let position, let maxContext) {

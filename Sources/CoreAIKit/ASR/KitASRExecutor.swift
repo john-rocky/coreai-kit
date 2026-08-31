@@ -70,8 +70,7 @@ public struct KitASRExecutor: LanguageModelExecutor {
         let eosTokenId = tokenizer.eosTokenId
         // With a forced language the prompt already primed `<asr_text>`, so emit from the start.
         var inText = (language != nil) || (asrTextID == nil)
-        var transcriptTokens: [Int] = []
-        var previousDecodedText = ""
+        var detok = StreamingDetokenizer { tokenizer.decode(tokens: $0) }
         var generatedCount = 0
 
         do {
@@ -86,12 +85,7 @@ public struct KitASRExecutor: LanguageModelExecutor {
                     if tokenId == asrTextID { inText = true }
                     continue  // still in the `{lang}` prefix
                 }
-                transcriptTokens.append(tokenId)
-                let decodedText = tokenizer.decode(tokens: transcriptTokens)
-                if decodedText.unicodeScalars.contains(where: { $0 == "\u{FFFD}" }) { continue }
-                let common = decodedText.commonPrefix(with: previousDecodedText)
-                let delta = String(decodedText.dropFirst(common.count))
-                previousDecodedText = decodedText
+                let delta = detok.consume(tokenId)
                 if !delta.isEmpty {
                     await channel.send(.response(action: .appendText(delta, tokenCount: 1)))
                 }

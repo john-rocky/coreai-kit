@@ -24,6 +24,18 @@ policy.
 
 ### Fixed
 
+- **Long CJK streaming no longer starves.** Every streaming decode loop held text back
+  while the decode contained U+FFFD *anywhere*; one stray raw-byte token — deterministic
+  in long Japanese output on qwen3 — made that hold permanent, so no event dispatched for
+  the rest of the turn and a FoundationModels session failed with *Session ended without
+  producing a response*. The copy-pasted loops are now one `StreamingDetokenizer` that
+  holds only a trailing in-progress character and emits an interior replacement character
+  as-is — the same contract as the fork's `VanillaDecodingStrategy`, which is why
+  `ChatSession` never starved. Reproduced and re-verified on a long English→Japanese
+  translation on qwen3-0.6b through `LanguageModelSession` (before: 0 stream snapshots;
+  after: the full translation streams). Applies to the FM text/vision/audio/Gemma
+  executors, the ASR executor, and the guided loop.
+
 - **Hybrid models kept their second turn.** `0.2.3-zoo` refuses a partial `reset(to:)` on
   models with recurrent state (Qwen3.5/3.6, LFM2.5, Granite 4, Nemotron-H — upstream #132
   throws `invalidState` where the earlier fork tags quietly fell back to a full reset), and

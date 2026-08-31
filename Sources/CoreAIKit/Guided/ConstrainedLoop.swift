@@ -44,8 +44,7 @@ enum ConstrainedLoop {
                     let stepOptions = InferenceOptions(maxTokens: 1, includeLogits: true)
                     let eosTokenId = tokenizer.eosTokenId
                     var tokens = promptTokens
-                    var pendingTokens: [Int] = []
-                    var previousDecodedText = ""
+                    var detok = StreamingDetokenizer { tokenizer.decode(tokens: $0) }
 
                     for _ in 0..<maxTokens {
                         if session.isTerminated { break }
@@ -77,25 +76,12 @@ enum ConstrainedLoop {
                         if session.isTerminated { break }
                         tokens.append(token)
 
-                        // Incremental UTF-8-safe detok: hold while the full decode
-                        // contains U+FFFD, then retain one token of context so
-                        // SentencePiece-style tokenizers keep leading spaces.
-                        pendingTokens.append(Int(token))
-                        let decodedText = tokenizer.decode(tokens: pendingTokens)
-                        if decodedText.unicodeScalars.contains(where: { $0 == "\u{FFFD}" }) {
-                            previousDecodedText = decodedText
-                            continuation.yield(
-                                GenerationResult(text: "", tokenId: token, rawLogits: nil))
-                            continue
-                        }
-                        let common = decodedText.commonPrefix(with: previousDecodedText)
-                        let delta = String(decodedText.dropFirst(common.count))
+                        // Incremental UTF-8-safe detok (StreamingDetokenizer): "" while
+                        // a multi-byte character is still in progress.
                         continuation.yield(
-                            GenerationResult(text: delta, tokenId: token, rawLogits: nil))
-                        if let last = pendingTokens.last {
-                            pendingTokens = [last]
-                            previousDecodedText = tokenizer.decode(tokens: [last])
-                        }
+                            GenerationResult(
+                                text: detok.consume(Int(token)), tokenId: token,
+                                rawLogits: nil))
                     }
                     continuation.finish()
                 } catch {

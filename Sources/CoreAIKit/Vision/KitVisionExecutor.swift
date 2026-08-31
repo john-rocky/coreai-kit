@@ -96,8 +96,7 @@ public struct KitVisionExecutor: LanguageModelExecutor {
         // 4) Stream tokens with UTF-8-safe incremental detok feeding the tag parser.
         let tokenizer = runtime.tokenizer
         var parser = StreamingTagParser(profile: profile)
-        var pendingTokens: [Int] = []
-        var previousDecodedText = ""
+        var detok = StreamingDetokenizer { tokenizer.decode(tokens: $0) }
         var generatedCount = 0
         var reasoningEventCount = 0
         var sentResponseText = false
@@ -130,18 +129,9 @@ public struct KitVisionExecutor: LanguageModelExecutor {
                 if let imEnd = imEndID, Int(tokenId) == imEnd { break }
                 generatedCount += 1
 
-                pendingTokens.append(Int(tokenId))
-                let decodedText = tokenizer.decode(tokens: pendingTokens)
-                let common = decodedText.commonPrefix(with: previousDecodedText)
-                let delta = String(decodedText.dropFirst(common.count))
-                if decodedText.unicodeScalars.contains(where: { $0 == "\u{FFFD}" }) {
-                    previousDecodedText = decodedText
-                    continue
-                }
-                await dispatch(parser.consume(delta))
-                if let last = pendingTokens.last {
-                    pendingTokens = [last]
-                    previousDecodedText = tokenizer.decode(tokens: [last])
+                let delta = detok.consume(Int(tokenId))
+                if !delta.isEmpty {
+                    await dispatch(parser.consume(delta))
                 }
             }
         } catch InferenceRuntimeError.contextLengthExceeded(let position, let maxContext) {
