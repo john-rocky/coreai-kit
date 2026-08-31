@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Drop "beta" from the OS requirement, on the day macOS/iOS 27 ships.
 
-Seven sentences across five files tell a reader they need a beta OS. On GA day
-every one of them becomes wrong, and a reader who believes them concludes the
-package is not for their machine. This is the edit, written ahead of time so
-that day costs a command instead of a search.
+Three sentences across three docs files tell a reader they need a beta OS
+(the README already reads GA — its beta wording was dropped with the 2026-08-31
+quickstart rework). On GA day every one of them becomes wrong, and a reader who
+believes them concludes the package is not for their machine. This is the edit,
+written ahead of time so that day costs a command instead of a search.
 
     scripts/ga-wording.py --check    # every pre-GA sentence is still present
     scripts/ga-wording.py --apply    # make the edit
@@ -24,26 +25,6 @@ import sys
 # (file, before, after). Exact strings, so a reworded line is caught rather
 # than half-edited.
 EDITS = [
-    (
-        "README.md",
-        "Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 beta) in a few lines of Swift.",
-        "Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27) in a few lines of Swift.",
-    ),
-    (
-        "README.md",
-        "> Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta",
-        "> Community package — not affiliated with Apple. Requires macOS 27 / iOS 27",
-    ),
-    (
-        "README.md",
-        "- macOS 27 beta / iOS 27 beta, Xcode 27 beta",
-        "- macOS 27 / iOS 27, Xcode 27",
-    ),
-    (
-        "README.md",
-        "Hugging Face revision), and CI + a nightly end-to-end gate on macOS 27 beta. See",
-        "Hugging Face revision), and CI + a nightly end-to-end gate on macOS 27. See",
-    ),
     (
         "docs/GETTING_STARTED.md",
         "- macOS 27 beta or iOS 27 beta (real device — the CoreAI framework is not in the iOS\n"

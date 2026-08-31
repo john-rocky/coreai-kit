@@ -5,51 +5,63 @@
 [![Next-SDK models](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjohn-rocky%2Fcoreai-kit%2Fgate-status%2Fnext-sdk.json)](https://github.com/john-rocky/coreai-kit/actions/workflows/next-sdk-gate.yml)
 [![Release](https://img.shields.io/github/v/tag/john-rocky/coreai-kit?label=release)](https://github.com/john-rocky/coreai-kit/releases)
 
-Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27 beta) in a few lines of Swift.
+Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27) in a few lines of Swift.
 
-> Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta
+> Community package — not affiliated with Apple. Requires macOS 27 / iOS 27
 > (real device; the CoreAI framework is not in the iOS Simulator SDK).
 
-### How the catalog is verified — and how you re-check it yourself
+## Quickstart
 
-The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 60 catalog entries:
+Add the package in Xcode — **File → Add Package Dependencies…**, paste
+`https://github.com/john-rocky/coreai-kit`, pick the **CoreAIKit** product — or in
+`Package.swift`:
 
-- **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
-  that were gated — never "whatever is on `main` today." CI re-checks every pin
-  (`scripts/pin-catalog.py --check`, run by the nightly gate above).
-- **Gated against the original model before enrollment** — the export is stepped against the
-  fp32/fp16 reference implementation on fixed inputs (token-exact for LLMs, `cos ≥ 0.999`
-  otherwise), then re-gated after compression, then run on real hardware. The gate that
-  produced each row and its proof strength are on that model's card.
-- **Shipped with the recipe that produced them.** `models/<model>/recipe.toml` in the
-  [model zoo](https://github.com/john-rocky/coreai-model-zoo) records the exact script and
-  flags; `zoo_convert.py run <name>` rebuilds the bundle from the same checkpoint.
-
-These gates are run by the maintainer — so don't take them on faith, re-run them. Checking a
-published bundle against the model it claims to come from is one command, no GPU and no
-device needed:
-
-```bash
-python3 conversion/zoo_verify.py mlboydaisuke/Gemma-4-12B-CoreAI   # one repo
-python3 conversion/zoo_verify.py --all                             # the whole catalog, minutes
+```swift
+.package(url: "https://github.com/john-rocky/coreai-kit", from: "0.4.0")
 ```
 
-It compares tokenizer, chat template, context length and declared precision against the
-source model each bundle names in its own `metadata.json`.
+Then stream your first on-device tokens:
 
-That checks a bundle is *described* correctly, not that it still *computes* correctly — the
-numerical check is `conversion/coreai_gate.py`, which rebuilds the reference model in fp32 and
-compares a greedy decode token for token. It runs outside the maintainer's tree (point it at
-your own `llm-runner` and overlay interpreter) and writes a transcript: pinned revision, exact
-`input_ids`, both sides' tokens, verdict. Re-running the engine side against a published
-transcript needs only the bundle and `llm-runner` — no oracle, no fp32 download.
+```swift
+import CoreAIKit
 
-If you are shipping something you have to support, re-running the recipe yourself is cheap and
-leaves you owning the artifact.
+let chat = try await ChatSession(model: .qwen3_0_6B)
+for try await event in await chat.streamResponse(to: "Hello!") {
+    if case .response(let delta) = event { print(delta, terminator: "") }
+}
+```
 
-Two layers, one package. **Task ops** when you want the result in one line — like a
-Vision framework request, the model is resolved (and cached) behind the op:
+The model (~670 MB) downloads from the Hugging Face Hub on first use and caches — nothing
+is bundled into your app. Run it on a Mac or a real iPhone; in an iOS app the same code
+goes in a `.task`. [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) covers the rest —
+task ops, tool calling, RAG, and what to expect on first load.
+
+## When FoundationModels isn't enough
+
+**Keep your session code and swap the model — one line.** Need a stronger multilingual
+model, vision input, or answers that must not change under an OS update?
+`KitLanguageModel` puts any of the 60 catalog models behind the same
+`LanguageModelSession` you already write:
+
+```swift
+// Before — Apple's built-in model
+let session = LanguageModelSession()
+let answer = try await session.respond(to: prompt)
+
+// After — the same session, your model
+let model = try await KitLanguageModel(model: .qwen3_0_6B)
+let session = LanguageModelSession(model: model)
+let answer = try await session.respond(to: prompt)
+```
+
+Your `Tool` implementations, `@Generable` types, streaming snapshots, and transcripts work
+unchanged — capabilities and limits in
+[the FoundationModels section](#works-with-apples-foundationmodels-api).
+
+## Two layers, one package
+
+**Task ops** when you want the result in one line — like a Vision framework request, the
+model is resolved (and cached) behind the op:
 
 ```swift
 import CoreAIOps
@@ -78,20 +90,10 @@ case .insufficientStorage, .unsupportedDevice: hideFeature()
 
 `swift run coreai-doctor path/to/YourApp` totals it for a whole app before you ship.
 
-**Model-level APIs** when you want control — pick the model, stream, attach tools:
-
-```swift
-import CoreAIKit
-
-let chat = try await ChatSession(model: .qwen3_0_6B)
-for try await event in chat.streamResponse(to: "Hello!") {
-    if case .response(let delta) = event { print(delta, terminator: "") }
-}
-```
-
-The two layers are the same package, so starting with an op and dropping down to
-`ChatSession` or a FoundationModels provider later is a refactor, not a rewrite. Models
-download automatically from the Hugging Face Hub on first use — no Python required.
+**Model-level APIs** when you want control — `ChatSession` (the quickstart above),
+`KitLanguageModel` / `KitVisionModel` behind `LanguageModelSession`, `GraphModel` for any
+`.aimodel`. Both layers are the same package, so starting with an op and dropping down
+later is a refactor, not a rewrite.
 
 ## See it running
 
@@ -239,15 +241,53 @@ Other modalities
 
 See `docs/GETTING_STARTED.md`.
 
+## How the catalog is verified — and how you re-check it yourself
+
+The models are converted, not vendored, so the question that matters before you depend on
+this is *what was checked, by whom, and can you check it again.* All 60 catalog entries:
+
+- **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
+  that were gated — never "whatever is on `main` today." CI re-checks every pin
+  (`scripts/pin-catalog.py --check`, run by the nightly gate above).
+- **Gated against the original model before enrollment** — the export is stepped against the
+  fp32/fp16 reference implementation on fixed inputs (token-exact for LLMs, `cos ≥ 0.999`
+  otherwise), then re-gated after compression, then run on real hardware. The gate that
+  produced each row and its proof strength are on that model's card.
+- **Shipped with the recipe that produced them.** `models/<model>/recipe.toml` in the
+  [model zoo](https://github.com/john-rocky/coreai-model-zoo) records the exact script and
+  flags; `zoo_convert.py run <name>` rebuilds the bundle from the same checkpoint.
+
+These gates are run by the maintainer — so don't take them on faith, re-run them. Checking a
+published bundle against the model it claims to come from is one command, no GPU and no
+device needed:
+
+```bash
+python3 conversion/zoo_verify.py mlboydaisuke/Gemma-4-12B-CoreAI   # one repo
+python3 conversion/zoo_verify.py --all                             # the whole catalog, minutes
+```
+
+It compares tokenizer, chat template, context length and declared precision against the
+source model each bundle names in its own `metadata.json`.
+
+That checks a bundle is *described* correctly, not that it still *computes* correctly — the
+numerical check is `conversion/coreai_gate.py`, which rebuilds the reference model in fp32 and
+compares a greedy decode token for token. It runs outside the maintainer's tree (point it at
+your own `llm-runner` and overlay interpreter) and writes a transcript: pinned revision, exact
+`input_ids`, both sides' tokens, verdict. Re-running the engine side against a published
+transcript needs only the bundle and `llm-runner` — no oracle, no fp32 download.
+
+If you are shipping something you have to support, re-running the recipe yourself is cheap and
+leaves you owning the artifact.
+
 ## Requirements
 
-- macOS 27 beta / iOS 27 beta, Xcode 27 beta
+- macOS 27 / iOS 27, Xcode 27
 - Models run fully on device
 
 ## Versioning & stability
 
 Tagged releases, SemVer, a pinned model catalog (each entry carries the verified
-Hugging Face revision), and CI + a nightly end-to-end gate on macOS 27 beta. See
+Hugging Face revision), and CI + a nightly end-to-end gate on macOS 27. See
 [`docs/STABILITY.md`](docs/STABILITY.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Maintainer
