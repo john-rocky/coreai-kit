@@ -32,9 +32,28 @@ struct HubClient: Sendable {
         else {
             throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
         }
-        let (data, resp) = try await URLSession.shared.data(from: api)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-            throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
+        // The Hub API sheds load with transient 429s ("maximum queue size reached") and
+        // occasional 5xx; retry those with backoff — only a firm 4xx means the subtree
+        // really isn't published.
+        var data = Data()
+        var status = 0
+        for attempt in 0..<5 {
+            if attempt > 0 {
+                try await Task.sleep(nanoseconds: UInt64(1 << attempt) * 1_000_000_000)
+            }
+            try Task.checkCancellation()
+            let (d, resp) = try await URLSession.shared.data(from: api)
+            status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 200 {
+                data = d
+                break
+            }
+            if (400..<500).contains(status), status != 429 {
+                throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
+            }
+        }
+        guard status == 200 else {
+            throw CoreAIKitError.httpError(statusCode: status, file: api.absoluteString)
         }
 
         struct TreeEntry: Decodable {
