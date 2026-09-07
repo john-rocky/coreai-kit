@@ -210,6 +210,25 @@
       "engine": "pipelined"
     },
     {
+      "id": "minicpm5-2b",
+      "name": "MiniCPM5 2B",
+      "repo": "mlboydaisuke/MiniCPM5-2B-CoreAI",
+      "revision": "c53fa60b2b5e19a12ef96b73f66b40e985943add",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "int8",
+          "sizeMB": 2685
+        },
+        "ios": {
+          "path": "int8",
+          "sizeMB": 2685
+        }
+      },
+      "thinking": true,
+      "engine": "pipelined"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

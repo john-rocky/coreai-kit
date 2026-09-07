@@ -325,6 +325,14 @@ public struct ModelCatalog: Sendable, Codable {
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
+                id: "minicpm5-2b", name: "MiniCPM5 2B",
+                repo: "mlboydaisuke/MiniCPM5-2B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(path: "int8", sizeMB: 2685),
+                    "ios": .init(path: "int8", sizeMB: 2685),
+                ],
+                thinking: true, engine: "pipelined"),
+            CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,
                 variants: [
