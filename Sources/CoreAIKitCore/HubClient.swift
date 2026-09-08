@@ -56,9 +56,29 @@ struct HubClient: Sendable {
     /// Enumerates the files under `path` in the repo at the given revision.
     func listFiles(repo: String, revision: String, path: String) async throws -> [PlannedFile] {
         let api = try listingURL(repo: repo, revision: revision, path: path)
-        let (data, resp) = try await URLSession.shared.data(from: api)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
-            throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
+        // Hub tree requests can be rate-limited even when every bundle subtree exists.
+        // Five attempts total, with cancellable 2/4/8/16-second waits between them.
+        // File transfers have their own resume/retry loop in ModelStore.
+        var data = Data()
+        for attempt in 0..<5 {
+            try Task.checkCancellation()
+            if attempt > 0 {
+                try await Task.sleep(nanoseconds: (UInt64(1) << attempt) * 1_000_000_000)
+            }
+            let (result, response) = try await URLSession.shared.data(from: api)
+            try Task.checkCancellation()
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            if status == 200 {
+                data = result
+                break
+            }
+            if status == 404 {
+                throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
+            }
+            guard attempt < 4, status == 429 || (500..<600).contains(status) else {
+                // Authentication and other permanent errors are not missing variants.
+                throw CoreAIKitError.httpError(statusCode: status, file: "\(repo)@\(revision)/\(path)")
+            }
         }
 
         struct TreeEntry: Decodable {

@@ -24,6 +24,12 @@ policy.
 
 ### Fixed
 
+- **Hub tree listings retry transient HTTP 429/5xx failures** up to five attempts,
+  with cancellable 2/4/8/16-second waits. Exhaustion reports the final HTTP status;
+  only 404 reports a missing variant, while other permanent errors fail immediately.
+  File-download retries are unchanged. Adapted from
+  [AurionRodgerDiablo's PR #2](https://github.com/john-rocky/coreai-kit/pull/2).
+
 - **Long CJK streaming no longer starves.** Every streaming decode loop held text back
   while the decode contained U+FFFD *anywhere*; one stray raw-byte token — deterministic
   in long Japanese output on qwen3 — made that hold permanent, so no event dispatched for
