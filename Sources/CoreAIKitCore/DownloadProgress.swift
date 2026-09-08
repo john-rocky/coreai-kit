@@ -10,6 +10,7 @@ public struct DownloadProgress: Sendable, Equatable {
 
 public enum CoreAIKitError: Error, LocalizedError, Sendable {
     case notAHuggingFaceRepo(String)
+    case invalidHubBaseURL
     case variantNotFound(repo: String, path: String, revision: String)
     case httpError(statusCode: Int, file: String)
     case modelNotInCatalog(id: String)
@@ -30,6 +31,8 @@ public enum CoreAIKitError: Error, LocalizedError, Sendable {
         switch self {
         case .notAHuggingFaceRepo(let s):
             return "Not a Hugging Face repo URL or id: \(s)"
+        case .invalidHubBaseURL:
+            return "The Hub base URL must use HTTP or HTTPS, with a host and no credentials, query or fragment."
         case .variantNotFound(let repo, let path, let revision):
             return "No '\(path)' variant in \(repo)@\(revision) — "
                 + "this model may not be published for this platform."

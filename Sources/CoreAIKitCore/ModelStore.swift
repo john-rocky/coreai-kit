@@ -16,18 +16,23 @@ public actor ModelStore {
 
     public nonisolated let directory: URL
 
-    private let hub = HubClient()
+    private let hub: HubClient
     private var inflight: [ModelID: Task<URL, Error>] = [:]
 
     /// Store rooted at Application Support/CoreAIKit/Models.
-    public init() {
+    /// `hubBaseURL` selects an HF-compatible endpoint for both listing and file downloads.
+    /// Credentials are not copied from Hugging Face to a custom endpoint.
+    public init(hubBaseURL: URL = URL(string: "https://huggingface.co")!) {
         let base = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask)[0]
         self.directory = base.appendingPathComponent("CoreAIKit/Models", isDirectory: true)
+        self.hub = HubClient(baseURL: hubBaseURL)
     }
 
-    public init(directory: URL) {
+    /// The endpoint does not change cache identity: repo, revision and variant still key it.
+    public init(directory: URL, hubBaseURL: URL = URL(string: "https://huggingface.co")!) {
         self.directory = directory
+        self.hub = HubClient(baseURL: hubBaseURL)
     }
 
     /// Local bundle root for a model, or nil if not downloaded.

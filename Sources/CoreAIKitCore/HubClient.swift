@@ -6,10 +6,40 @@
 import Foundation
 
 struct HubClient: Sendable {
+    let baseURL: URL
+
+    init(baseURL: URL = URL(string: "https://huggingface.co")!) {
+        self.baseURL = baseURL
+    }
+
     struct PlannedFile: Sendable {
         let url: URL
         let relativePath: String
         let size: Int64
+    }
+
+    private func endpoint(_ path: String) throws -> URL {
+        guard let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              ["https", "http"].contains(components.scheme?.lowercased() ?? ""),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil else {
+            throw CoreAIKitError.invalidHubBaseURL
+        }
+        return baseURL.appendingPathComponent(path)
+    }
+
+    func listingURL(repo: String, revision: String, path: String) throws -> URL {
+        // Empty path = repo root: no trailing slash, or the Hub API returns 404.
+        let treePath = path.isEmpty ? "" : "/\(path)"
+        let url = try endpoint("api/models/\(repo)/tree/\(revision)\(treePath)")
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "recursive", value: "true")]
+        return components.url!
+    }
+
+    func downloadURL(repo: String, revision: String, path: String) throws -> URL {
+        try endpoint("\(repo)/resolve/\(revision)/\(path)")
     }
 
     /// Accepts "https://huggingface.co/<org>/<name>[/...]" or a bare "<org>/<name>".
@@ -25,13 +55,7 @@ struct HubClient: Sendable {
 
     /// Enumerates the files under `path` in the repo at the given revision.
     func listFiles(repo: String, revision: String, path: String) async throws -> [PlannedFile] {
-        // Empty path = repo root (flat bundle layout): no trailing slash, or the API 404s.
-        let treePath = path.isEmpty ? "" : "/\(path)"
-        guard let api = URL(string:
-            "https://huggingface.co/api/models/\(repo)/tree/\(revision)\(treePath)?recursive=true")
-        else {
-            throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
-        }
+        let api = try listingURL(repo: repo, revision: revision, path: path)
         let (data, resp) = try await URLSession.shared.data(from: api)
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
             throw CoreAIKitError.variantNotFound(repo: repo, path: path, revision: revision)
@@ -50,10 +74,7 @@ struct HubClient: Sendable {
             let rel = (!path.isEmpty && e.path == path)
                 ? (e.path as NSString).lastPathComponent
                 : String(e.path.dropFirst(prefix.count))
-            guard let url = URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(e.path)")
-            else {
-                throw CoreAIKitError.httpError(statusCode: -1, file: e.path)
-            }
+            let url = try downloadURL(repo: repo, revision: revision, path: e.path)
             return PlannedFile(url: url, relativePath: rel, size: e.lfs?.size ?? e.size ?? 0)
         }
     }
