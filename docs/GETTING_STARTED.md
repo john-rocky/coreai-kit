@@ -112,6 +112,24 @@ let chat = try await ChatSession(model: .qwen3_4B) { progress in
 Models cache under `Application Support/CoreAIKit/Models`. Manage them with `ModelStore`
 (`downloadedModels()`, `delete(_:)`, or a custom `ModelStore(directory:)`).
 
+### HF-compatible endpoints (on main; not in 0.4.0)
+
+Pass a store configured for your chosen HF-compatible endpoint. Both the tree listing
+and file downloads use that URL, including an optional path prefix:
+
+```swift
+let store = ModelStore(hubBaseURL: URL(string: "https://your-mirror.example/hf")!)
+let chat = try await ChatSession(catalog: "qwen3-0.6b", store: store)
+```
+
+Replace the example URL with your endpoint. `ModelStore(directory:hubBaseURL:)` also
+accepts a custom cache directory. The default stays `https://huggingface.co`; catalog
+revision pins and the repo/revision/variant cache layout are preserved across endpoints.
+This setting does not change the catalog's GitHub URL. The kit does not read `HF_TOKEN`
+or copy HF authentication headers to a mirror; base URLs containing credentials, a query
+or a fragment are rejected. Private-repo authentication and third-party mirror compatibility
+have not been validated by this change.
+
 ## 4. Starter models
 
 | Model | `ModelID` | macOS | iOS | Notes |

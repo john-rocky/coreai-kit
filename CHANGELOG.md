@@ -7,6 +7,13 @@ policy.
 
 ## [Unreleased]
 
+### Added
+
+- `ModelStore(hubBaseURL:)` and `ModelStore(directory:hubBaseURL:)` select an
+  HF-compatible endpoint for both model listing and file downloads ([#1](https://github.com/john-rocky/coreai-kit/issues/1)).
+  The default Hub, pinned revisions and cache layout are unchanged. HF credentials are
+  not copied to the custom host; URL-embedded credentials, query and fragment are rejected.
+
 ### Changed
 
 - **The model-fork pin moves to `0.2.4-zoo`** (was `0.2.2-zoo`) — in the manifest and in every
