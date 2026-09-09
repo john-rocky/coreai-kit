@@ -24,6 +24,14 @@ The package is tested on **Mac Studio M4 Max (128 GiB)**, **macOS 27.0 beta `26A
 The independent public consumer resolved **swift-transformers `1.3.4`**, revision
 `c21fdcde390313a6d98d8e33a346f2c3486c3ab0`; retain your consumer's `Package.resolved`.
 
+The independent consumer resolved the **published exact `0.4.1` tag**, commit
+`11f2823b9ba9c059b4db86c4e1682c53112006f1`, before its empty-cache download,
+two-turn FoundationModels check, and both Japanese checks below. The
+[public evidence ZIP](https://github.com/john-rocky/coreai-kit/releases/download/0.4.1/coreaikit-0.4.1-macos-evidence-20260909.zip)
+contains the consumer's source, manifest, lockfile, actual output, and model-file
+hashes. Its [SHA-256](https://github.com/john-rocky/coreai-kit/releases/download/0.4.1/coreaikit-0.4.1-macos-evidence-20260909.zip.sha256)
+and the archive's per-file checksums make those artifacts checkable.
+
 | Check | Observed result on the Mac |
 |---|---|
 | First-use Qwen download → answer | Empty dedicated cache; all 11 files match the public revision's size and hash. Nonempty answer; cache reuse passes. |
@@ -32,6 +40,13 @@ The independent public consumer resolved **swift-transformers `1.3.4`**, revisio
 | Japanese, FoundationModels | 177 characters, 116 cumulative snapshots, no U+FFFD replacement characters. |
 | Hybrid Qwen3.5 0.8B | Both turns complete without a partial-reset error; turn two recalls ORCHID. The first reply refuses the instruction, so this is an engine regression check, not an answer-quality endorsement. |
 | VoxCPM 0.5B | New synthesis from verified public cached weights: 20,480 finite, nonzero samples; 1.28 s, 16 kHz mono WAV. Playback exits successfully. |
+
+The hybrid and VoxCPM rows reuse the preceding public candidate `61f7c454` runs.
+The archive separates them from the exact-tag checks and includes the full library
+diff: only the starter's iOS size metadata changed; Mac implementation, runtime and
+model pins stayed the same. The [0.4.1 Mac demo and reproduction record](https://github.com/john-rocky/coreai-assets/blob/main/kit/coreaikit-0.4.1-mac.md)
+add an exact-tag ChatDemo → Speak run on the same physical Mac, with first-use
+Speak downloads completed before recording the cached run.
 
 Qwen3.5 0.8B uses revision `1b8c0203c0f317027db508e97372c589afaace7b`;
 its selected files total **1,337,858,033 bytes**, downloaded and hash-checked against
@@ -51,7 +66,7 @@ checks, not independent adoption or a guarantee of a small model's answer qualit
 The [release](https://github.com/john-rocky/coreai-kit/releases/tag/0.4.1) holds the
 final result and public consumer evidence.
 
-**GA and newer beta toolchains are not established by these results.** As observed on
+**iPhone execution, GA and newer beta toolchains are not established by these results.** As observed on
 September 9, the [Apple release list](https://developer.apple.com/news/releases/) still
 lists OS 27 beta 8 and Xcode 27 beta 6; this entry uses the beta 5 SDK generation.
 Do not update a shared machine's OS/SDK merely to reproduce the demo.

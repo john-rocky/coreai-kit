@@ -139,6 +139,14 @@ later is a refactor, not a rewrite.
 
 ## See it running
 
+**[Watch the 0.4.1 Mac demo](https://github.com/john-rocky/coreai-assets/blob/main/kit/coreaikit-0.4.1-mac.mp4):
+Qwen3 0.6B chat → VoxCPM 0.5B speech.** Recorded on a Mac Studio M4 Max with the
+public exact `0.4.1` examples and the beta toolchain above. Builds and model downloads
+are omitted; the video shows cached runs. The [reproduction record](https://github.com/john-rocky/coreai-assets/blob/main/kit/coreaikit-0.4.1-mac.md)
+includes commands, model pins, and recording details. The separate
+[release evidence](https://github.com/john-rocky/coreai-kit/releases/tag/0.4.1)
+includes the empty-cache first download, two-turn chat, and Japanese streaming checks.
+
 Earlier real-device captures (July 2026; iPhone 17 Pro / M4 Max). These illustrate
 other capabilities and are not 0.4.1 validation evidence. Captions lead
 with the one-line call where a task op covers it; each cell links to the kit example —
@@ -171,7 +179,7 @@ or zoo app — that runs the same model. (Media lives in
 
 ## Works with Apple's FoundationModels API
 
-`KitLanguageModel` plugs any catalog chat model into the system `LanguageModelSession` —
+`KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession` —
 the same FoundationModels API you use for Apple's built-in model — and adds what the stock
 `CoreAILanguageModel` adapter lacks: **tool calling** (ChatML/Hermes models) and
 **guided generation** (sequential engines).
