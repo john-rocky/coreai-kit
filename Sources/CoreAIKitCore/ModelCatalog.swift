@@ -320,8 +320,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
                 variants: [
-                    "macos": .init(path: "int8", sizeMB: 1092),
-                    "ios": .init(path: "int8", sizeMB: 1092),
+                    "macos": .init(path: "int8", sizeMB: 1159),
+                    "ios": .init(path: "int8", sizeMB: 1159),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
