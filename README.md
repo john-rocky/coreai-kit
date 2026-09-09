@@ -26,7 +26,10 @@ validation; an Apple event date is not a GA release.
 
 In Xcode, use **File → Add Package Dependencies…**, paste
 `https://github.com/john-rocky/coreai-kit`, choose **Exact Version: 0.4.1**, and add the
-**CoreAIKit** product to your app target. For a Swift package:
+**CoreAIKit** product to your app target. If App Sandbox is enabled on your macOS
+target, enable **Signing & Capabilities → App Sandbox → Outgoing Connections (Client)**
+for first-use model downloads ([network client entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.client)).
+For a Swift package:
 
 ```swift
 .package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.4.1")

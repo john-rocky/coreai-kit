@@ -39,7 +39,7 @@ and the archive's per-file checksums make those artifacts checkable.
 | Japanese, ChatSession | 177 characters, six deltas, final message matches the assembled stream. |
 | Japanese, FoundationModels | 177 characters, 116 cumulative snapshots, no U+FFFD replacement characters. |
 | Hybrid Qwen3.5 0.8B | Both turns complete without a partial-reset error; turn two recalls ORCHID. The first reply refuses the instruction, so this is an engine regression check, not an answer-quality endorsement. |
-| VoxCPM 0.5B | New synthesis from verified public cached weights: 20,480 finite, nonzero samples; 1.28 s, 16 kHz mono WAV. Playback exits successfully. |
+| VoxCPM 0.5B | New synthesis from verified public cached weights: 20,480 finite samples; non-silent audio; 1.28 s, 16 kHz mono WAV. Playback exits successfully. |
 
 The hybrid and VoxCPM rows reuse the preceding public candidate `61f7c454` runs.
 The archive separates them from the exact-tag checks and includes the full library
@@ -81,6 +81,12 @@ then add the `CoreAIKit` product to your target. Or in `Package.swift`:
 // target dependency:
 .product(name: "CoreAIKit", package: "coreai-kit"),
 ```
+
+If App Sandbox is enabled on your macOS app target, enable **Signing & Capabilities
+→ App Sandbox → Outgoing Connections (Client)** for first-use downloads. This sets
+[`com.apple.security.network.client`](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.client).
+The supplied ChatDemo and Speak examples disable App Sandbox; their CLI checks do
+not validate your app's sandbox configuration.
 
 ## 2. The quick path: task ops
 
