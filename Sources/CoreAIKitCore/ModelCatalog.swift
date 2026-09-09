@@ -427,9 +427,9 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/gemma-4-E2B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl", sizeMB: 4929),
+                        path: "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl", sizeMB: 4929),
                     "ios": .init(
-                        path: "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p",
+                        path: "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p",
                         sizeMB: 4931),
                 ],
                 engine: "pipelined"),

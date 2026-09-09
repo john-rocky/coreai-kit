@@ -13,11 +13,11 @@ final class GemmaModelIDTests: XCTestCase {
         #if os(iOS)
         XCTAssertEqual(
             GemmaModelID.gemma4E2B.decoder.path,
-            "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p")
+            "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p")
         #else
         XCTAssertEqual(
             GemmaModelID.gemma4E2B.decoder.path,
-            "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl")
+            "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl")
         #endif
     }
 
@@ -34,9 +34,9 @@ final class GemmaModelIDTests: XCTestCase {
         let entry = ModelCatalog.builtin.entry(id: "gemma-4-e2b")
         XCTAssertEqual(
             entry?.variants["macos"]?.path,
-            "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl")
+            "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl")
         XCTAssertEqual(
             entry?.variants["ios"]?.path,
-            "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p")
+            "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p")
     }
 }

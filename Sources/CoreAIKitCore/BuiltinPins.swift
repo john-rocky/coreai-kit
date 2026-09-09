@@ -17,7 +17,7 @@ enum BuiltinPins {
         "gemma-3-4b-it": "89a7c7a7a4e0c870f50f73d587f2bc8fad6acc28",
         "gemma-4-12b": "feff92c54c9fbadd4721da0e617214212a498e5a",
         "gemma-4-31b": "c80f188d8e8ad8f8b0aee6acfda8b378294e202d",
-        "gemma-4-e2b": "92ab927568a37fdd3c8b4d46f3c4685804f08e46",
+        "gemma-4-e2b": "d669ab2b44c691e35e2b795f0535c0e1937b8390",
         "gemma-4-e4b": "480fc1d9bbbd15d7e81e4d0a68d5efdee6eb4c2b",
         "glm-4.7-flash": "e40bf6f8aa7fdc55d7037d45fd274f19382baaff",
         "glm-ocr": "cb88cd8e5e3a730d5be1f4b56b319621c25fcca7",
