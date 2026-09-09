@@ -6,8 +6,13 @@ from the Hugging Face Hub on first use, then chats fully on device with live sta
 (load / TTFT / tok/s / memory).
 
 ```swift
-let chat = try await ChatSession(catalog: "qwen3-0.6b")
-let reply = try await chat.respond(to: prompt)
+import CoreAIKit
+
+guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
+    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
+}
+let chat = try await ChatSession(model: modelID)
+let reply = try await chat.respond(to: "What is the capital of Japan?")
 ```
 
 ## Run it

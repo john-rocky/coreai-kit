@@ -30,7 +30,12 @@ The independent public consumer resolved **swift-transformers `1.3.4`**, revisio
 | FoundationModels, two turns | First reply confirms ORCHID; second recalls ORCHID. |
 | Japanese, ChatSession | 177 characters, six deltas, final message matches the assembled stream. |
 | Japanese, FoundationModels | 177 characters, 116 cumulative snapshots, no U+FFFD replacement characters. |
+| Hybrid Qwen3.5 0.8B | Both turns complete without a partial-reset error; turn two recalls ORCHID. The first reply refuses the instruction, so this is an engine regression check, not an answer-quality endorsement. |
 | VoxCPM 0.5B | New synthesis from verified public cached weights: 20,480 finite, nonzero samples; 1.28 s, 16 kHz mono WAV. Playback exits successfully. |
+
+Qwen3.5 0.8B uses revision `1b8c0203c0f317027db508e97372c589afaace7b`;
+its selected files total **1,337,858,033 bytes**, downloaded and hash-checked against
+the public revision.
 
 The Japanese prompt requests around 400 characters; the model returns a shorter,
 imperfect answer. This verifies the streaming path, not translation quality. VoxCPM
