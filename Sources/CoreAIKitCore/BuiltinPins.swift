@@ -33,7 +33,7 @@ enum BuiltinPins {
         "melband-roformer-vocal": "0c7aca92db7341f7be579aa00fa1231442c7cb7c",
         "mineru2.5-pro": "ff454af73b7ba95da3bfd8df3c40d08fdb98521e",
         "minicpm-v-4.6": "dc61da8300799020f859b2c33387e385542cdd08",
-        "minicpm5-1b": "5ad650fdb0ce51207c7bd9ed4585c6154a7c1fb8",
+        "minicpm5-1b": "b8a6ac397ccd5fb815f97336f8a8b1800b110da1",
         "minicpm5-2b": "f306590f991d66cad23af06bf72464519b65ba9f",
         "mistral-7b-v0.3": "9898c50a532b89cf933c7daa8c6f088b26c8a57f",
         "nanbeige4.1-3b": "b2efbe7b01a8a92ecd43c19c4d5cae15b0601879",

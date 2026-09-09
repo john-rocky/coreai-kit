@@ -194,16 +194,16 @@
       "id": "minicpm5-1b",
       "name": "MiniCPM5 1B",
       "repo": "mlboydaisuke/MiniCPM5-1B-CoreAI",
-      "revision": "5ad650fdb0ce51207c7bd9ed4585c6154a7c1fb8",
+      "revision": "b8a6ac397ccd5fb815f97336f8a8b1800b110da1",
       "kind": "chat",
       "variants": {
         "macos": {
           "path": "int8",
-          "sizeMB": 1092
+          "sizeMB": 1159
         },
         "ios": {
           "path": "int8",
-          "sizeMB": 1092
+          "sizeMB": 1159
         }
       },
       "thinking": true,
