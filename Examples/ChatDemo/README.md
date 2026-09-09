@@ -6,11 +6,20 @@ from the Hugging Face Hub on first use, then chats fully on device with live sta
 (load / TTFT / tok/s / memory).
 
 ```swift
-let chat = try await ChatSession(catalog: "qwen3.5-2b")
+let chat = try await ChatSession(catalog: "qwen3-0.6b")
 let reply = try await chat.respond(to: prompt)
 ```
 
 ## Run it
+
+Start with the [0.4.1 installation and tested environment](../../README.md#quickstart).
+Run commands below from `Examples/ChatDemo` in the **0.4.1** checkout. Both the
+CLI and Xcode app depend on the public **exact 0.4.1** package. Qwen3 0.6B downloads
+approximately 352 MB on Mac (456 MB for the iPhone variant).
+
+The initial reply should mention Tokyo. Later requests can vary because sampling is
+enabled. The app supports real iPhones, but this release entry is validated on Mac;
+an iOS build is not an iPhone runtime check.
 
 GUI (macOS / iOS):
 
@@ -25,11 +34,38 @@ per-token host work is ~3x slower in Debug.
 CLI (macOS, headless — agents verify with this):
 
 ```
-swift run chat-cli --prompt "What can you do, offline?" --model qwen3.5-2b
-swift run chat-cli --list-models
+swift run -c release chat-cli --prompt "What is the capital of Japan?" --model qwen3-0.6b
+swift run -c release chat-cli --list-models
 ```
 
 The reply goes to stdout; download progress goes to stderr.
+
+## Reproduce the release checks
+
+The public `entry-check` target accepts a mode and a cache directory. Use a new
+folder for the first command; retain it for follow-ups. It never deletes the normal
+application cache. Each mode exits nonzero on a failed check.
+
+```bash
+ENTRY_CACHE="$(mktemp -d)/models"
+swift run -c release entry-check chat "$ENTRY_CACHE"
+swift run -c release entry-check fm "$ENTRY_CACHE"
+swift run -c release entry-check japanese "$ENTRY_CACHE"
+swift run -c release entry-check japanese-fm "$ENTRY_CACHE"
+```
+
+`chat`, FM and Japanese modes use **0.4.1's built-in Qwen pin**, so a future live-catalog update cannot change that bundle. `fm` checks ORCHID recall on the second turn; the Japanese modes check
+streaming output. Results and exact revisions are in the
+[release validation record](../../docs/GETTING_STARTED.md#release-041-validation).
+`hybrid` is the maintainer's two-turn runtime regression check and downloads a
+separate Qwen3.5 0.8B bundle (~1.34 GB). `speak` exercises VoxCPM and writes a WAV.
+
+For the same first-use check in the **physical iPhone app**, select your development
+team in Signing & Capabilities, add `COREAI_ENTRY_SMOKE=1` to the scheme's Run
+Environment Variables, and run. It uses a new cache folder each time and displays
+`PASS: first download and two replies` after recalling ORCHID. The result is also
+saved as `Documents/entry-check.txt`. Remove the variable to return to the chat UI.
+This is a short entry check, not a performance benchmark or an all-model sweep.
 
 ## The take-home: `Sources/QuickStart.swift`
 

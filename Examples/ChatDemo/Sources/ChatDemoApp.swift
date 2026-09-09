@@ -4,7 +4,9 @@ import SwiftUI
 struct ChatDemoApp: App {
     var body: some Scene {
         WindowGroup {
-            if FalconBench.isRequested {
+            if EntrySmokeView.isRequested {
+                EntrySmokeView()
+            } else if FalconBench.isRequested {
                 FalconBenchView()
             } else {
                 ChatView()

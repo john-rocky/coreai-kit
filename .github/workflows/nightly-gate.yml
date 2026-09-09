@@ -28,9 +28,9 @@ jobs:
         # lands in /Applications/Xcode.app and the beta stays put.
         run: ./scripts/check-xcode-pin.sh
       - name: Build
-        run: swift build
+        run: python3 scripts/with-gpu-lock.py -- swift build
       - name: Unit tests
-        run: swift test
+        run: python3 scripts/with-gpu-lock.py -- swift test
       - name: Catalog pins present
         run: python3 scripts/pin-catalog.py --check
       - name: Built-in fallback carries the same pins
@@ -45,7 +45,7 @@ jobs:
         # cannot be exercised until GA, so it is exercised against fixtures.
         run: ./scripts/test-check-xcode-pin.sh
       - name: The prepared GA wording edit still applies
-        # Seven sentences say "beta" and stop being true on the day 27 ships.
+        # Four requirement sentences say "beta" and stop being true on the day 27 ships.
         # The edit is written; this fails if someone rewords a line underneath
         # it, so it goes stale here rather than on the morning it is needed.
         run: python3 scripts/ga-wording.py --check

@@ -4,10 +4,12 @@ The runbook for the morning Apple ships macOS/iOS 27 and the release Xcode. Writ
 ahead of time (2026-08-31) so the day costs an hour, not a search. Everything here is
 mechanical; the one decision — *which* 0.4.x number — is step 6.
 
-**The trigger is CI itself.** `scripts/check-xcode-pin.sh` has a GA tripwire: the moment
-a release build of the pinned Xcode train lands in `/Applications`, every workflow goes
-red with an error naming this exact situation. Do the steps below in one sitting so the
-red window stays short.
+**The trigger is Apple's actual release of macOS/iOS 27 and release Xcode.** Check the
+[Apple release list](https://developer.apple.com/news/releases/); an event date or an RC
+does not establish GA availability. `scripts/check-xcode-pin.sh` also raises a tripwire
+when a build with release-style numbering is installed alongside the pinned beta.
+Treat that as a prompt to check availability: RC and GA can share a build number.
+Keep beta, RC and GA validation results separate.
 
 ## 1. OS first, then Xcode
 
@@ -33,8 +35,8 @@ print the release build and exit 0.
 python3 scripts/ga-wording.py --apply
 ```
 
-Three docs sentences flip from "27 beta" to "27" (the README already reads GA — its
-beta wording left with the 2026-08-31 quickstart rework). Then delete
+Four requirement sentences (README plus three docs) flip from "27 beta" to "27".
+Keep dated beta validation evidence labelled with its original build. Then delete
 `scripts/ga-wording.py` and its two CI steps (`ci.yml` and `nightly-gate.yml`, the
 "GA wording" step in each) in the same commit — after `--apply`, `--check` fails by
 design.
@@ -69,7 +71,7 @@ gh release create 0.4.x --title "0.4.x — macOS/iOS 27 GA" --notes-file <notes>
 ```
 
 Release notes = that CHANGELOG section, led by one line the funnel can quote: built and
-gated on release macOS/iOS 27 and release Xcode 27, no API changes, `from: "0.4.0"`
+gated on release macOS/iOS 27 and release Xcode 27, no API changes, `from: "0.4.1"`
 resolvers pick it up automatically.
 
 ## 7. Devices

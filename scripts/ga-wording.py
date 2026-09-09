@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Drop "beta" from the OS requirement, on the day macOS/iOS 27 ships.
 
-Three sentences across three docs files tell a reader they need a beta OS
-(the README already reads GA — its beta wording was dropped with the 2026-08-31
-quickstart rework). On GA day every one of them becomes wrong, and a reader who
+Four sentences across the README and three docs files tell a reader they need a beta OS.
+Apply only after Apple provides release OS/SDK builds and their validation passes;
+an event or an RC is not that trigger. On GA day a reader who
 believes them concludes the package is not for their machine. This is the edit,
 written ahead of time so that day costs a command instead of a search.
 
@@ -27,6 +27,11 @@ import sys
 # (file, before, after). Exact strings, so a reworded line is caught rather
 # than half-edited.
 EDITS = [
+    (
+        "README.md",
+        "> Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta and Xcode 27 beta",
+        "> Community package — not affiliated with Apple. Requires macOS 27 / iOS 27 and Xcode 27",
+    ),
     (
         "docs/GETTING_STARTED.md",
         "- macOS 27 beta or iOS 27 beta (real device — the CoreAI framework is not in the iOS\n"

@@ -7,7 +7,49 @@ model conversion — starter models are hosted on the Hugging Face Hub and downl
 
 - macOS 27 beta or iOS 27 beta (real device — the CoreAI framework is not in the iOS
   Simulator SDK), Xcode 27 beta
-- ~1–5 GB of disk per model (cached after first download)
+- Qwen3 0.6B starter: approximately 352 MB on Mac / 456 MB on iPhone; allow at least
+  1 GB of free disk. Other capabilities download their own models.
+
+## Release 0.4.1 validation
+
+The release entry is **Qwen3 0.6B**, from
+[`mlboydaisuke/qwen3-0.6b-CoreAI-official`](https://huggingface.co/mlboydaisuke/qwen3-0.6b-CoreAI-official/tree/943eb6a4f967de53d7e1458d75deac0b68ac3d85),
+revision `943eb6a4f967de53d7e1458d75deac0b68ac3d85`. Its pinned `macos` files total
+**351,561,081 bytes**, and the `ios` files total **456,296,751 bytes**. These are download
+bytes, not peak memory. The package selects the platform bundle and caches it.
+
+The package is tested on **Mac Studio M4 Max (128 GiB)**, **macOS 27.0 beta `26A5416b`**,
+**Xcode 27 beta 5 `27A5237l`**, **macOS SDK `26A5406c`**. Its public runtime is
+**coreai-models `0.2.4-zoo`**, revision `f7a75ec0f89fab451d277572afe8995b7ef768c1`.
+The independent public consumer resolved **swift-transformers `1.3.4`**, revision
+`c21fdcde390313a6d98d8e33a346f2c3486c3ab0`; retain your consumer's `Package.resolved`.
+
+| Check | Observed result on the Mac |
+|---|---|
+| First-use Qwen download → answer | Empty dedicated cache; all 11 files match the public revision's size and hash. Nonempty answer; cache reuse passes. |
+| FoundationModels, two turns | First reply confirms ORCHID; second recalls ORCHID. |
+| Japanese, ChatSession | 177 characters, six deltas, final message matches the assembled stream. |
+| Japanese, FoundationModels | 177 characters, 116 cumulative snapshots, no U+FFFD replacement characters. |
+| VoxCPM 0.5B | New synthesis from verified public cached weights: 20,480 finite, nonzero samples; 1.28 s, 16 kHz mono WAV. Playback exits successfully. |
+
+The Japanese prompt requests around 400 characters; the model returns a shorter,
+imperfect answer. This verifies the streaming path, not translation quality. VoxCPM
+uses revision `9920f9599f98ad257f09cd606240d79282db3991`, with `macos`, `tokenizer`
+and `voxcpm_host_glue` totaling **1,373,894,365 bytes**. Those files were hash-checked
+against the public revision and reused in a dedicated cache; this was a new synthesis,
+not a claim of a fresh TTS download or subjective voice-quality approval.
+
+The [ChatDemo release checks](../Examples/ChatDemo#reproduce-the-release-checks)
+provide the executable source and commands for an empty dedicated model cache,
+FoundationModels two-turn recall, and Japanese streaming. They are maintainer-run
+checks, not independent adoption or a guarantee of a small model's answer quality.
+The [release](https://github.com/john-rocky/coreai-kit/releases/tag/0.4.1) holds the
+final result and public consumer evidence.
+
+**GA and newer beta toolchains are not established by these results.** As observed on
+September 9, the [Apple release list](https://developer.apple.com/news/releases/) still
+lists OS 27 beta 8 and Xcode 27 beta 6; this entry uses the beta 5 SDK generation.
+Do not update a shared machine's OS/SDK merely to reproduce the demo.
 
 ## 1. Add the package
 
@@ -15,7 +57,7 @@ In Xcode: File ▸ Add Package Dependencies… ▸ `https://github.com/john-rock
 then add the `CoreAIKit` product to your target. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/john-rocky/coreai-kit", branch: "main"),
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.4.1"),
 // target dependency:
 .product(name: "CoreAIKit", package: "coreai-kit"),
 ```
@@ -69,7 +111,7 @@ and stream.
 ```swift
 import CoreAIKit
 
-let chat = try await ChatSession(model: .qwen3_0_6B)   // downloads on first use
+let chat = try await ChatSession(catalog: "qwen3-0.6b")   // downloads on first use
 for try await event in await chat.streamResponse(to: "What is the capital of Japan?") {
     switch event {
     case .response(let delta): print(delta, terminator: "")
@@ -98,7 +140,7 @@ var config = ChatSession.Configuration()
 config.temperature = nil            // greedy decoding (default 0.7)
 config.maxResponseTokens = 1024     // default 2048
 config.systemPrompt = "You are a terse assistant."
-let chat = try await ChatSession(model: .qwen3_0_6B, configuration: config)
+let chat = try await ChatSession(catalog: "qwen3-0.6b", configuration: config)
 ```
 
 ### Download progress
@@ -112,7 +154,7 @@ let chat = try await ChatSession(model: .qwen3_4B) { progress in
 Models cache under `Application Support/CoreAIKit/Models`. Manage them with `ModelStore`
 (`downloadedModels()`, `delete(_:)`, or a custom `ModelStore(directory:)`).
 
-### HF-compatible endpoints (on main; not in 0.4.0)
+### HF-compatible endpoints (0.4.1+)
 
 Pass a store configured for your chosen HF-compatible endpoint. Both the tree listing
 and file downloads use that URL, including an optional path prefix:
@@ -132,14 +174,19 @@ have not been validated by this change.
 
 ## 4. Starter models
 
-| Model | `ModelID` | macOS | iOS | Notes |
+| Model | Catalog ID | macOS | iOS | Notes |
 |---|---|---|---|---|
-| Qwen3 0.6B | `.qwen3_0_6B` | ✓ | ✓ | smallest, thinking model |
-| Qwen3 4B | `.qwen3_4B` | ✓ | ✓ | thinking model |
-| Mistral 7B v0.3 | `.mistral_7B` | ✓ | – | |
-| Gemma 3 4B | `.gemma3_4B` | ✓ | – | |
+| Qwen3 0.6B | `qwen3-0.6b` | ✓ | ✓ | smallest, thinking model |
+| Qwen3 4B | `qwen3-4b` | ✓ | ✓ | thinking model |
+| Mistral 7B v0.3 | `mistral-7b-v0.3` | ✓ | – | |
+| Gemma 3 4B | `gemma-3-4b-it` | ✓ | – | |
 
-Any other Hugging Face repo with the same bundle layout works:
+Use these IDs with `ChatSession(catalog:)`. Catalog initializers resolve the current
+reviewed pin; for an immutable release snapshot, resolve `ModelCatalog.builtin` as in
+the FoundationModels example. Legacy static presets such as `.qwen3_0_6B` use the
+model repo’s `main` branch and are not the reproducible release entry.
+
+A compatible Hugging Face repo with the same bundle layout can be specified directly:
 `ModelID("org/name", path: "macos")`.
 
 The live list (with download sizes) is also available as a remote catalog — new models
@@ -275,7 +322,10 @@ struct WeatherTool: Tool {
     }
 }
 
-let model = try await KitLanguageModel(model: .qwen3_0_6B)
+guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
+    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
+}
+let model = try await KitLanguageModel(model: modelID)
 let session = LanguageModelSession(model: model, tools: [WeatherTool()])
 let answer = try await session.respond(to: "What's the weather in Sapporo right now?")
 ```
@@ -296,11 +346,10 @@ decides when to search.
 
 ### Known beta caveats
 
-- The engine ignores a consumer break and keeps generating to
-  `maximumResponseTokens` in the background; EOS-ended turns therefore reset the KV
-  cache on the next turn (correctness first). Capped turns (no EOS) hit the append-only
-  KV fast path and report `cachedTokenCount` in usage. Set `COREAI_KIT_DEBUG=1` to watch
-  the decisions.
+- The pinned `0.2.4-zoo` engine stops promptly after the consumer stops. The executor
+  settles the previous generation and rewinds to the shared token prefix on the next
+  turn. Hybrid engines that cannot partially rewind fall back to full re-prefill.
+  Set `COREAI_KIT_DEBUG=1` to inspect cache decisions.
 - Guided generation needs the sequential engine (per-step logits); on the default
   pipelined engine schema requests throw `unsupportedCapability`.
 - Usage/metadata events are sent once at end of turn (an upfront usage event
@@ -321,7 +370,7 @@ struct CityFacts: Codable { let name: String; let country: String }
 
 var config = ChatSession.Configuration()
 config.engineVariant = .sequential
-let chat = try await ChatSession(model: .qwen3_0_6B, configuration: config)
+let chat = try await ChatSession(catalog: "qwen3-0.6b", configuration: config)
 
 let facts = try await chat.respond(
     to: "Give facts about the capital of Japan.",
@@ -337,7 +386,10 @@ let facts = try await chat.respond(
 it token by token. With FoundationModels, `@Generable` types work end to end:
 
 ```swift
-let model = try await KitLanguageModel(model: .qwen3_0_6B, engineVariant: .sequential)
+guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
+    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
+}
+let model = try await KitLanguageModel(model: modelID, engineVariant: .sequential)
 let session = LanguageModelSession(model: model)
 let plan = try await session.respond(to: "Plan a trip.", generating: TravelPlan.self)
 ```

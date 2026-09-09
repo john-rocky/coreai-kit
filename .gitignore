@@ -9,3 +9,10 @@ Examples/**/Models/
 *.log
 Examples/**/_*
 /_*/
+
+# These release examples depend on this repo's own tag. Keep consumer-generated
+# locks locally; committing a lock to the same tag would require a self hash.
+Examples/ChatDemo/Package.resolved
+Examples/Speak/Package.resolved
+Examples/ChatDemo/**/swiftpm/Package.resolved
+Examples/Speak/**/swiftpm/Package.resolved

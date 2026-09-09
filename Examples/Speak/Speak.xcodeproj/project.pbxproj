@@ -20,7 +20,6 @@
 		8DB9C0C3AD6CA6902DD6FFCD /* SpeakApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakApp.swift; sourceTree = "<group>"; };
 		8FE322D3ECE31C41C7B5D996 /* SpeakView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakView.swift; sourceTree = "<group>"; };
 		C8053313733A8336111B4F82 /* Speak.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Speak.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		FE7D84062D263C06C41D2EC4 /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -35,14 +34,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		3B05DE1460EE655FAB146107 /* Packages */ = {
-			isa = PBXGroup;
-			children = (
-				FE7D84062D263C06C41D2EC4 /* coreai-kit */,
-			);
-			name = Packages;
-			sourceTree = "<group>";
-		};
 		6B04134F677DE95EEAD48973 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -57,7 +48,6 @@
 		A97696A07C56857213284DD3 = {
 			isa = PBXGroup;
 			children = (
-				3B05DE1460EE655FAB146107 /* Packages */,
 				6B04134F677DE95EEAD48973 /* Sources */,
 				B88CA9CC9B90B5751D4AB974 /* Products */,
 			);
@@ -103,7 +93,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					3598FA30E8EBE580498E8564 = {
-						DevelopmentTeam = MFN25KNUGJ;
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -119,7 +109,7 @@
 			mainGroup = A97696A07C56857213284DD3;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				AC820775E6E53555D277977D /* XCLocalSwiftPackageReference "../.." */,
+				71F3A5E3253448C0870F36D7 /* XCRemoteSwiftPackageReference "coreai-kit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
@@ -207,7 +197,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				DEVELOPMENT_TEAM = "${DEVELOPMENT_TEAM}";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -298,7 +288,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				DEVELOPMENT_TEAM = "${DEVELOPMENT_TEAM}";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -343,16 +333,21 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		AC820775E6E53555D277977D /* XCLocalSwiftPackageReference "../.." */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../..;
+/* Begin XCRemoteSwiftPackageReference section */
+		71F3A5E3253448C0870F36D7 /* XCRemoteSwiftPackageReference "coreai-kit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/john-rocky/coreai-kit";
+			requirement = {
+				kind = exactVersion;
+				version = 0.4.1;
+			};
 		};
-/* End XCLocalSwiftPackageReference section */
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		5D980FCEE1FFE5E651F65E4B /* CoreAIKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 71F3A5E3253448C0870F36D7 /* XCRemoteSwiftPackageReference "coreai-kit" */;
 			productName = CoreAIKit;
 		};
 /* End XCSwiftPackageProductDependency section */

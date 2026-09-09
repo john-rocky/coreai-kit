@@ -5,60 +5,100 @@
 [![Next-SDK models](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjohn-rocky%2Fcoreai-kit%2Fgate-status%2Fnext-sdk.json)](https://github.com/john-rocky/coreai-kit/actions/workflows/next-sdk-gate.yml)
 [![Release](https://img.shields.io/github/v/tag/john-rocky/coreai-kit?label=release)](https://github.com/john-rocky/coreai-kit/releases)
 
-Core AI is Apple's on-device ML runtime in iOS 27 / macOS 27 and the successor to Core ML: PyTorch models are exported with Apple's `coreai-torch` (LLMs: `coreai.llm.export`) into `.aimodel` bundles that run on the GPU or the Neural Engine, e.g. Qwen3-8B 4-bit decodes at 94 tok/s on an M4 Max GPU, MLX 90 under the same protocol ([apple-silicon-llm-bench](https://github.com/john-rocky/apple-silicon-llm-bench), macOS 27 beta, 2026-06).
+Download a tested Core AI model and run it in your Swift app. CoreAIKit handles model
+selection, download and caching, with chat, vision and speech examples by
+**Daisuke Majima (MLBoy)**.
 
-Build LLM and computer-vision apps on Apple's Core AI framework (macOS / iOS 27) in a few lines of Swift.
-
-> Community package — not affiliated with Apple. Requires macOS 27 / iOS 27
+> Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta and Xcode 27 beta
 > (real device; the CoreAI framework is not in the iOS Simulator SDK).
+
+The entry below uses **Qwen3 0.6B** (`qwen3-0.6b`): approximately **352 MB on Mac**
+(the iPhone bundle is approximately **456 MB**), downloaded from Hugging Face on first
+use and cached. Keep at least 1 GB of free disk for the starter. No Python, conversion,
+API key or bundled model weights are needed.
+
+**0.4.1 targets Xcode 27 beta 5 (`27A5237l`).** See the
+[validation record](docs/GETTING_STARTED.md#release-041-validation) for the tested Mac,
+OS/SDK builds and model revisions. Newer betas, iPhone, RC and GA require their own
+validation; an Apple event date is not a GA release.
 
 ## Quickstart
 
-Add the package in Xcode — **File → Add Package Dependencies…**, paste
-`https://github.com/john-rocky/coreai-kit`, pick the **CoreAIKit** product — or in
-`Package.swift`:
+In Xcode, use **File → Add Package Dependencies…**, paste
+`https://github.com/john-rocky/coreai-kit`, choose **Exact Version: 0.4.1**, and add the
+**CoreAIKit** product to your app target. For a Swift package:
 
 ```swift
-.package(url: "https://github.com/john-rocky/coreai-kit", from: "0.4.0")
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.4.1")
+// In your target's dependencies:
+.product(name: "CoreAIKit", package: "coreai-kit")
 ```
 
-Then stream your first on-device tokens:
+Stream your first reply from an async throwing function. The built-in catalog fixes
+the model revision to the one shipped with this package:
 
 ```swift
 import CoreAIKit
 
-let chat = try await ChatSession(model: .qwen3_0_6B)
-for try await event in await chat.streamResponse(to: "Hello!") {
+guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
+    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
+}
+let chat = try await ChatSession(model: modelID)
+for try await event in await chat.streamResponse(to: "What is the capital of Japan?") {
     if case .response(let delta) = event { print(delta, terminator: "") }
 }
 ```
 
-The model (~670 MB) downloads from the Hugging Face Hub on first use and caches — nothing
-is bundled into your app. Run it on a Mac or a real iPhone; in an iOS app the same code
-goes in a `.task`. [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) covers the rest —
-task ops, tool calling, RAG, and what to expect on first load.
+Expect a first-use download, a loading pause, then a reply mentioning Tokyo. Text can
+vary between runs. In SwiftUI, call this from `.task` with `do`/`catch` and append the
+response deltas to your view state. Keep the session for follow-up questions.
 
-## When FoundationModels isn't enough
+**Run the same release on your Mac:**
 
-**Keep your session code and swap the model — one line.** Need a stronger multilingual
-model, vision input, or answers that must not change under an OS update?
-`KitLanguageModel` puts any of the 61 catalog models behind the same
-`LanguageModelSession` you already write:
-
-```swift
-// Before — Apple's built-in model
-let session = LanguageModelSession()
-let answer = try await session.respond(to: prompt)
-
-// After — the same session, your model
-let model = try await KitLanguageModel(model: .qwen3_0_6B)
-let session = LanguageModelSession(model: model)
-let answer = try await session.respond(to: prompt)
+```bash
+git clone --branch 0.4.1 --depth 1 https://github.com/john-rocky/coreai-kit.git
+cd coreai-kit
+export DEVELOPER_DIR=/Applications/Xcode-27.0.0-Beta.5.app/Contents/Developer
+swift run -c release --package-path Examples/ChatDemo chat-cli \
+  --model qwen3-0.6b --prompt "What is the capital of Japan?"
 ```
 
-Your `Tool` implementations, `@Generable` types, streaming snapshots, and transcripts work
-unchanged — capabilities and limits in
-[the FoundationModels section](#works-with-apples-foundationmodels-api).
+Set `DEVELOPER_DIR` to your installed **beta 5** application's `Contents/Developer`
+directory if its name differs. [ChatDemo](Examples/ChatDemo) provides the app and the
+copyable Swift function. [Getting started](docs/GETTING_STARTED.md) covers a second
+turn, FoundationModels and download progress.
+
+If it stops at build, download or load, start with the
+[observed errors and fixes](https://github.com/john-rocky/coreai-model-zoo/blob/main/knowledge/coreai-error-index.md).
+For a reproducible bug, [open an issue](https://github.com/john-rocky/coreai-kit/issues/new)
+with package version, model ID/revision, OS/SDK build and the error text.
+
+## Use your model with FoundationModels
+
+`KitLanguageModel` adapts **chat bundles** to Apple's `LanguageModelSession`. The
+catalog also contains other task kinds; vision uses `KitVisionModel`, and speech has
+its own API. For a repeatable two-turn example, select this release's built-in pin:
+
+```swift
+import FoundationModels
+import CoreAIKit
+
+guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
+    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
+}
+let model = try await KitLanguageModel(model: modelID)
+let session = LanguageModelSession(model: model)
+let first = try await session.respond(to: "Remember: my secret word is ORCHID. Confirm briefly.")
+let second = try await session.respond(to: "What is my secret word? Reply with only that word.")
+print(first.content, second.content)
+```
+
+The second answer should recall ORCHID. Tool calling requires a compatible
+ChatML/Hermes model; guided generation requires a sequential engine. See the
+[capability limits](#works-with-apples-foundationmodels-api).
+
+After chat, [Speak](Examples/Speak) adds one concrete capability: VoxCPM 0.5B text to
+speech, producing a mono WAV with a fixed voice. It has a separate model download.
 
 ## Two layers, one package
 
@@ -99,7 +139,8 @@ later is a refactor, not a rewrite.
 
 ## See it running
 
-Real-device captures (iPhone 17 Pro / M4 Max), everything fully on-device. Captions lead
+Earlier real-device captures (July 2026; iPhone 17 Pro / M4 Max). These illustrate
+other capabilities and are not 0.4.1 validation evidence. Captions lead
 with the one-line call where a task op covers it; each cell links to the kit example —
 or zoo app — that runs the same model. (Media lives in
 [coreai-assets](https://github.com/john-rocky/coreai-assets), so cloning this repo stays fast.)
@@ -139,7 +180,10 @@ the same FoundationModels API you use for Apple's built-in model — and adds wh
 import FoundationModels
 import CoreAIKit
 
-let model = try await KitLanguageModel(model: .qwen3_0_6B)   // downloads once, then cached
+guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
+    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
+}
+let model = try await KitLanguageModel(model: modelID)   // downloads once, then cached
 let session = LanguageModelSession(model: model, tools: [WeatherTool()])
 let answer = try await session.respond(to: "What's the weather in Tokyo?")
 ```

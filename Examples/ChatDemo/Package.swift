@@ -8,7 +8,7 @@ let package = Package(
     name: "ChatDemo",
     platforms: [.macOS("27.0")],
     dependencies: [
-        .package(path: "../..")
+        .package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.4.1")
     ],
     targets: [
         .executableTarget(
@@ -17,8 +17,13 @@ let package = Package(
             path: ".",
             // build_ios: device-build DerivedData Xcode recreates locally — without the
             // exclude, SPM globs its PrivacyInfo.xcprivacy copies into the target.
-            exclude: ["build", "build_ios", "ChatDemo.xcodeproj", "project.yml", "README.md"],
+            exclude: ["build", "build_ios", "ChatDemo.xcodeproj", "project.yml", "README.md", "ReleaseCheck"],
             sources: ["Sources/QuickStart.swift", "CLI/main.swift"]
+        ),
+        .executableTarget(
+            name: "entry-check",
+            dependencies: [.product(name: "CoreAIKit", package: "coreai-kit")],
+            path: "ReleaseCheck"
         )
     ]
 )

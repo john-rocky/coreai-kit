@@ -2,7 +2,7 @@
 // call the same function the card's snippet shows, print the reply. Progress goes to stderr so
 // stdout stays machine-checkable (agents: assert on stdout).
 //
-//   swift run chat-cli --prompt "What can you do, offline?" --model qwen3.5-2b
+//   swift run chat-cli --prompt "What can you do, offline?" --model qwen3-0.6b
 
 import CoreAIKit
 import Foundation
@@ -22,7 +22,7 @@ func fail(_ message: String) -> Never {
 }
 
 var promptText: String?
-var modelID = "qwen3.5-2b"
+var modelID = "qwen3-0.6b"
 
 var args = CommandLine.arguments.dropFirst()
 while let arg = args.popFirst() {

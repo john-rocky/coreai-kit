@@ -5,7 +5,8 @@ options:
 
 packages:
   coreai-kit:
-    path: ../..
+    url: https://github.com/john-rocky/coreai-kit
+    exactVersion: 0.4.1
 
 # Release: measure there — Debug is ~3x slower on the per-frame host work.
 schemes:

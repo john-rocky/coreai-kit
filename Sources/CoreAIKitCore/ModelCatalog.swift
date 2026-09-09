@@ -217,7 +217,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/qwen3-0.6b-CoreAI-official", kind: .chat,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 352),
-                    "ios": .init(path: "ios", sizeMB: 454),
+                    "ios": .init(path: "ios", sizeMB: 456),
                 ],
                 thinking: true),
             CatalogEntry(

@@ -11,8 +11,9 @@ Releases follow [SemVer](https://semver.org). Pre-1.0:
 - **Minor** (`0.X.0`): may change or remove API. Anything breaking is called out in
   [`CHANGELOG.md`](../CHANGELOG.md) with a migration note.
 
-Pin the package with `from: "0.4.0"` (or `exact:` if you want zero surprises) — every
-release is a tag on this repo.
+The reproducible quickstart uses `exact: "0.4.1"`. Use `from: "0.4.1"` if you want
+SwiftPM to select later compatible versions, and retain your app’s `Package.resolved`.
+Every release is a tag on this repo.
 
 **While the OS is in beta, a tag can stop compiling without anyone touching it.**
 FoundationModels renamed `LanguageModelCapabilities.init(capabilities:)` to `init(_:)`

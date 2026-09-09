@@ -51,7 +51,9 @@ final class ChatModel {
     func loadCatalog() async {
         guard entries.isEmpty else { return }
         entries = await ModelCatalog.load().available(.chat)
-        if selectedEntry == nil { selectedEntry = entries.first }
+        if selectedEntry == nil {
+            selectedEntry = entries.first { $0.id == "qwen3-0.6b" } ?? entries.first
+        }
     }
 
     func load() {

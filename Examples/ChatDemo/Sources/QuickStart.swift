@@ -14,11 +14,21 @@ import Foundation
 /// the conversation history; `streamResponse(to:)` yields tokens as they decode.
 func ask(
     _ prompt: String,
-    model id: String = "qwen3.5-2b",
+    model id: String = "qwen3-0.6b",
     downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
 ) async throws -> String {
     // CARD-SNIPPET-BEGIN
-    let chat = try await ChatSession(catalog: id, downloadProgress: downloadProgress)
+    let chat: ChatSession
+    if id == "qwen3-0.6b" {
+        // Freeze the release starter; other selections retain the live catalog's
+        // model-specific dispatch (including paired Gemma bundles).
+        guard let model = ModelCatalog.builtin.entry(id: id)?.modelID else {
+            throw CoreAIKitError.modelNotAvailableOnPlatform(id: id)
+        }
+        chat = try await ChatSession(model: model, downloadProgress: downloadProgress)
+    } else {
+        chat = try await ChatSession(catalog: id, downloadProgress: downloadProgress)
+    }
     let reply = try await chat.respond(to: prompt)
     // CARD-SNIPPET-END
     return reply

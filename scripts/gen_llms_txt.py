@@ -33,10 +33,17 @@ PREAMBLE = f"""\
 > depth, embeddings, OCR and forecasting. Models download from Hugging Face on first use and are
 > pinned to immutable revisions. Community package, not affiliated with Apple.
 
+Start with **CoreAIKit 0.4.1**, `exact: "0.4.1"`, and catalog ID `qwen3-0.6b`
+(approximately 352 MB on Mac / 456 MB on iPhone). Validated entry: Mac, Xcode 27 beta 5
+`27A5237l`; see the README for exact OS/SDK builds and limits.
+
 ```swift
-import CoreAIOps
-let text = try await CoreAI.transcribe(voiceMemoURL)   // speech to text, on device
-let tldr = try await CoreAI.summarize(text)
+import CoreAIKit
+guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {{
+    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
+}}
+let chat = try await ChatSession(model: modelID)
+let answer = try await chat.respond(to: "What is the capital of Japan?")
 ```
 
 ## Start here

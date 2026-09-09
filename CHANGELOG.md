@@ -5,7 +5,18 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
-## [Unreleased]
+## [0.4.1] — 2026-09-09
+
+A patch release of the existing public API, validated on macOS 27 beta with Xcode 27
+beta 5. This is not a claim of GA validation. Start from the
+[versioned quickstart](https://github.com/john-rocky/coreai-kit/tree/0.4.1#quickstart).
+
+- The starter is the catalog's Qwen3 0.6B pin, with measured download sizes and an
+  explicit OS/SDK requirement. ChatDemo and Speak now depend on the public exact
+  0.4.1 package in both SwiftPM and Xcode; their local-development lockfiles are removed
+  so a new clone resolves the release rather than a sibling checkout.
+- The runtime and model pins already on main are retained. The fixes below, previously
+  available only on main, are now distributed together.
 
 ### Added
 
