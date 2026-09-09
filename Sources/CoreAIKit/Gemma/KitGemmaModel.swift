@@ -37,9 +37,9 @@ public struct GemmaModelID: Sendable, Hashable {
     /// on-device GPU specializer (`LLVM ERROR: Failed to allocate mmap'd buffer`). macOS
     /// JIT-specializes the plain `…_tbl` bundle fine (there is no Mac AOT artifact).
     #if os(iOS)
-    static let gemma4E2BDecoderPath = "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p"
+    static let gemma4E2BDecoderPath = "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p"
     #else
-    static let gemma4E2BDecoderPath = "gpu-pipelined/gemma4_e2b_qat_decode_int4lin_tbl"
+    static let gemma4E2BDecoderPath = "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl"
     #endif
 
     /// Gemma 4 E2B, official-QAT int4 (license: gemma). The shippable on-device size — a
