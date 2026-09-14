@@ -8,5 +8,5 @@
 # whatever a human typed when they dragged the app in; the build version is what
 # actually produced the green.
 
-XCODE_PATH=/Applications/Xcode-27.0.0-Beta.5.app
-XCODE_BUILD=27A5237l
+XCODE_PATH=/Applications/Xcode-27.0.0-RC.app
+XCODE_BUILD=27A266a
