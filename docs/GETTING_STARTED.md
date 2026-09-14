@@ -5,8 +5,8 @@ model conversion — starter models are hosted on the Hugging Face Hub and downl
 
 ## Requirements
 
-- macOS 27 beta or iOS 27 beta (real device — the CoreAI framework is not in the iOS
-  Simulator SDK), Xcode 27 beta
+- macOS 27 or iOS 27 (real device — the CoreAI framework is not in the iOS
+  Simulator SDK), Xcode 27
 - Qwen3 0.6B starter: approximately 352 MB on Mac / 456 MB on iPhone; allow at least
   1 GB of free disk. Other capabilities download their own models.
 

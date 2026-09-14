@@ -5,7 +5,12 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
-## [Unreleased]
+## [0.4.2] — 2026-09-15
+
+Built and gated on the release macOS 27 (26A428) and release Xcode 27 (27A266a); no API
+changes, so `from: "0.4.1"` resolvers pick it up automatically. Device numbers in this
+train were measured on the iOS 27 RC (24A435); the iOS 27 release build is 24A437 and has
+not been re-measured yet.
 
 ### Fixed
 

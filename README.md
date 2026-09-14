@@ -9,7 +9,7 @@ Download a tested Core AI model and run it in your Swift app. CoreAIKit handles 
 selection, download and caching, with chat, vision and speech examples by
 **Daisuke Majima (MLBoy)**.
 
-> Community package — not affiliated with Apple. Requires macOS 27 beta / iOS 27 beta and Xcode 27 beta
+> Community package — not affiliated with Apple. Requires macOS 27 / iOS 27 and Xcode 27
 > (real device; the CoreAI framework is not in the iOS Simulator SDK).
 
 The entry below uses **Qwen3 0.6B** (`qwen3-0.6b`): approximately **352 MB on Mac**

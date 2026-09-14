@@ -1,7 +1,7 @@
 # Cookbook — "I want to …"
 
 Reverse lookup: find your task, copy the snippet. Everything runs fully on device
-(macOS 27 beta / iOS 27 beta) and downloads its model from the Hugging Face Hub on
+(macOS 27 / iOS 27) and downloads its model from the Hugging Face Hub on
 first use.
 
 One product, one import: `import CoreAIOps` re-exports the model layer, so **every

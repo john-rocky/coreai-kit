@@ -55,7 +55,7 @@ published, iPhone) before its pin lands — parity against the reference
 implementation and measured tokens/sec, recorded in the
 [model zoo](https://github.com/john-rocky/coreai-model-zoo). Three CI surfaces:
 
-- **CI** — build + tests + pin check on every push (macOS 27 beta, self-hosted).
+- **CI** — build + tests + pin check on every push (macOS 27, self-hosted).
 - **Nightly gate** — the same, every night, plus catalog-pin integrity against the Hub.
 - **Next-SDK model gate** — nightly end-to-end check (pinned download → GPU generate)
   under the *next* SDK generation's strict loader. Red here tracks the beta-toolchain
