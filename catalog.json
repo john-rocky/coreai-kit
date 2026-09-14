@@ -371,7 +371,7 @@
       "id": "gemma-4-12b",
       "name": "Gemma 4 12B",
       "repo": "mlboydaisuke/Gemma-4-12B-CoreAI",
-      "revision": "feff92c54c9fbadd4721da0e617214212a498e5a",
+      "revision": "266c04582d62be179cfbb04d45260c87dc648eec",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -417,7 +417,7 @@
       "id": "gemma-4-e4b",
       "name": "Gemma 4 E4B",
       "repo": "mlboydaisuke/gemma-4-E4B-CoreAI",
-      "revision": "480fc1d9bbbd15d7e81e4d0a68d5efdee6eb4c2b",
+      "revision": "e9ba305a91bf3e62ea83d5652b572b69913c433a",
       "kind": "chat",
       "variants": {
         "macos": {
