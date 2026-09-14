@@ -385,7 +385,7 @@
       "id": "gemma-4-31b",
       "name": "Gemma 4 31B",
       "repo": "mlboydaisuke/Gemma-4-31B-CoreAI",
-      "revision": "c80f188d8e8ad8f8b0aee6acfda8b378294e202d",
+      "revision": "92bcdec58cd4c286c1acfddea1d63ce5d234f70d",
       "kind": "chat",
       "variants": {
         "macos": {

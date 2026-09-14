@@ -9,12 +9,12 @@ policy.
 
 ### Fixed
 
-- Gemma 4 E4B and 12B catalog pins move to re-saved decode bundles (`gemma-4-E4B-CoreAI` e9ba305a,
-  `Gemma-4-12B-CoreAI` 266c0458). The previously pinned bundles carried coreai-torch 0.4.0-era IR,
+- Gemma 4 E4B, 12B and 31B catalog pins move to re-saved decode bundles (`gemma-4-E4B-CoreAI` e9ba305a,
+  `Gemma-4-12B-CoreAI` 266c0458, `Gemma-4-31B-CoreAI` 92bcdec5). The previously pinned bundles carried coreai-torch 0.4.0-era IR,
   which every OS 27 build since beta 2 refuses at `AIModel.load` (`LLVM ERROR: cannot unwrap empty
   odiec_module_t`), re-measured on the macOS 27 RC 26A428 on 2026-09-14. The re-saved bundles are
   the same weights with debug locations stripped and a `coreai-core 1.0.0b2` producer stamp
-  (coreai-model-zoo `conversion/recovery/`). Gemma 4 31B follows in a separate change.
+  (coreai-model-zoo `conversion/recovery/`).
 
 ## [0.4.1] — 2026-09-09
 
