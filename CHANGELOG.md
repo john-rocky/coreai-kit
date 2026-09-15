@@ -250,6 +250,26 @@ policy.
   GPU, 39.2 ms median per message; the phone holds about 38 ms for the first 20 s of a run and
   slows from there, 1.25–1.5× by 41 s over five runs) and 30.1 s on an M4 Max (30.0 ms),
   2026-09-26.
+- **Neural Engine variants for MiniCPM5 1B / 2B** — catalog key `ios-ane-h18p`. Apple's stock
+  static iOS export (`coreai.llm.export --platform iOS`, context 4096) AOT-compiled for h18p and
+  gated token-exact against the fp32 oracle on an iPhone 17 Pro in the zoo
+  (`models/minicpm5-*/gate-*-ane-device.json`; the 1B ships 8-bit palettized at 1371 MB because
+  4-bit flipped two margin-clear chat tokens, the 2B 4-bit at 1553 MB). `ios` stays the int8 GPU
+  bundle: `ChatSession(catalog:)` picks the Neural Engine bundle only on a device
+  `DeviceArchitecture` knows loads h18p (`iPhone18,x`), falls back to `ios` once if the runtime
+  refuses it, and kit builds without the key ignore it. The static-shape engine exposes
+  per-step logits, so `streamGuidedResponse` runs on these variants without `.sequential`.
+  The zoo gate drove Apple main's `StaticShapeEngine`; the kit drives the coreai-models fork's.
+- `CatalogEntry.variantKey` / `portableVariant` / `portableModelID`, `ChatSession.variantKey`, and
+  `DeviceArchitecture.current`.
+
+### Changed
+
+- `ChatSession.prewarm()` is a no-op on the static-shape engine. It used to run one synthetic
+  token there; a synthetic warm on a JIT static bundle has poisoned the on-device compile cache.
+- `minicpm5-1b` / `minicpm5-2b` pins move to the revisions that carry the Neural Engine subtrees
+  (`c4cdbf7e` / `4b80c30d`). The `int8` bytes are unchanged, but the cache path includes the
+  revision, so an app that had them downloaded fetches them once more.
 
 ### Fixed
 

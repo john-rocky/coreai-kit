@@ -76,6 +76,12 @@ like `qwen3-0.6b`, `qwen3.5-2b`, `youtu-llm-2b`, `lfm2.5-1.2b` — lowercase, hy
   SPDX id, `CC-BY-NC-4.0` for a non-commercial model); the others are permissive, and every
   model's exact terms are on its zoo card. Do not ship a non-commercial model in a commercial
   app.
+- `variants` is keyed by platform, `macos` / `ios`, and an entry may add a **device-specific
+  iOS key** beside `ios` — today `ios-ane-h18p`, an AOT Neural Engine bundle that only an
+  h18p-class iPhone loads. The kit picks that key only on a device `DeviceArchitecture` knows
+  loads the architecture and falls back to `ios` if the runtime refuses the bundle; every other
+  device, and every older kit build, takes `ios`. An engine hint can sit on the variant
+  (`engine` inside it) or on the entry.
 - Every entry is pinned to an **immutable Hugging Face revision**. Do not "upgrade" a pin to
   `main` to pick up a newer model — the pin is what was gated. Bumping one is a deliberate,
   reviewed change (`scripts/pin-catalog.py --check` is what CI enforces).

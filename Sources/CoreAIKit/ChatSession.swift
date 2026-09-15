@@ -53,6 +53,10 @@ public actor ChatSession {
 
     private let runtime: ModelRuntime
     private let configuration: Configuration
+    /// The catalog variant key this session loaded ("ios-ane-h18p", "ios", "macos"), for a
+    /// session opened by catalog id; nil otherwise. After a device-specific bundle was refused
+    /// and the portable one loaded instead, this says so.
+    public let variantKey: String?
     public private(set) var history: [Message] = []
     public private(set) var stats = GenerationStats()
     private var generationTask: Task<Void, Never>?
@@ -136,18 +140,55 @@ public actor ChatSession {
                 configuration: configuration)
             return
         }
-        var configuration = configuration
-        configuration.engineVariant = Self.engineVariant(
-            for: entry, requested: configuration.engineVariant)
-        try await self.init(
-            model: model, store: store, configuration: configuration,
+        let (runtime, resolved, key) = try await Self.load(
+            entry: entry, model: model, store: store, configuration: configuration,
             downloadProgress: downloadProgress)
+        self.init(runtime: runtime, configuration: resolved, variantKey: key)
+    }
+
+    /// Downloads and loads the entry's variant for this device, falling back once to the
+    /// platform's portable variant when a device-specific (AOT) bundle is refused by the
+    /// runtime — an architecture the table mis-filed, or a bundle this OS build will not
+    /// load. The portable bundle is what every device ran before the key existed; a failure
+    /// of the portable variant itself propagates. Returns the runtime, the configuration it
+    /// was loaded with, and the variant key that actually loaded.
+    private static func load(
+        entry: CatalogEntry, model: ModelID, store: ModelStore, configuration: Configuration,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)?
+    ) async throws -> (ModelRuntime, Configuration, String?) {
+        // A catalog engine hint — the variant's own, else the entry's — applies only when
+        // the caller left `engineVariant` at `.auto`; an explicit setting wins.
+        func configured(forKey key: String) -> Configuration {
+            var resolved = configuration
+            resolved.engineVariant = Self.engineVariant(
+                for: entry, requested: configuration.engineVariant, platform: key)
+            return resolved
+        }
+        let key = entry.variantKey
+        let resolved = configured(forKey: key ?? CatalogEntry.platformKey)
+        do {
+            let url = try await store.download(model, progress: downloadProgress)
+            let runtime = try await ModelRuntime(bundleAt: url, engineVariant: resolved.engineVariant)
+            return (runtime, resolved, key)
+        } catch {
+            guard !(error is CancellationError), let key, key != CatalogEntry.platformKey,
+                let portable = entry.portableModelID, portable != model
+            else { throw error }
+            kitFMDebug(
+                "catalog '\(entry.id)': variant '\(key)' failed to load (\(error)); "
+                    + "falling back to '\(CatalogEntry.platformKey)'")
+            let fallback = configured(forKey: CatalogEntry.platformKey)
+            let url = try await store.download(portable, progress: downloadProgress)
+            let runtime = try await ModelRuntime(bundleAt: url, engineVariant: fallback.engineVariant)
+            return (runtime, fallback, CatalogEntry.platformKey)
+        }
     }
 
     /// The engine a `catalog:` load runs: an explicit `requested` wins; `.auto` takes the catalog's
-    /// hint for `platform`, the variant's own before the entry's
-    /// (`CatalogEntry.resolvedEngine(for:)`), so an iPhone variant on the static-shape engine loads
-    /// on it while the Mac bundle stays on the entry's.
+    /// hint for the variant keyed `platform` ("macos", "ios", or a device key such as
+    /// "ios-ane-h18p"), the variant's own before the entry's (`CatalogEntry.resolvedEngine(for:)`),
+    /// so an iPhone variant on the static-shape engine loads on it while the Mac bundle stays on
+    /// the entry's.
     static func engineVariant(
         for entry: CatalogEntry, requested: EngineVariant,
         platform: String = CatalogEntry.platformKey
@@ -176,9 +217,10 @@ public actor ChatSession {
     }
 
     /// Wraps an already-loaded runtime (the Gemma catalog path lands here too).
-    init(runtime: ModelRuntime, configuration: Configuration = Configuration()) {
+    init(runtime: ModelRuntime, configuration: Configuration = Configuration(), variantKey: String? = nil) {
         self.runtime = runtime
         self.configuration = configuration
+        self.variantKey = variantKey
         var stats = GenerationStats()
         stats.loadSeconds = runtime.loadSeconds
         stats.footprintBytes = ProcessStats.physFootprint()
@@ -217,9 +259,10 @@ public actor ChatSession {
     /// every decoded token is grammar-checked, so the collected text is guaranteed to
     /// parse as JSON conforming to `schema`.
     ///
-    /// Requires a logits-capable engine — load the session with
-    /// `configuration.engineVariant = .sequential`. The default pipelined engine samples
-    /// on-GPU and cannot expose the per-step logits the grammar mask is applied to.
+    /// Requires a logits-capable engine: the sequential engine
+    /// (`configuration.engineVariant = .sequential`) or the static-shape engine a Neural
+    /// Engine bundle loads with (`ios-ane-*` catalog variants). The default pipelined engine
+    /// samples on-GPU and cannot expose the per-step logits the grammar mask is applied to.
     /// Constrained turns produce no `.thinking` events (the grammar starts at the JSON).
     public func streamGuidedResponse(
         to prompt: String, schema: String
@@ -282,12 +325,19 @@ public actor ChatSession {
     /// prefill length exceeds every earlier one pays a one-time engine cost at that
     /// length (shape specialization + logits growth); warming a length ≥ your typical
     /// prompts moves that cost into the load phase, and covers every shorter prefill.
-    /// Dynamic-shape (GPU) engines only — static-shape (ANE) engines skip it (their
-    /// chunk shapes are AOT-compiled, and an aborted synthetic compile can poison the
-    /// on-device cache), and it is wasted per-token work on S=1 zoo ports (catalog
-    /// hint "pipelined"), so leave it nil there too.
+    /// Dynamic-shape (GPU) engines only; it is wasted per-token work on S=1 zoo ports
+    /// (catalog hint "pipelined"), so leave it nil there.
+    ///
+    /// On the static-shape (Neural Engine) engine the whole call is a no-op: an AOT bundle
+    /// carries every chunk shape pre-specialized, so there is nothing to warm, and a
+    /// synthetic generate on a JIT static bundle has poisoned the on-device compile cache
+    /// (every later load of the bundle failed with nilError until the cache was wiped).
     public func prewarm(prefillLength: Int? = nil) async throws {
         guard !isGenerating else { return }
+        if runtime.engine is StaticShapeEngine {
+            kitFMDebug("prewarm skipped on the static-shape engine")
+            return
+        }
         let seed = runtime.tokenizer.encode(text: "Hi").first.map(Int32.init) ?? 1
         let stream = try await runtime.engine.generate(
             with: [seed],
@@ -296,15 +346,6 @@ public actor ChatSession {
         for try await _ in stream {}
         try await runtime.engine.reset()
         if let prefillLength, prefillLength > 1 {
-            // Static-shape (ANE) engines run fixed AOT-compiled chunk shapes — a
-            // synthetic warm prompt can trigger a device compile that, if it aborts,
-            // POISONS the on-device compile cache (observed: every later load of the
-            // bundle fails with nilError until the model is re-downloaded). Skip; the
-            // warm targets dynamic-shape engines' per-length specialization.
-            if runtime.engine is StaticShapeEngine {
-                kitFMDebug("prewarm(prefillLength:) skipped on the static-shape engine")
-                return
-            }
             // Best-effort: a warm failure must never fail the session (some engines
             // reject synthetic prefill shapes) — the first long real turn just pays
             // the specialization cost instead. Reset either way: a half-warmed engine
