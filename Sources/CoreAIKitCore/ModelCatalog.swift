@@ -62,10 +62,16 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         public let path: String
         /// Approximate download size, for UI.
         public let sizeMB: Int?
+        /// Engine hint for this variant, overriding the entry's `engine`. An entry can pair a
+        /// dynamic GPU bundle ("pipelined") with a chunked-static Neural Engine bundle
+        /// ("static-shape") under two keys, and the two need different engines. nil = the
+        /// entry's hint.
+        public let engine: String?
 
-        public init(path: String, sizeMB: Int? = nil) {
+        public init(path: String, sizeMB: Int? = nil, engine: String? = nil) {
             self.path = path
             self.sizeMB = sizeMB
+            self.engine = engine
         }
     }
 
@@ -79,6 +85,12 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     public let revision: String?
     public let kind: Kind
     /// Keyed by platform: "macos" / "ios". A missing key = not published there.
+    ///
+    /// iOS may carry a device-specific key beside "ios" (`deviceVariantKey(architecture:)`,
+    /// e.g. "ios-ane-h18p"): an AOT bundle that only that architecture loads — a Neural
+    /// Engine export. Resolution prefers it on a device whose architecture is known
+    /// (`DeviceArchitecture.current`); every other device, and every kit build older than the
+    /// key, takes "ios". So a catalog can publish the key before the kit that reads it ships.
     public let variants: [String: Variant]
     public let thinking: Bool?
     /// Engine override hint: "sequential" / "pipelined" / "static-shape"; nil = auto-detect.
@@ -102,7 +114,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.engine = engine
     }
 
-    static var platformKey: String {
+    /// The portable variant key for this platform: "macos" / "ios" — the bundle every device
+    /// of the platform runs, and what `variantKey` is whenever no device-specific key applies.
+    public static var platformKey: String {
         #if os(iOS)
         return "ios"
         #else
@@ -110,12 +124,47 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         #endif
     }
 
-    /// The variant for this platform, or nil if the model is not published here.
-    public var variant: Variant? { variants[Self.platformKey] }
+    /// The key of the iOS variant that only devices of `architecture` (a `coreai-build`
+    /// architecture id such as "h18p") load. The compute unit is in the name (design B of the
+    /// 2026-09-15 ANE rollout); design C keys by architecture alone ("ios-\(architecture)") —
+    /// switching is this line plus the keys in catalog.json and the built-in literal.
+    static func deviceVariantKey(architecture: String) -> String { "ios-ane-\(architecture)" }
 
-    /// `ModelID` for this platform, or nil if the model is not published here.
+    /// Variant keys in resolution order for `platform` ("ios" / "macos") on a device of
+    /// `architecture` (nil = unknown, or a platform without device-specific bundles).
+    static func variantKeys(platform: String, architecture: String?) -> [String] {
+        guard platform == "ios", let architecture else { return [platform] }
+        return [deviceVariantKey(architecture: architecture), platform]
+    }
+
+    /// The key `variant` resolves to on this device, or nil if the model is not published
+    /// on this platform.
+    public var variantKey: String? { resolvedVariantKey(architecture: DeviceArchitecture.current) }
+
+    func resolvedVariantKey(architecture: String?) -> String? {
+        Self.variantKeys(platform: Self.platformKey, architecture: architecture)
+            .first { variants[$0] != nil }
+    }
+
+    /// The variant for this device, or nil if the model is not published on this platform.
+    public var variant: Variant? { variantKey.flatMap { variants[$0] } }
+
+    /// The platform's portable variant ("ios" / "macos"): what `variant` is on a device with
+    /// no applicable device-specific bundle, and what a loader retries with when that bundle
+    /// fails to load.
+    public var portableVariant: Variant? { variants[Self.platformKey] }
+
+    /// The engine hint that applies to `variant`: the variant's own, else the entry's.
+    public var resolvedEngine: String? { variant?.engine ?? engine }
+
+    /// `ModelID` for this device, or nil if the model is not published on this platform.
     public var modelID: ModelID? {
         variant.map { modelID(path: $0.path) }
+    }
+
+    /// `ModelID` of `portableVariant`, or nil.
+    public var portableModelID: ModelID? {
+        portableVariant.map { modelID(path: $0.path) }
     }
 
     /// A `ModelID` for an arbitrary subtree of this entry's repo, carrying the entry's
@@ -316,12 +365,21 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "ios-h18p/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
                 ],
                 thinking: true, engine: "pipelined"),
+            // MiniCPM5: the int8 dynamic bundle (pipelined GPU) on both platforms, plus the
+            // first Neural Engine variants in the catalog — Apple's stock static iOS export
+            // (`coreai.llm.export --platform iOS`, context 4096) AOT-compiled for h18p and
+            // gated token-exact against the fp32 oracle on an iPhone 17 Pro (zoo
+            // `models/minicpm5-*/gate-*-ane-device.json`). "ios-ane-h18p" resolves only on a
+            // device known to load h18p; everything else keeps "ios". The static-shape engine
+            // exposes per-step logits, so guided generation runs on it without `.sequential`.
+            // 1B ships 8-bit palettized (4-bit flipped two margin-clear chat tokens), 2B 4-bit.
             CatalogEntry(
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(path: "int8", sizeMB: 1159),
                     "ios": .init(path: "int8", sizeMB: 1159),
+                    "ios-ane-h18p": .init(path: "ios-ane-h18p", sizeMB: 1371, engine: "static-shape"),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -330,6 +388,7 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "int8", sizeMB: 2685),
                     "ios": .init(path: "int8", sizeMB: 2685),
+                    "ios-ane-h18p": .init(path: "ios-ane-h18p", sizeMB: 1553, engine: "static-shape"),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(

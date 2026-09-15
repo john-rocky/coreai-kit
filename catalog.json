@@ -194,7 +194,7 @@
       "id": "minicpm5-1b",
       "name": "MiniCPM5 1B",
       "repo": "mlboydaisuke/MiniCPM5-1B-CoreAI",
-      "revision": "b8a6ac397ccd5fb815f97336f8a8b1800b110da1",
+      "revision": "c4cdbf7e7ab40f4af6a4a9d6392ab2b3e802b699",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -204,6 +204,11 @@
         "ios": {
           "path": "int8",
           "sizeMB": 1159
+        },
+        "ios-ane-h18p": {
+          "path": "ios-ane-h18p",
+          "sizeMB": 1371,
+          "engine": "static-shape"
         }
       },
       "thinking": true,
@@ -213,7 +218,7 @@
       "id": "minicpm5-2b",
       "name": "MiniCPM5 2B",
       "repo": "mlboydaisuke/MiniCPM5-2B-CoreAI",
-      "revision": "f306590f991d66cad23af06bf72464519b65ba9f",
+      "revision": "4b80c30dc1f71e902b4c352431aed3b072bdf292",
       "kind": "chat",
       "variants": {
         "macos": {
@@ -223,6 +228,11 @@
         "ios": {
           "path": "int8",
           "sizeMB": 2685
+        },
+        "ios-ane-h18p": {
+          "path": "ios-ane-h18p",
+          "sizeMB": 1553,
+          "engine": "static-shape"
         }
       },
       "thinking": true,

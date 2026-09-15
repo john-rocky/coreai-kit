@@ -76,6 +76,59 @@ final class ModelCatalogTests: XCTestCase {
             ModelCatalog.builtin.available(.detection).map(\.id), ["yolox-s", "rf-detr"])
     }
 
+    func testVariantEngineHintAndDeviceKeyResolution() throws {
+        let json = """
+            {"version": 1, "models": [
+              {"id": "m", "name": "M", "repo": "org/m", "revision": "abc", "kind": "chat",
+               "variants": {"macos": {"path": "int8", "sizeMB": 1},
+                            "ios": {"path": "int8", "sizeMB": 1},
+                            "ios-ane-h18p": {"path": "ios-ane-h18p", "sizeMB": 2,
+                                             "engine": "static-shape"}},
+               "engine": "pipelined"}
+            ]}
+            """
+        let entry = try JSONDecoder().decode(ModelCatalog.self, from: Data(json.utf8)).models[0]
+        XCTAssertEqual(entry.variants["ios-ane-h18p"]?.engine, "static-shape")
+        XCTAssertNil(entry.variants["ios"]?.engine)
+
+        // The key order is a pure function of platform + architecture: a device-specific
+        // key first when the architecture is known, then the portable key; macOS has no
+        // device-specific keys.
+        XCTAssertEqual(
+            CatalogEntry.variantKeys(platform: "ios", architecture: "h18p"), ["ios-ane-h18p", "ios"])
+        XCTAssertEqual(CatalogEntry.variantKeys(platform: "ios", architecture: nil), ["ios"])
+        XCTAssertEqual(CatalogEntry.variantKeys(platform: "macos", architecture: "h18p"), ["macos"])
+
+        #if os(iOS)
+        XCTAssertEqual(entry.resolvedVariantKey(architecture: "h18p"), "ios-ane-h18p")
+        // An architecture with no bundle of its own rides the portable variant.
+        XCTAssertEqual(entry.resolvedVariantKey(architecture: "h17p"), "ios")
+        XCTAssertEqual(entry.resolvedVariantKey(architecture: nil), "ios")
+        XCTAssertEqual(entry.portableVariant?.path, "int8")
+        XCTAssertEqual(entry.portableModelID, ModelID("org/m", path: "int8", revision: "abc"))
+        #else
+        XCTAssertEqual(entry.resolvedVariantKey(architecture: "h18p"), "macos")
+        XCTAssertEqual(entry.variantKey, "macos")
+        XCTAssertEqual(entry.resolvedEngine, "pipelined")
+        XCTAssertEqual(entry.portableModelID, entry.modelID)
+        #endif
+    }
+
+    func testMiniCPM5CarriesTheNeuralEngineVariantBesideThePortableOne() {
+        for id in ["minicpm5-1b", "minicpm5-2b"] {
+            let entry = try! XCTUnwrap(ModelCatalog.builtin.entry(id: id))
+            let ane = entry.variants["ios-ane-h18p"]
+            XCTAssertEqual(ane?.path, "ios-ane-h18p", id)
+            XCTAssertEqual(ane?.engine, "static-shape", id)
+            XCTAssertNotNil(ane?.sizeMB, id)
+            // The portable iOS variant stays: kit builds older than the key, and every
+            // device the architecture table does not know, ride it.
+            XCTAssertEqual(entry.variants["ios"]?.path, "int8", id)
+            XCTAssertNil(entry.variants["ios"]?.engine, id)
+            XCTAssertEqual(entry.engine, "pipelined", id)
+        }
+    }
+
     func testEntryLookup() {
         XCTAssertEqual(ModelCatalog.builtin.entry(id: "whisper-large-v3-turbo")?.kind, .asr)
         XCTAssertNil(ModelCatalog.builtin.entry(id: "nope"))

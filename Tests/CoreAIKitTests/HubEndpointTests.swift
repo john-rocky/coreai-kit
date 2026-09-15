@@ -29,6 +29,21 @@ final class HubEndpointTests: XCTestCase {
         }
     }
 
+    func testTreePaginationFollowsTheNextLink() {
+        XCTAssertNil(HubClient.nextPageURL(fromLinkHeader: nil))
+        XCTAssertNil(HubClient.nextPageURL(fromLinkHeader: "<https://h/t?cursor=1>; rel=\"prev\""))
+        XCTAssertEqual(
+            HubClient.nextPageURL(
+                fromLinkHeader: "<https://h/t?cursor=abc&recursive=true>; rel=\"next\"")?.absoluteString,
+            "https://h/t?cursor=abc&recursive=true")
+        // Several links in one header, `rel` unquoted.
+        XCTAssertEqual(
+            HubClient.nextPageURL(
+                fromLinkHeader: "<https://h/t?cursor=1>; rel=\"prev\", <https://h/t?cursor=2>; rel=next")?
+                .absoluteString,
+            "https://h/t?cursor=2")
+    }
+
     func testInvalidBaseURLsFailBeforeNetworking() throws {
         for base in ["file:///tmp/hub", "ftp://mirror.example", "/relative",
                      "https://user:secret@mirror.example", "https://mirror.example?token=secret",

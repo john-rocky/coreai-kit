@@ -49,7 +49,6 @@ except ImportError:
     sys.exit("needs huggingface_hub: pip install huggingface_hub")
 
 ROOT = Path(__file__).resolve().parent.parent
-PLATFORMS = ("macos", "ios")
 
 # Never downloaded by a loader: repo furniture and the card's media.
 IGNORED_SUFFIXES = (".md", ".gif", ".jpg", ".jpeg", ".png", ".gitattributes", ".txt")
@@ -60,7 +59,11 @@ def is_asset(name: str) -> bool:
 
 
 def measure(api: HfApi, entry: dict, platform: str) -> tuple[int, list[str]] | None:
-    """(bytes, notes) that a first run on `platform` pulls, or None if not published there."""
+    """(bytes, notes) that a first run on `platform` pulls, or None if not published there.
+
+    `platform` is a variant key: "macos", "ios", or a device-specific key such as
+    "ios-ane-h18p" (an AOT bundle only that architecture loads) — every key is measured.
+    """
     variant = (entry.get("variants") or {}).get(platform)
     if not variant:
         return None
@@ -90,8 +93,8 @@ def measure(api: HfApi, entry: dict, platform: str) -> tuple[int, list[str]] | N
     if not path or re.search(r"\.(aimodel|aimodelc)$", path):
         # The other platform's artifact is not a sibling — it is the thing this variant
         # exists instead of.
-        others = {(entry["variants"].get(p) or {}).get("path", "") for p in PLATFORMS
-                  if p != platform}
+        others = {(v or {}).get("path", "") for k, v in entry["variants"].items()
+                  if k != platform}
         siblings = sorted({n.split("/")[0] for n, _ in files
                            if not n.startswith(path) and "/" in n
                            and not any(o and n.startswith(o) for o in others)})
@@ -115,7 +118,7 @@ def main() -> int:
     for entry in catalog["models"]:
         if args.only and entry["id"] != args.only:
             continue
-        for platform in PLATFORMS:
+        for platform in entry.get("variants") or {}:
             result = measure(api, entry, platform)
             if result is None:
                 continue

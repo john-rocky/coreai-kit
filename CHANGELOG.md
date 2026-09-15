@@ -5,6 +5,35 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
+## [Unreleased]
+
+### Added
+
+- **Neural Engine variants for MiniCPM5 1B / 2B** — catalog key `ios-ane-h18p`. Apple's stock
+  static iOS export (`coreai.llm.export --platform iOS`, context 4096) AOT-compiled for h18p and
+  gated token-exact against the fp32 oracle on an iPhone 17 Pro in the zoo
+  (`models/minicpm5-*/gate-*-ane-device.json`; the 1B ships 8-bit palettized at 1371 MB because
+  4-bit flipped two margin-clear chat tokens, the 2B 4-bit at 1553 MB). `ios` stays the int8 GPU
+  bundle: `ChatSession(catalog:)` picks the Neural Engine bundle only on a device
+  `DeviceArchitecture` knows loads h18p (`iPhone18,x`), falls back to `ios` once if the runtime
+  refuses it, and kit builds before this release ignore the key. The static-shape engine exposes
+  per-step logits, so `streamGuidedResponse` runs on these variants without `.sequential`.
+  Pre-release note: the zoo gate drove Apple main's `StaticShapeEngine`; the kit drives the
+  `0.2.4-zoo` fork's, and that path has not been run on a device yet.
+- `CatalogEntry.Variant.engine` (a per-variant engine hint; `resolvedEngine` is the variant's,
+  else the entry's), `CatalogEntry.variantKey` / `portableVariant` / `portableModelID`,
+  `ChatSession.variantKey`, and `DeviceArchitecture.current`.
+
+### Changed
+
+- `ChatSession.prewarm()` is a no-op on the static-shape engine. It used to run one synthetic
+  token there; a synthetic warm on a JIT static bundle has poisoned the on-device compile cache.
+- `ModelStore` follows the Hub tree API's pagination, so a bundle downloads complete whatever its
+  file count (an AOT `.aimodelc` subtree is ~50 files).
+- `minicpm5-1b` / `minicpm5-2b` pins move to the revisions that carry the Neural Engine subtrees
+  (`c4cdbf7e` / `4b80c30d`). The `int8` bytes are unchanged, but the cache path includes the
+  revision, so an app that had them downloaded fetches them once more.
+
 ## [0.4.2] — 2026-09-15
 
 Built and gated on the release macOS 27 (26A428) and release Xcode 27 (27A266a); no API

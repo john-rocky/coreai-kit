@@ -128,7 +128,7 @@ public actor KitTextNormalizer {
         }
         let url = try await store.download(model, progress: downloadProgress)
         self.runtime = try await ModelRuntime(
-            bundleAt: url, engineVariant: EngineVariant(catalogHint: entry.engine))
+            bundleAt: url, engineVariant: EngineVariant(catalogHint: entry.resolvedEngine))
         self.id = id
     }
 
