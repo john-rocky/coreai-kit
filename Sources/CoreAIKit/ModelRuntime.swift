@@ -52,6 +52,9 @@ struct ModelRuntime: Sendable {
     let loadSeconds: Double
     let outputProfile: OutputProfile
     let promptRenderer: PromptRenderer
+    /// The bundle's `max_context_length` (prompt + generation, in tokens). `ChatSession`
+    /// clamps every turn's response budget to what is left of it after the prompt.
+    let maxContextLength: Int
     /// Retains the Gemma runtime — and with it the static PLE table buffers the engine's
     /// graph reads — for this runtime's lifetime.
     private let gemma: GemmaRuntime?
@@ -68,6 +71,7 @@ struct ModelRuntime: Sendable {
         self.loadSeconds = loadSeconds
         self.outputProfile = runtime.arch.outputProfile
         self.promptRenderer = .gemma(runtime.arch)
+        self.maxContextLength = runtime.maxContextLength
         self.gemma = runtime
     }
 
@@ -82,6 +86,7 @@ struct ModelRuntime: Sendable {
         self.loadSeconds = loadSeconds
         self.outputProfile = GemmaArchitecture.gemma4.outputProfile
         self.promptRenderer = .gemma(.gemma4)
+        self.maxContextLength = runtime.engine.config.maxContextLength
         self.gemma = nil
     }
 
@@ -117,6 +122,7 @@ struct ModelRuntime: Sendable {
         self.outputProfile = OutputProfile.detect(probing: tokenizer)
         self.loadSeconds = ProcessStats.seconds(from: start, to: .now)
         self.promptRenderer = .chatTemplate
+        self.maxContextLength = bundle.maxContextLength
         self.gemma = nil
     }
 }

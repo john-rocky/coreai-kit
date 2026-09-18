@@ -248,7 +248,9 @@ public actor KitTextNormalizer {
     }
 
     /// `<think>\n\n</think>\n\n` as token ids, or empty if this tokenizer has no think markers.
-    private static func closedThink(_ tokenizer: any Tokenizer) -> [Int32] {
+    /// Shared with `ChatSession` (thinking off): appended after the generation prompt so a
+    /// template that ignores `enable_thinking` still starts the answer past the think block.
+    static func closedThink(_ tokenizer: any Tokenizer) -> [Int32] {
         guard let open = tokenizer.convertTokenToId("<think>"),
             let close = tokenizer.convertTokenToId("</think>")
         else { return [] }

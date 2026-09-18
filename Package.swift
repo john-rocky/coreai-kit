@@ -23,7 +23,9 @@ let package = Package(
         .executable(name: "coreai-doctor", targets: ["coreai-doctor"]),
     ],
     dependencies: [
-        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.4-zoo is
+        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.5-zoo stops the
+        // engine at a stop sequence instead of draining it to maxTokens (every turn on the
+        // pipelined engine used to decode the whole remaining budget after EOS). 0.2.4-zoo is
         // upstream main through #207 (2026-08-28) plus the zoo patches to the pipelined
         // engine: hybrid/SSM extra states so Qwen3.5/3.6, LFM2.5 and Granite 4 load,
         // chunked prefill via a static-chunk "prefill" function, per-token/static inputs,
@@ -37,7 +39,7 @@ let package = Package(
         // descriptor; garbled text at temperature > 0 under pipelined decode).
         // For local engine work swap in .package(path: "../coreai-models") — branch
         // zoo-0.4 matches this tag.
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.4-zoo"),
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.5-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [
