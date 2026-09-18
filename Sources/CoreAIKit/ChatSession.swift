@@ -25,6 +25,9 @@ public actor ChatSession {
     public struct Configuration: Sendable {
         /// Sampling temperature; nil = greedy decoding.
         public var temperature: Double? = 0.7
+        /// Upper bound on generated tokens per turn. Every turn is additionally clamped to
+        /// what the bundle's `max_context_length` leaves after the rendered prompt, so
+        /// `Int.max` means "as long as the context allows" (see `maxContextLength`).
         public var maxResponseTokens: Int = 2048
         public var systemPrompt: String? = nil
         /// Reasoning switch for models whose chat template reads `enable_thinking` (Qwen3, LFM3):
@@ -32,6 +35,7 @@ public actor ChatSession {
         /// (thinking on for those models); `false` renders the template's thinking-off prompt
         /// (LFM3 closes it as `<think></think>`), so the whole response budget goes to the answer.
         /// A template that does not read the variable renders the same prompt either way.
+        /// Changeable per turn with `setThinking(_:)`. Ignored by the explicit Gemma renderer.
         public var enableThinking: Bool? = nil
         /// Engine to load the bundle with. The default `.auto` picks the fastest engine
         /// (GPU-pipelined for dynamic models); guided generation needs `.sequential`.
@@ -57,6 +61,8 @@ public actor ChatSession {
     /// session opened by catalog id; nil otherwise. After a device-specific bundle was refused
     /// and the portable one loaded instead, this says so.
     public let variantKey: String?
+    /// Live value of `Configuration.enableThinking`; see `setThinking(_:)`.
+    private var enableThinking: Bool?
     public private(set) var history: [Message] = []
     public private(set) var stats = GenerationStats()
     private var generationTask: Task<Void, Never>?
@@ -91,6 +97,17 @@ public actor ChatSession {
 
     /// Display name from the bundle metadata.
     public var modelName: String { runtime.modelName }
+
+    /// The bundle's `max_context_length` in tokens (prompt + generation). A turn's response
+    /// budget is `min(configuration.maxResponseTokens, maxContextLength - promptTokens)`.
+    public var maxContextLength: Int { runtime.maxContextLength }
+
+    /// Switches reasoning output for the following turns (`Configuration.enableThinking`).
+    /// Takes effect on the next `streamResponse`; the prefix-reuse rewind absorbs the
+    /// re-rendered prompt, so switching mid-conversation is safe.
+    public func setThinking(_ enabled: Bool?) {
+        enableThinking = enabled
+    }
 
     /// Loads a model by its catalog id — the id shown on the model's card:
     ///
@@ -221,6 +238,7 @@ public actor ChatSession {
         self.runtime = runtime
         self.configuration = configuration
         self.variantKey = variantKey
+        self.enableThinking = configuration.enableThinking
         var stats = GenerationStats()
         stats.loadSeconds = runtime.loadSeconds
         stats.footprintBytes = ProcessStats.physFootprint()
@@ -419,8 +437,7 @@ public actor ChatSession {
             switch runtime.promptRenderer {
             case .chatTemplate:
                 full = try Self.renderChatTemplate(
-                    rendered, tokenizer: runtime.tokenizer,
-                    enableThinking: configuration.enableThinking)
+                    rendered, tokenizer: runtime.tokenizer, enableThinking: enableThinking)
             case .gemma(let arch):
                 // The Gemma 4 bundles ship the stock tokenizer with no embedded chat
                 // template; the turn format is emitted explicitly instead.
@@ -452,6 +469,13 @@ public actor ChatSession {
                     + "engine had \(runtime.engine.processedTokenCount))")
             let promptTokens = full.map(Int.init)
             kvTokens = full   // committed generation is appended as it streams below
+            // Response budget: the caller's cap, never more than the context leaves after the
+            // prompt. The sequential engine clamps this itself; the pipelined engine sizes its
+            // slot buffers to max_context_length and takes maxTokens at face value, so the
+            // clamp has to happen here for `maxResponseTokens = Int.max` to be safe.
+            let responseBudget = min(
+                configuration.maxResponseTokens,
+                max(1, runtime.maxContextLength - full.count))
 
             let sampling =
                 configuration.temperature.map { SamplingConfiguration(temperature: $0) }
@@ -468,7 +492,7 @@ public actor ChatSession {
                     tokenizer: runtime.tokenizer,
                     vocabSize: runtime.vocabSize,
                     sampling: sampling,
-                    maxTokens: configuration.maxResponseTokens)
+                    maxTokens: responseBudget)
             } else {
                 stream = try await DecodingStrategyFactory.create(type: .vanilla).decode(
                     from: .tokens(promptTokens),
@@ -476,7 +500,7 @@ public actor ChatSession {
                     inferenceEngine: runtime.engine,
                     samplingConfiguration: sampling,
                     options: InferenceOptions(
-                        maxTokens: configuration.maxResponseTokens, includeLogits: false),
+                        maxTokens: responseBudget, includeLogits: false),
                     // Chat templates end turns with a dedicated marker that tokenizer_config's
                     // eos doesn't always cover (gemma-3: eos = <eos>, turns end with
                     // <end_of_turn> — generation would run to maxTokens spewing the marker).
