@@ -35,6 +35,11 @@ public actor ModelStore {
         self.hub = HubClient(baseURL: hubBaseURL)
     }
 
+    init(directory: URL, hub: HubClient) {
+        self.directory = directory
+        self.hub = hub
+    }
+
     /// Local bundle root for a model, or nil if not downloaded.
     public nonisolated func localURL(for model: ModelID) -> URL? {
         let url = directory.appendingPathComponent(model.cacheSubpath, isDirectory: true)
@@ -77,7 +82,8 @@ public actor ModelStore {
             do {
                 return try await self.performDownload(model, progress: progress)
             } catch let error as URLError {
-                guard let cached = self.siblingRevisionURL(for: model) else { throw error }
+                guard error.code != .cancelled,
+                      let cached = self.siblingRevisionURL(for: model) else { throw error }
                 return cached
             }
         }
@@ -129,6 +135,10 @@ public actor ModelStore {
         progress: (@Sendable (DownloadProgress) -> Void)?
     ) async throws -> URL {
         let files = try await hubFiles(for: model)
+        guard !files.isEmpty else {
+            throw CoreAIKitError.variantNotFound(
+                repo: model.repo, path: model.resolvedPath, revision: model.revision)
+        }
         let totalBytes = files.reduce(0) { $0 + $1.size }
 
         let fm = FileManager.default
@@ -141,15 +151,7 @@ public actor ModelStore {
         try? fm.removeItem(at: staging)
         try fm.createDirectory(at: staging, withIntermediateDirectories: true)
 
-        let delegate = DownloadDelegate()
-        // Tolerate flaky networks and the app being briefly backgrounded: wait for connectivity and
-        // allow a long total transfer time. Interrupted transfers resume from the partial (see
-        // `downloadFile`) instead of restarting — critical for the multi-GB bundles.
-        let config = URLSessionConfiguration.default
-        config.waitsForConnectivity = true
-        config.timeoutIntervalForResource = 7 * 24 * 60 * 60
-        let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
+        defer { try? fm.removeItem(at: staging) }
 
         let gate = ProgressGate()
         var doneBytes: Int64 = 0
@@ -159,7 +161,7 @@ public actor ModelStore {
             try fm.createDirectory(
                 at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             let base = doneBytes
-            let temp = try await Self.downloadFile(file.url, via: session, delegate: delegate) {
+            try await hub.download(file, repo: model.repo, revision: model.revision, to: target) {
                 written in
                 guard let progress, totalBytes > 0 else { return }
                 let done = base + written
@@ -170,7 +172,12 @@ public actor ModelStore {
                         currentFile: file.relativePath))
                 }
             }
-            try fm.moveItem(at: temp, to: target)
+            if file.size > 0 {
+                let size = try target.resourceValues(forKeys: [.fileSizeKey]).fileSize
+                guard size.map(Int64.init) == file.size else {
+                    throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: target.path])
+                }
+            }
             doneBytes += file.size
         }
 
@@ -184,44 +191,6 @@ public actor ModelStore {
         progress?(DownloadProgress(
             fraction: 1, completedBytes: totalBytes, totalBytes: totalBytes, currentFile: ""))
         return final
-    }
-
-    // Single-file download; progress via delegate. The temp file is claimed synchronously
-    // inside the delegate callback, then returned for the caller to move into staging.
-    //
-    // Retries with resume data so an interrupted transfer continues from the partial instead of
-    // restarting the whole file. The common interruption is iOS cancelling the task when the app is
-    // backgrounded: the cancellation is delivered when the app comes back to the foreground, and we
-    // resume from the bytes already written (HF's CDN supports range requests). Without this, any
-    // brief backgrounding restarted the multi-GB download from zero.
-    private static func downloadFile(
-        _ url: URL, via session: URLSession, delegate: DownloadDelegate,
-        onBytes: @escaping @Sendable (Int64) -> Void
-    ) async throws -> URL {
-        var resumeData: Data?
-        var lastError: Error?
-        for attempt in 0..<6 {
-            try Task.checkCancellation()
-            if attempt > 0 {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                try Task.checkCancellation()
-            }
-            do {
-                return try await withCheckedThrowingContinuation { cont in
-                    delegate.onBytes = onBytes
-                    delegate.onFinish = { cont.resume(with: $0) }
-                    let task = resumeData.map { session.downloadTask(withResumeData: $0) }
-                        ?? session.downloadTask(with: url)
-                    task.resume()
-                }
-            } catch {
-                lastError = error
-                // Keep the partial if the system handed back resume data; otherwise restart clean.
-                resumeData = (error as NSError)
-                    .userInfo[NSURLSessionDownloadTaskResumeData] as? Data
-            }
-        }
-        throw lastError ?? CoreAIKitError.httpError(statusCode: -1, file: url.lastPathComponent)
     }
 
     nonisolated static func directorySize(_ url: URL) -> Int64 {
@@ -247,49 +216,5 @@ private final class ProgressGate: @unchecked Sendable {
         guard fraction - last >= 0.002 || fraction >= 1 else { return false }
         last = fraction
         return true
-    }
-}
-
-// Delegate callbacks arrive serialized on the session's queue; `onFinish` is cleared after the
-// first resume so the didComplete(error:) that follows a success cannot double-resume.
-private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
-    var onBytes: (@Sendable (Int64) -> Void)?
-    var onFinish: (@Sendable (Result<URL, Error>) -> Void)?
-
-    func urlSession(
-        _ session: URLSession, downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) {
-        onBytes?(totalBytesWritten)
-    }
-
-    func urlSession(
-        _ session: URLSession, downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        let code = (downloadTask.response as? HTTPURLResponse)?.statusCode ?? -1
-        guard code == 200 else {
-            finish(.failure(CoreAIKitError.httpError(
-                statusCode: code,
-                file: downloadTask.originalRequest?.url?.lastPathComponent ?? "?")))
-            return
-        }
-        let keep = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        do {
-            try FileManager.default.moveItem(at: location, to: keep)
-            finish(.success(keep))
-        } catch {
-            finish(.failure(error))
-        }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error { finish(.failure(error)) }
-    }
-
-    private func finish(_ r: Result<URL, Error>) {
-        onFinish?(r)
-        onFinish = nil
     }
 }

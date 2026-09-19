@@ -180,6 +180,29 @@ or zoo app — that runs the same model. (Media lives in
 
 <p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/coder-ornith.gif" alt="Agentic coding on Mac" width="720"><br>Agentic coding — Ornith-1.0-9B on M4 Max · <a href="https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChatMac">zoo <code>CoreAIChatMac</code></a></p>
 
+## Model downloads and storage
+
+ModelStore uses [swift-huggingface](https://github.com/huggingface/swift-huggingface)
+for Hub requests and file downloads, with Xet enabled and HTTP fallback.
+The package manifest requires Swift 6.1 or later to enable the Xet trait.
+For private or gated repositories on `https://huggingface.co`, the client reads
+credentials from the standard Hugging Face environment variables and token files,
+including `HF_TOKEN` and the token saved by `hf auth login`.
+The account must have access to the repository.
+`ModelStore(hubBaseURL:)` selects a mirror; it does not receive those credentials
+or use the shared Hugging Face file cache.
+
+Complete bundles stay in
+`Application Support/CoreAIKit/Models/<org>/<name>/<revision>/<variant>/`,
+independent of the endpoint and the shared Hub cache.
+Each download stages all files before it installs the bundle with one rename.
+Installed bundles are excluded from iCloud backup and survive removal of the Hub
+cache.
+A transport failure can use a complete cached copy of the same variant under
+another revision.
+Concurrent callers share one download; only the first caller receives progress.
+HTTP and Xet downloads report byte progress during the transfer.
+
 ## Works with Apple's FoundationModels API
 
 `KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession` —

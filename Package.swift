@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
@@ -39,10 +39,14 @@ let package = Package(
         // zoo-0.4 matches this tag.
         .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.4-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
+        .package(url: "https://github.com/huggingface/swift-huggingface.git", from: "0.11.0", traits: ["Xet"]),
     ],
     targets: [
-        // Shared base: model identity + Hugging Face download/cache. Foundation only.
-        .target(name: "CoreAIKitCore"),
+        // Shared base: model identity + Hugging Face download/cache. No inference runtime.
+        .target(
+            name: "CoreAIKitCore",
+            dependencies: [.product(name: "HuggingFace", package: "swift-huggingface")]
+        ),
         .target(
             name: "CoreAIKit",
             dependencies: [
