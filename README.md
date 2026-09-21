@@ -199,15 +199,15 @@ For private or gated repositories on `https://huggingface.co`, the client reads
 credentials from the standard Hugging Face environment variables and token files,
 including `HF_TOKEN` and the token saved by `hf auth login`.
 The account must have access to the repository.
-`ModelStore(hubBaseURL:)` selects a mirror; it does not receive those credentials
-or use the shared Hugging Face file cache.
+`ModelStore(hubBaseURL:)` selects a mirror; it does not receive those credentials.
 
 Complete bundles stay in
 `Application Support/CoreAIKit/Models/<org>/<name>/<revision>/<variant>/`,
-independent of the endpoint and the shared Hub cache.
+independent of the endpoint.
+ModelStore does not read or write the shared Hugging Face file cache,
+so each file is stored once.
 Each download stages all files before it installs the bundle with one rename.
-Installed bundles are excluded from iCloud backup and survive removal of the Hub
-cache.
+Installed bundles are excluded from iCloud backup.
 A transport failure can use a complete cached copy of the same variant under
 another revision.
 Concurrent callers share one download; only the first caller receives progress.

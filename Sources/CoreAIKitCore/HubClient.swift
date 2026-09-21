@@ -22,12 +22,10 @@ struct HubClient: Sendable {
     init(
         baseURL: URL = URL(string: "https://huggingface.co")!,
         session: URLSession? = nil,
-        tokenProvider: TokenProvider = .environment,
-        cache: HubCache? = .default
+        tokenProvider: TokenProvider = .environment
     ) {
         self.baseURL = baseURL
-        // Only the canonical HTTPS endpoint may use the user's HF credentials/cache.
-        // Mirror content must not enter the shared, endpoint-independent Hub cache.
+        // Only the canonical HTTPS endpoint may use the user's HF credentials.
         let canonical = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             == "https://huggingface.co"
         func makeClient(_ configuration: URLSessionConfiguration) -> HuggingFace.HubClient {
@@ -35,7 +33,9 @@ struct HubClient: Sendable {
                 session: session ?? URLSession(configuration: configuration),
                 host: baseURL,
                 tokenProvider: canonical ? tokenProvider : .none,
-                cache: canonical ? cache : nil)
+                // ModelStore owns the installed bundle. The shared Hub cache would keep a
+                // second copy of every file and add a metadata request per file.
+                cache: nil)
         }
         self.listingClient = makeClient(Self.listingConfiguration)
         self.client = makeClient(Self.transferConfiguration)

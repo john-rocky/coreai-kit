@@ -13,26 +13,19 @@ final class HubTransportTests: XCTestCase {
         XCTAssertTrue(CoreAIKitCore.HubClient.transferConfiguration.waitsForConnectivity)
     }
 
-    func testAuthenticatedListingAndSharedCacheProduceIndependentBundle() async throws {
+    func testAuthenticatedListingAndDownloadProduceBundle() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let cacheDirectory = root.appendingPathComponent("hub-cache")
-        let cache = HubCache(cacheDirectory: cacheDirectory)
-        try await cache.storeData(
-            Data("{}".utf8), repo: "org/model", kind: .model, revision: revision,
-            filename: "macos/metadata.json", etag: String(repeating: "b", count: 40))
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [AuthenticatedTreeProtocol.self]
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
         let hub = CoreAIKitCore.HubClient(
-            session: session, tokenProvider: .fixed(token: "fixture-token"), cache: cache)
+            session: session, tokenProvider: .fixed(token: "fixture-token"))
         let store = ModelStore(directory: root.appendingPathComponent("models"), hub: hub)
         let model = ModelID("org/model", path: "macos", revision: revision)
         let bundle = try await store.download(model)
-        // The fixture rejects every file request, so this must come from HubCache.
-        XCTAssertEqual(try Data(contentsOf: bundle.appendingPathComponent("metadata.json")), Data("{}".utf8))
-        try FileManager.default.removeItem(at: cacheDirectory)
+        // The fixture rejects every request that lacks the token.
         XCTAssertEqual(try Data(contentsOf: bundle.appendingPathComponent("metadata.json")), Data("{}".utf8))
         XCTAssertEqual(try bundle.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
         let cached = try await store.download(model)
@@ -79,15 +72,21 @@ private final class AuthenticatedTreeProtocol: URLProtocol, @unchecked Sendable 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        let revision = String(repeating: "a", count: 40)
+        let bodies = [
+            "/api/models/org/model/tree/\(revision)/macos":
+                Data("[{\"type\":\"file\",\"path\":\"macos/metadata.json\",\"size\":2}]".utf8),
+            "/org/model/resolve/\(revision)/macos/metadata.json": Data("{}".utf8),
+        ]
         guard request.value(forHTTPHeaderField: "Authorization") == "Bearer fixture-token",
-              request.url?.path == "/api/models/org/model/tree/\(String(repeating: "a", count: 40))/macos"
+              let body = request.url.flatMap({ bodies[$0.path] })
         else {
             client?.urlProtocol(self, didFailWithError: URLError(.userAuthenticationRequired))
             return
         }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data("[{\"type\":\"file\",\"path\":\"macos/metadata.json\",\"size\":2}]".utf8))
+        if request.httpMethod != "HEAD" { client?.urlProtocol(self, didLoad: body) }
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
