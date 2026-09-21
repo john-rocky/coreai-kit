@@ -5,6 +5,24 @@ All notable changes to CoreAIKit are documented here. The project follows
 patch versions never do. See [`docs/STABILITY.md`](docs/STABILITY.md) for the full
 policy.
 
+## [Unreleased]
+
+### Added
+
+- **Typed decisions** — `CoreAI.decide(state, questions)` (CoreAIOps) and `TypedDecisions`
+  (CoreAIKit): a state and typed questions (`choice` of 2–16 options, `score` on 2–10 ordered
+  levels, `noul` = yes/no) in, answers with probabilities out; nothing is generated, each
+  question is one prompt scored at its answer slot. `TypedDecisions.prefill(_:)` runs the
+  shared state prefix once and every question rewinds to it (`Decision.Timing.reusedTokens`
+  reports what was kept; recurrent hybrids fall back to a full re-prefill). Loads on the
+  sequential engine (or static-shape for a Neural Engine bundle) — the engines that return
+  logits. Default model `minicpm5-2b`: on SemIf's 144 authored rows its int8 readout agrees
+  with the published bf16 argmax on 141/144 (mean |Δp| 0.020, family-balanced accuracy 0.681
+  vs 0.686 published); the official 4-bit `qwen3-0.6b` does not (59/144) and is documented
+  as speed-only. `Examples/Decide`: a speech gate, a clipboard check with two Shortcuts
+  actions, and a passage reranker, each decision with its measured milliseconds, plus
+  `decide-cli` with `bench` and `oracle`.
+
 ## [0.4.2] — 2026-09-15
 
 Built and gated on the release macOS 27 (26A428) and release Xcode 27 (27A266a); no API

@@ -1,0 +1,244 @@
+// Decision.swift — the value types of a typed decision: a state, a question with a fixed
+// answer shape, and an answer read as probabilities over that shape.
+//
+// A decision is not a generation. The model never writes text: one prompt is scored once,
+// and the answer is the probability the model assigns to each listed option at the answer
+// slot. Three shapes cover the ways an app branches on a piece of text:
+//
+//   choice  — which of these options (2–16)            → the option, plus every option's probability
+//   score   — where on this ordered scale (2–10 levels) → the expected level, plus the distribution
+//   noul    — yes or no                                  → P(yes)
+//
+// Every question carries free-text instructions and, optionally, a description per option.
+// The same request shape is what `TypedDecisions` scores and what `CoreAI.decide` resolves a
+// catalog model behind.
+
+import Foundation
+
+/// Namespace for the typed-decision value types.
+public enum Decision {
+    /// One listed answer for a `choice` question. `id` is what the answer reports;
+    /// `description` is what the model reads (the id when no description is given).
+    public struct Option: Sendable, Hashable, Codable {
+        public let id: String
+        public let description: String
+
+        public init(id: String, description: String) {
+            self.id = id
+            self.description = description
+        }
+
+        /// An option whose id and description are the same text.
+        public init(_ text: String) {
+            self.init(id: text, description: text)
+        }
+    }
+
+    /// A typed question about a state.
+    public struct Question: Sendable, Hashable {
+        public enum Kind: Sendable, Hashable {
+            /// Pick one of the options.
+            case choice([Option])
+            /// Place the state on an ordered scale; each string describes one level, lowest first.
+            case score(levels: [String])
+            /// Yes or no, with an optional description of what each side means.
+            case noul(yes: String?, no: String?)
+        }
+
+        /// What to decide about the state — the criterion the model applies.
+        public var instructions: String
+        public var kind: Kind
+
+        public init(_ instructions: String, kind: Kind) {
+            self.instructions = instructions
+            self.kind = kind
+        }
+
+        /// Pick one of `options`; each string is both the reported id and the description.
+        public static func choice(_ instructions: String, _ options: [String]) -> Question {
+            Question(instructions, kind: .choice(options.map(Option.init)))
+        }
+
+        /// Pick one of `options`, with separate ids and descriptions.
+        public static func choice(_ instructions: String, options: [Option]) -> Question {
+            Question(instructions, kind: .choice(options))
+        }
+
+        /// Place the state on the ordered `levels` (lowest first).
+        public static func score(_ instructions: String, levels: [String]) -> Question {
+            Question(instructions, kind: .score(levels: levels))
+        }
+
+        /// Yes or no. `yes` / `no` describe what each side means, when the instructions alone
+        /// leave it open.
+        public static func noul(_ instructions: String, yes: String? = nil, no: String? = nil) -> Question {
+            Question(instructions, kind: .noul(yes: yes, no: no))
+        }
+
+        /// The options as the model reads them, in answer order.
+        var optionDescriptions: [String] {
+            switch kind {
+            case .choice(let options):
+                return options.map(\.description)
+            case .score(let levels):
+                return levels.enumerated().map { "\($0.offset): \($0.element)" }
+            case .noul(let yes, let no):
+                return [
+                    no.map { "no: \($0)" } ?? "no",
+                    yes.map { "yes: \($0)" } ?? "yes",
+                ]
+            }
+        }
+
+        /// The ids the answer reports, in answer order.
+        var optionIDs: [String] {
+            switch kind {
+            case .choice(let options): return options.map(\.id)
+            case .score(let levels): return levels.indices.map(String.init)
+            case .noul: return ["no", "yes"]
+            }
+        }
+    }
+
+    /// The answer to a `choice` question.
+    public struct Choice: Sendable, Equatable {
+        /// The option with the highest probability.
+        public let id: String
+        /// Probability of the chosen option.
+        public let confidence: Double
+        /// 1 − normalised entropy of the distribution: 1 when all mass is on one option, 0 when flat.
+        public let certainty: Double
+        /// Probability per option id.
+        public let probabilities: [String: Double]
+        /// Option ids, most probable first.
+        public let ranking: [String]
+        /// Option ids in the order they were asked.
+        public let options: [String]
+    }
+
+    /// The answer to a `score` question.
+    public struct Score: Sendable, Equatable {
+        /// Expected level: Σ level × probability. A 3-level scale answers in [0, 2].
+        public let value: Double
+        /// The level with the highest probability.
+        public let level: Int
+        /// Probability of that level.
+        public let confidence: Double
+        /// 1 − normalised entropy of the distribution.
+        public let certainty: Double
+        /// Probability per level, lowest level first.
+        public let probabilities: [Double]
+    }
+
+    /// Where the tokens of one decision went.
+    public struct Timing: Sendable, Equatable {
+        /// Tokens in the rendered prompt.
+        public let promptTokens: Int
+        /// Leading tokens the engine already held from the previous decision on the same state.
+        public let reusedTokens: Int
+        /// Wall-clock seconds from the rewind to the logits.
+        public let seconds: Double
+
+        public init(promptTokens: Int, reusedTokens: Int, seconds: Double) {
+            self.promptTokens = promptTokens
+            self.reusedTokens = reusedTokens
+            self.seconds = seconds
+        }
+
+        /// Tokens the engine had to process for this decision.
+        public var processedTokens: Int { promptTokens - reusedTokens }
+        public var milliseconds: Double { seconds * 1000 }
+    }
+
+    /// One decision, with where its tokens went.
+    public struct Answer: Sendable, Equatable {
+        public enum Value: Sendable, Equatable {
+            case choice(Choice)
+            case score(Score)
+            /// P(yes).
+            case noul(Double)
+        }
+
+        public let value: Value
+        public let timing: Timing
+
+        public init(value: Value, timing: Timing) {
+            self.value = value
+            self.timing = timing
+        }
+
+        /// P(yes) of a `noul` question; nil for the other shapes.
+        public var noul: Double? {
+            if case .noul(let p) = value { return p }
+            return nil
+        }
+
+        /// The chosen option id of a `choice` question; nil for the other shapes.
+        public var choice: String? {
+            if case .choice(let c) = value { return c.id }
+            return nil
+        }
+
+        /// The expected level of a `score` question; nil for the other shapes.
+        public var score: Double? {
+            if case .score(let s) = value { return s.value }
+            return nil
+        }
+
+        /// Probability of the reported answer (P(yes) or P(no) for `noul`, whichever is larger).
+        public var confidence: Double {
+            switch value {
+            case .choice(let c): return c.confidence
+            case .score(let s): return s.confidence
+            case .noul(let p): return max(p, 1 - p)
+            }
+        }
+
+        /// Probabilities over the answer shape, in option order.
+        public var probabilities: [Double] {
+            switch value {
+            case .choice(let c): return c.options.map { c.probabilities[$0] ?? 0 }
+            case .score(let s): return s.probabilities
+            case .noul(let p): return [1 - p, p]
+            }
+        }
+    }
+}
+
+/// Failures specific to typed decisions.
+public enum DecisionError: Error, LocalizedError, Equatable {
+    /// The engine the model loaded with samples on the GPU and cannot expose logits.
+    case engineWithoutLogits(model: String)
+    /// A model the decision runtime cannot drive (the Gemma 4 pairs and raw-Metal packs).
+    case unsupportedModel(id: String, reason: String)
+    case emptyInstructions
+    case tooFewOptions(count: Int)
+    case tooManyOptions(count: Int, max: Int)
+    /// The tokenizer has no single-token answer slot for this letter.
+    case answerSlotNotSingleToken(letter: String)
+    case promptTooLong(tokens: Int, max: Int)
+    /// The engine returned no logits for the prompt.
+    case noLogits
+
+    public var errorDescription: String? {
+        switch self {
+        case .engineWithoutLogits(let model):
+            return "'\(model)' loaded on an engine that cannot expose logits; typed decisions need "
+                + "the sequential or static-shape engine."
+        case .unsupportedModel(let id, let reason):
+            return "'\(id)' cannot be used for typed decisions: \(reason)"
+        case .emptyInstructions:
+            return "A question needs instructions."
+        case .tooFewOptions(let count):
+            return "A question needs at least 2 options, got \(count)."
+        case .tooManyOptions(let count, let max):
+            return "A question can list at most \(max) options, got \(count)."
+        case .answerSlotNotSingleToken(let letter):
+            return "The tokenizer does not encode answer slot '\(letter)' as one token."
+        case .promptTooLong(let tokens, let max):
+            return "The rendered prompt is \(tokens) tokens; this model takes at most \(max)."
+        case .noLogits:
+            return "The engine returned no logits for the prompt."
+        }
+    }
+}

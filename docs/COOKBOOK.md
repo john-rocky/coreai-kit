@@ -24,6 +24,7 @@ from `Op.allCases`.
 | [clean up a dictation transcript](#work-with-text) | `CoreAI.tidyTranscript(raw)` | Raw ASR transcript → written text |
 | [redact PII](#work-with-text) | `CoreAI.redact(text)` | Text → text with PII replaced by labels |
 | [find names/emails/anything in text](#work-with-text) | `CoreAI.extractEntities(from:labels:)` | Text → entities by zero-shot label |
+| [decide something about text, with a probability](#decide-without-generating) | `CoreAI.decide(state, questions)` | State + typed questions → answers with probabilities |
 | [chat with a local LLM, streaming](#chat-tools-and-guided-json) | `ChatSession` | Prompt ⇄ streamed conversation |
 | [let the model call my functions](#chat-tools-and-guided-json) | `KitLanguageModel` + FM tools | Prompt → answer via your tools |
 | [get schema-valid JSON, guaranteed](#chat-tools-and-guided-json) | guided generation | Prompt → schema-valid JSON |
@@ -108,6 +109,55 @@ engine caps prompt + generated at 1024 tokens, and a whole meeting transcript pa
 one call would stop mid-sentence.
 
 <p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/pii-gliner2.jpg" alt="PII redaction on device" width="300"><br><code>CoreAI.redact</code> — GLiNER2 on iPhone</p>
+
+## Decide without generating
+
+A state and typed questions in, answers with probabilities out — the model writes nothing.
+Each question is one prompt scored at its answer slot, and the answer is the probability
+over the listed options. Three shapes:
+
+```swift
+import CoreAIOps
+
+let a = try await CoreAI.decide(
+    ticket,
+    ["reply":  .noul("Does the customer expect a response today?"),          // yes / no → P(yes)
+     "topic":  .choice("What is the ticket about?", ["billing", "delivery", "how-to"]),
+     "anger":  .score("How upset is the customer?", levels: ["calm", "annoyed", "furious"])])
+a["reply"]?.noul          // 0.91
+a["topic"]?.choice        // "delivery"  (a["topic"]?.probabilities for every option)
+a["anger"]?.score         // 1.4 — expected level on the 0…2 scale
+a["reply"]?.timing        // promptTokens, reusedTokens, milliseconds
+```
+
+`choice` takes 2–16 options (`Decision.Option(id:description:)` when the model should read a
+description and the answer report an id); `score` takes 2–10 ordered level descriptions and
+answers the expected level plus the distribution; `noul` takes optional descriptions of what
+yes and no mean. The request shape — a state, then questions keyed by id, each with
+`instructions` and `criteria` — is the one the hosted typed-decision APIs use, so a client
+written against one of them maps onto this call field for field.
+
+**One prefill, N decisions.** Every question on the same state shares the prompt up to the
+end of the state. The op prefills it once and rewinds to it per question; the model-level
+API makes that explicit for an app that keeps deciding about the same thing:
+
+```swift
+let decider = try await TypedDecisions(catalog: "minicpm5-2b")
+let ticket = try await decider.prefill(ticketText)             // the shared prefix, once
+let reply = try await ticket.decide(.noul("Does the customer expect a response today?"))
+let topic = try await ticket.decide(.choice("What is it about?", ["billing", "delivery", "how-to"]))
+reply.timing.reusedTokens                                      // the state's tokens, kept
+```
+
+The default model is `minicpm5-2b` — the smallest catalog chat model whose zero-shot
+decisions track its own full-precision readout on the published fixtures (141/144 argmax,
+mean |Δp| 0.02; `Examples/Decide` has the tables). `options: .model("minicpm5-1b")` is twice
+as fast at lower accuracy. Decisions need the logits at the answer slot, so the model loads
+on the sequential engine (or the static-shape engine for a Neural Engine bundle) rather
+than the pipelined one; recurrent hybrids (Qwen3.5, LFM2.5, Granite 4) cannot rewind, so on
+them every decision re-prefills its whole prompt — correct, and `timing.reusedTokens` says 0.
+`Examples/Decide` runs the three shapes as a speech gate, a clipboard check with Shortcuts
+actions, and a passage reranker, each with its measured milliseconds.
 
 ## Chat, tools, and guided JSON
 
