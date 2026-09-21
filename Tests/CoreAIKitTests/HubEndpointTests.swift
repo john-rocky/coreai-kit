@@ -81,8 +81,13 @@ final class HubEndpointTests: XCTestCase {
         let requests = server.receivedRequests
         XCTAssertEqual(server.receivedTargets,
                        [listingPath, metadataPath, weightsPath])
+        // Only the Xet transport probes each file with a HEAD request on a mirror.
+        #if COREAIKIT_XET
         XCTAssertTrue(requests.contains { $0.hasPrefix("HEAD \(metadataPath) ") })
         XCTAssertTrue(requests.contains { $0.hasPrefix("HEAD \(weightsPath) ") })
+        #else
+        XCTAssertFalse(requests.contains { $0.hasPrefix("HEAD ") })
+        #endif
         XCTAssertTrue(requests.allSatisfy { $0.components(separatedBy: " ")[1].hasPrefix("/hf/") })
         XCTAssertTrue(requests.allSatisfy { !$0.lowercased().contains("authorization:") })
         XCTAssertTrue(requests.allSatisfy { !$0.contains(cookieName) })
@@ -108,7 +113,9 @@ final class HubEndpointTests: XCTestCase {
         let bundle = try await store.download(model)
         XCTAssertEqual(try Data(contentsOf: bundle.appendingPathComponent("metadata.json")), Data("{}".utf8))
         XCTAssertEqual(server.receivedTargets, [listing, listing, file])
+        #if COREAIKIT_XET
         XCTAssertTrue(server.receivedRequests.contains { $0.hasPrefix("HEAD \(file) ") })
+        #endif
     }
 
     func testPaginatedSubtreeRetriesOnlyTheFailedPage() async throws {

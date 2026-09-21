@@ -183,8 +183,18 @@ or zoo app — that runs the same model. (Media lives in
 ## Model downloads and storage
 
 ModelStore uses [swift-huggingface](https://github.com/huggingface/swift-huggingface)
-for Hub requests and file downloads, with Xet enabled and HTTP fallback.
-The package manifest requires Swift 6.1 or later to enable the Xet trait.
+for Hub requests and file downloads.
+Files download over HTTP by default.
+The `Xet` package trait is off by default;
+enable it to download large files over Xet, with HTTP fallback:
+
+```swift
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "<version>", traits: ["Xet"])
+```
+
+The trait forwards to swift-huggingface, so swift-xet is compiled only when an app
+opts in.
+The package manifest requires Swift 6.1 or later to declare the trait.
 For private or gated repositories on `https://huggingface.co`, the client reads
 credentials from the standard Hugging Face environment variables and token files,
 including `HF_TOKEN` and the token saved by `hf auth login`.
@@ -201,7 +211,8 @@ cache.
 A transport failure can use a complete cached copy of the same variant under
 another revision.
 Concurrent callers share one download; only the first caller receives progress.
-HTTP and Xet downloads report byte progress during the transfer.
+HTTP downloads, and Xet downloads when the trait is on, report byte progress during
+the transfer.
 
 ## Works with Apple's FoundationModels API
 
