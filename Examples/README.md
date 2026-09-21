@@ -38,6 +38,7 @@ Every other example app in one place, on two shelves:
 | [LiveCamera](LiveCamera/) | live camera + video | The four live tasks as four tabs: `watch()` detection, `watchDepth()`, a trigger that gates a VLM, and `scan(videoAt:)` over a video file. Measured stats and the thermal governor are on screen. GUI (iPhone) + `swift run live-cli`. |
 | [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. GUI + `swift run upscale-cli`. |
 | [PhotoSearch](PhotoSearch/) | image-text embeddings | Semantic photo search — the photo library indexed with CLIP. |
+| [Decide](Decide/) | typed decisions | Any `chat` catalog model as a decision model (MiniCPM5 2B default): a speech gate (yes/no per utterance), a clipboard check with Shortcuts actions, and a passage reranker — probabilities and milliseconds per decision, nothing generated. GUI + `swift run decide-cli`. |
 | [DocSearch](DocSearch/) | visual doc retrieval | Any `retrieval` catalog model (ColModernVBERT): query + page images → MaxSim ranking, no OCR. GUI (iPhone) + `swift run docsearch-cli`. |
 
 ## SDK-feature demos

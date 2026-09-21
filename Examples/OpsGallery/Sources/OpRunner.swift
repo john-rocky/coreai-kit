@@ -32,7 +32,7 @@ extension CoreAI.Op {
     var inputKind: OpInputKind {
         switch self {
         case .summarize, .extract, .translate, .proofread, .tidyTranscript, .redact,
-            .extractEntities, .speak, .compose:
+            .extractEntities, .speak, .compose, .decide:
             .text
         case .caption, .detect, .read, .upscale, .estimateDepth:
             .image
@@ -56,6 +56,7 @@ extension CoreAI.Op {
         case .translate: "globe"
         case .proofread: "checkmark.seal"
         case .tidyTranscript: "text.quote"
+        case .decide: "checkmark.circle.badge.questionmark"
         case .redact: "eye.slash"
         case .extractEntities: "person.text.rectangle"
         case .transcribe: "waveform"
@@ -148,6 +149,25 @@ func runOp(_ op: CoreAI.Op, _ s: OpInputSnapshot) async throws -> OpResult {
         return .text(tidied.isEmpty ? "(nothing but filler \u{2014} empty by design)" : tidied)
     case .redact:
         return .text(try await CoreAI.redact(s.text))
+    case .decide:
+        // Three fixed questions on the text — the shapes the op offers, with the probability
+        // each answer carries. An app asks its own.
+        let answers = try await CoreAI.decide(
+            s.text,
+            ["question": .noul("Is the text asking a question or requesting something?"),
+             "kind": .choice("What kind of text is this?", ["message", "note", "article", "instructions", "other"]),
+             "tone": .score("How formal is the text?", levels: ["casual", "neutral", "formal"])])
+        return .text(
+            ["question", "kind", "tone"].compactMap { key -> String? in
+                guard let a = answers[key] else { return nil }
+                let value: String
+                switch a.value {
+                case .noul(let p): value = "P(yes) \(String(format: "%.2f", p))"
+                case .choice(let c): value = "\(c.id) (\(String(format: "%.2f", c.confidence)))"
+                case .score(let sc): value = "\(String(format: "%.2f", sc.value)) on 0…\(sc.probabilities.count - 1)"
+                }
+                return "\(key): \(value) — \(Int(a.timing.milliseconds.rounded())) ms"
+            }.joined(separator: "\n"))
     case .extractEntities:
         let found = try await CoreAI.extractEntities(
             from: s.text, labels: ["person", "organization", "location", "email"])

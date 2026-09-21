@@ -248,7 +248,7 @@ public actor KitTextNormalizer {
     }
 
     /// `<think>\n\n</think>\n\n` as token ids, or empty if this tokenizer has no think markers.
-    private static func closedThink(_ tokenizer: any Tokenizer) -> [Int32] {
+    static func closedThink(_ tokenizer: any Tokenizer) -> [Int32] {
         guard let open = tokenizer.convertTokenToId("<think>"),
             let close = tokenizer.convertTokenToId("</think>")
         else { return [] }

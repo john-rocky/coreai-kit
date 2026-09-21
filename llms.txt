@@ -40,12 +40,13 @@ let answer = try await chat.respond(to: "What is the capital of Japan?")
   not in the iOS Simulator SDK.
 - Memory, not throughput, is the shipping constraint on a phone. A 4B-class model is tight.
 
-## Example apps (30, each buildable on its own)
+## Example apps (31, each buildable on its own)
 
 - [ActionCamera](https://john-rocky.github.io/coreai-kit/Examples/ActionCamera/): ActionCamera — Live action recognition from the camera, fully on-device: CameraFeed streams frames, a rolling 16-frame clip goes through ActionRecognizer (V-JEPA 2 ViT-L, SSv2 head — Meta's video world model) and the top actions come back with confidences
 - [AskVLM](https://john-rocky.github.io/coreai-kit/Examples/AskVLM/): Qwen3-VL (AskVLM) — your VLM as its own Visual Intelligence tab
 - [AudioChat](https://john-rocky.github.io/coreai-kit/Examples/AudioChat/): AudioChat — on-device audio *understanding* (macOS)
 - [ChatDemo](https://john-rocky.github.io/coreai-kit/Examples/ChatDemo/): ChatDemo — on-device chat, any chat model in the catalog
+- [Decide](https://john-rocky.github.io/coreai-kit/Examples/Decide/): Decide — typed decisions on device
 - [DepthCamera](https://john-rocky.github.io/coreai-kit/Examples/DepthCamera/): DepthCamera — Live monocular depth from the camera, fully on-device: CameraFeed streams frames, DepthEstimator (Depth Anything 3, ~100 MB) turns each one into a relative depth map
 - [DetectCamera](https://john-rocky.github.io/coreai-kit/Examples/DetectCamera/): DetectCamera — Real-time object detection from the live camera, fully on-device, over the zero-copy capture path — two detector families behind one picker: RF-DETR (DETR, fp32, no NMS, ObjectDetector) and YOLOX-S (Megvii's dense anchor-free detector, fp32, host NMS + letterbox/BGR preprocessing, YOLOXDetector)
 - [DiffuseChat](https://john-rocky.github.io/coreai-kit/Examples/DiffuseChat/): DiffuseChat — An on-device diffusion LM (LLaDA-8B, ~5.3 GB): the reply is not written left-to-right — a masked canvas denoises in place, tokens popping in in parallel, lowest-entropy first

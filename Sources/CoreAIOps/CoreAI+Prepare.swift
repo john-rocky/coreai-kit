@@ -22,7 +22,7 @@ extension CoreAI {
     /// `summary` / `defaultModelID` are the same one-liners the docs use, so an op
     /// picker or gallery renders straight from `Op.allCases`.
     public enum Op: Sendable, Hashable, CaseIterable {
-        case summarize, extract, translate, proofread, tidyTranscript
+        case summarize, extract, translate, proofread, tidyTranscript, decide
         case transcribe, transcribeMeeting, describeAudio, speak, compose, separate
         case caption, detect, read, upscale, estimateDepth
         case recognizeAction, search, forecast
@@ -41,6 +41,7 @@ extension CoreAI {
             case .translate: "Text → translation in a named language"
             case .proofread: "Text → corrected text"
             case .tidyTranscript: "Raw ASR transcript → written text"
+            case .decide: "State + typed questions → answers with probabilities"
             case .transcribe: "Audio file → plain-text transcript"
             case .transcribeMeeting: "Audio file → speaker-attributed transcript"
             case .describeAudio: "Audio file → description of the sounds"
@@ -69,6 +70,7 @@ extension CoreAI {
             switch self {
             case .summarize, .extract, .translate, .proofread: CoreAI.defaultModel
             case .tidyTranscript: CoreAI.defaultNormalizerModel
+            case .decide: CoreAI.defaultDecisionModel
             case .transcribe, .transcribeMeeting: CoreAI.defaultSpeechModel
             case .describeAudio: CoreAI.defaultAudioModel
             case .speak: CoreAI.defaultVoiceModel
@@ -109,6 +111,9 @@ extension CoreAI {
         case .tidyTranscript:
             _ = try await TidyOpModels.shared.normalizer(
                 catalog: options.model ?? defaultNormalizerModel)
+        case .decide:
+            _ = try await DecideOpModels.shared.decider(
+                catalog: options.model ?? defaultDecisionModel)
         case .transcribe:
             _ = try await OpModels.shared.transcriber(
                 catalog: options.model ?? defaultSpeechModel)
