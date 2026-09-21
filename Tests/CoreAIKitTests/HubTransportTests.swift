@@ -7,6 +7,12 @@ import XCTest
 final class HubTransportTests: XCTestCase {
     private let revision = String(repeating: "a", count: 40)
 
+    func testListingFailsFastWhileTransfersWaitForConnectivity() {
+        // A listing that waits for connectivity never reaches the offline fallback.
+        XCTAssertFalse(CoreAIKitCore.HubClient.listingConfiguration.waitsForConnectivity)
+        XCTAssertTrue(CoreAIKitCore.HubClient.transferConfiguration.waitsForConnectivity)
+    }
+
     func testAuthenticatedListingAndSharedCacheProduceIndependentBundle() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

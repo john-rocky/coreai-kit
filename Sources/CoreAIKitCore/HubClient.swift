@@ -5,7 +5,19 @@ import HuggingFace
 
 struct HubClient: Sendable {
     let baseURL: URL
+    // Listings must fail fast when the network is down, so ModelStore can fall back to a
+    // cached sibling revision. File transfers wait for connectivity instead.
+    private let listingClient: HuggingFace.HubClient
     private let client: HuggingFace.HubClient
+
+    static var listingConfiguration: URLSessionConfiguration { .default }
+
+    static var transferConfiguration: URLSessionConfiguration {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForResource = 7 * 24 * 60 * 60
+        return config
+    }
 
     init(
         baseURL: URL = URL(string: "https://huggingface.co")!,
@@ -14,18 +26,19 @@ struct HubClient: Sendable {
         cache: HubCache? = .default
     ) {
         self.baseURL = baseURL
-        let config = URLSessionConfiguration.default
-        config.waitsForConnectivity = true
-        config.timeoutIntervalForResource = 7 * 24 * 60 * 60
         // Only the canonical HTTPS endpoint may use the user's HF credentials/cache.
         // Mirror content must not enter the shared, endpoint-independent Hub cache.
         let canonical = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             == "https://huggingface.co"
-        self.client = HuggingFace.HubClient(
-            session: session ?? URLSession(configuration: config),
-            host: baseURL,
-            tokenProvider: canonical ? tokenProvider : .none,
-            cache: canonical ? cache : nil)
+        func makeClient(_ configuration: URLSessionConfiguration) -> HuggingFace.HubClient {
+            HuggingFace.HubClient(
+                session: session ?? URLSession(configuration: configuration),
+                host: baseURL,
+                tokenProvider: canonical ? tokenProvider : .none,
+                cache: canonical ? cache : nil)
+        }
+        self.listingClient = makeClient(Self.listingConfiguration)
+        self.client = makeClient(Self.transferConfiguration)
     }
 
     struct PlannedFile: Sendable {
@@ -105,9 +118,9 @@ struct HubClient: Sendable {
             do {
                 let result: PaginatedResponse<Git.TreeEntry>?
                 if let page {
-                    result = try await client.nextPage(after: page)
+                    result = try await listingClient.nextPage(after: page)
                 } else {
-                    result = try await client.listTree(
+                    result = try await listingClient.listTree(
                         in: id, revision: revision, path: path, recursive: true)
                 }
                 try Task.checkCancellation()
