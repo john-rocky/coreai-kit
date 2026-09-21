@@ -180,6 +180,110 @@ final class HubEndpointTests: XCTestCase {
         XCTAssertNil(store.localURL(for: model))
     }
 
+    func testInterruptedHTTPDownloadResumesAcrossRetries() async throws {
+        let listing = "/hf/api/models/org/model/tree/\(revision)/macos?recursive=true"
+        let file = "/hf/org/model/resolve/\(revision)/macos/weights.bin"
+        let body = Data((0..<(512 * 1024)).map { UInt8(truncatingIfNeeded: $0) })
+        let headers = ["Accept-Ranges": "bytes", "ETag": "\"fixture-weights\"",
+                       "Last-Modified": "Mon, 21 Sep 2026 00:00:00 GMT"]
+        let server = try HubFixtureServer(responseSequences: [
+            listing: [.init(body: Data("[{\"type\":\"file\",\"path\":\"macos/weights.bin\",\"size\":\(body.count)}]".utf8))],
+            file: [
+                .init(body: body, headers: headers, chunkSize: 32 * 1024, interruptAfter: 128 * 1024),
+                .init(body: body, headers: headers, chunkSize: 32 * 1024, interruptAfter: 128 * 1024),
+                .init(body: body, headers: headers, chunkSize: 32 * 1024),
+            ],
+        ])
+        defer { server.stop() }
+        let baseURL = try await server.start()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ModelStore(directory: root, hubBaseURL: baseURL)
+        let model = ModelID("org/model", path: "macos", revision: revision)
+        let progress = ProgressRecorder()
+        let bundle = try await store.download(model) { progress.append($0) }
+
+        XCTAssertEqual(try Data(contentsOf: bundle.appendingPathComponent("weights.bin")), body)
+        let requests = server.receivedRequests.filter { $0.hasPrefix("GET \(file) ") }
+        XCTAssertEqual(requests.count, 3)
+        let offsets = requests.map { request -> Int in
+            let range = request.components(separatedBy: "\r\n").first {
+                $0.lowercased().hasPrefix("range: bytes=")
+            }
+            return range.flatMap { Int($0.dropFirst("range: bytes=".count).dropLast()) } ?? 0
+        }
+        XCTAssertEqual(offsets.first, 0)
+        XCTAssertTrue(offsets.dropFirst().allSatisfy { $0 > 0 }, "Retries must request remaining bytes")
+        XCTAssertTrue(zip(offsets, offsets.dropFirst()).allSatisfy { $0 < $1 },
+                      "Each retry must use resume data from the latest interruption")
+        XCTAssertEqual(progress.values.last?.completedBytes, Int64(body.count))
+        XCTAssertTrue(zip(progress.values, progress.values.dropFirst()).allSatisfy {
+            $0.completedBytes <= $1.completedBytes
+        })
+    }
+
+    func testInterruptedHTTPDownloadWithoutResumeDataRetriesFromStart() async throws {
+        let file = "/hf/org/model/resolve/\(revision)/macos/weights.bin"
+        let body = Data(repeating: 7, count: 256 * 1024)
+        let server = try HubFixtureServer(responseSequences: [
+            file: [.init(body: body, chunkSize: 32 * 1024, interruptAfter: 64 * 1024),
+                   .init(body: body)],
+        ])
+        defer { server.stop() }
+        let baseURL = try await server.start()
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: destination) }
+        let hub = CoreAIKitCore.HubClient(baseURL: baseURL)
+        let planned = CoreAIKitCore.HubClient.PlannedFile(
+            url: try hub.downloadURL(repo: "org/model", revision: revision, path: "macos/weights.bin"),
+            repoPath: "macos/weights.bin", relativePath: "weights.bin", size: Int64(body.count))
+        try await hub.download(planned, repo: "org/model", revision: revision, to: destination) { _ in }
+        XCTAssertEqual(try Data(contentsOf: destination), body)
+        let requests = server.receivedRequests.filter { $0.hasPrefix("GET \(file) ") }
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertTrue(requests.allSatisfy { !$0.lowercased().contains("\r\nrange:") })
+    }
+
+    func testCancellationDuringResumedHTTPDownloadStopsRetries() async throws {
+        let file = "/hf/org/model/resolve/\(revision)/macos/weights.bin"
+        let body = Data(repeating: 7, count: 512 * 1024)
+        let headers = ["Accept-Ranges": "bytes", "ETag": "\"fixture-weights\"",
+                       "Last-Modified": "Mon, 21 Sep 2026 00:00:00 GMT"]
+        let server = try HubFixtureServer(responseSequences: [
+            file: [.init(body: body, headers: headers, chunkSize: 32 * 1024, interruptAfter: 64 * 1024),
+                   .init(body: body, headers: headers, chunkSize: 32 * 1024)],
+        ])
+        defer { server.stop() }
+        let baseURL = try await server.start()
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: destination) }
+        let hub = CoreAIKitCore.HubClient(baseURL: baseURL)
+        let planned = CoreAIKitCore.HubClient.PlannedFile(
+            url: try hub.downloadURL(repo: "org/model", revision: revision, path: "macos/weights.bin"),
+            repoPath: "macos/weights.bin", relativePath: "weights.bin", size: Int64(body.count))
+        let task = Task { [revision] in
+            try await hub.download(planned, repo: "org/model", revision: revision, to: destination) { _ in }
+        }
+        defer { task.cancel() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while server.receivedTargets.count < 2, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(server.receivedTargets.count, 2)
+        XCTAssertTrue(server.receivedRequests.last?.lowercased().contains("\r\nrange: bytes=") == true)
+        let cancelledAt = ContinuousClock.now
+        task.cancel()
+        do {
+            try await task.value
+            XCTFail("Expected cancellation during the resumed transfer")
+        } catch is CancellationError {
+            // Cancellation must stop the retry loop even when resume data is available.
+        }
+        XCTAssertLessThan(cancelledAt.duration(to: .now), .seconds(1))
+        XCTAssertEqual(server.receivedTargets.count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
     func testConcurrentCallersShareDownloadAndFirstProgressCallback() async throws {
         let listing = "/hf/api/models/org/model/tree/\(revision)?recursive=true"
         let file = "/hf/org/model/resolve/\(revision)/metadata.json"
@@ -414,6 +518,7 @@ private final class HubFixtureServer: @unchecked Sendable {
         var body = Data()
         var headers: [String: String] = [:]
         var chunkSize: Int? = nil
+        var interruptAfter: Int? = nil
     }
 
     private let listener: NWListener
@@ -506,10 +611,21 @@ private final class HubFixtureServer: @unchecked Sendable {
             let index = responseCounts[target, default: 0]
             let isHead = request.hasPrefix("HEAD ")
             if !isHead { responseCounts[target] = index + 1 }
-            let planned = responses[target].map { $0[min(index, $0.count - 1)] } ?? Response(status: 404)
-            let payload = planned.body
+            var planned = responses[target].map { $0[min(index, $0.count - 1)] } ?? Response(status: 404)
+            if !isHead, planned.headers["Accept-Ranges"] == "bytes",
+               let range = request.components(separatedBy: "\r\n").first(where: {
+                   $0.lowercased().hasPrefix("range: bytes=")
+               }),
+               let offset = Int(range.dropFirst("range: bytes=".count).dropLast()),
+               offset > 0, offset < planned.body.count {
+                planned.status = 206
+                planned.headers["Content-Range"] = "bytes \(offset)-\(planned.body.count - 1)/\(planned.body.count)"
+                planned.body = planned.body.subdata(in: offset..<planned.body.count)
+            }
+            // Advertise the full length, then close early to trigger native resume data.
+            let payload = planned.interruptAfter.map { Data(planned.body.prefix($0)) } ?? planned.body
             let headers = planned.headers.map { "\($0.key): \($0.value)\r\n" }.joined()
-            var response = Data("HTTP/1.1 \(planned.status) Fixture\r\nContent-Length: \(payload.count)\r\nCache-Control: no-store\r\nConnection: close\r\n\(headers)\r\n".utf8)
+            var response = Data("HTTP/1.1 \(planned.status) Fixture\r\nContent-Length: \(planned.body.count)\r\nCache-Control: no-store\r\nConnection: close\r\n\(headers)\r\n".utf8)
             if !isHead, let chunkSize = planned.chunkSize {
                 connection.send(content: response, completion: .contentProcessed { error in
                     guard error == nil else { connection.cancel(); return }

@@ -145,21 +145,30 @@ struct HubClient: Sendable {
     private func downloadFile(
         _ file: PlannedFile, from id: Repo.ID, revision: String, to destination: URL, progress: Progress
     ) async throws {
+        var resumeData: Data?
         for attempt in 0..<6 {
             try Task.checkCancellation()
             if attempt > 0 { try await Task.sleep(for: .milliseconds(1500)) }
             do {
-                _ = try await client.downloadFile(
-                    at: file.repoPath, from: id, to: destination, revision: revision,
-                    progress: progress)
+                if let resumeData {
+                    _ = try await client.resumeDownloadFile(
+                        resumeData: resumeData, to: destination, progress: progress)
+                } else {
+                    _ = try await client.downloadFile(
+                        at: file.repoPath, from: id, to: destination, revision: revision,
+                        progress: progress)
+                }
                 return
             } catch HTTPClientError.responseError(let response, _) {
+                resumeData = nil
                 guard attempt < 5, response.statusCode == 429 || (500..<600).contains(response.statusCode) else {
                     throw CoreAIKitError.httpError(statusCode: response.statusCode, file: file.repoPath)
                 }
             } catch let error as URLError {
                 try Task.checkCancellation()
                 guard attempt < 5 else { throw error }
+                // Use the newest partial transfer, including after a resumed request fails.
+                resumeData = (error as NSError).userInfo[NSURLSessionDownloadTaskResumeData] as? Data
             }
         }
     }
