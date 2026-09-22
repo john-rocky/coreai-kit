@@ -9,6 +9,7 @@ enum BuiltinPins {
     /// Catalog id -> Hugging Face commit hash, mirrored from catalog.json.
     static let byID: [String: String] = [
         "adcsr-x4": "60a65ad223ea89385b0b4c880a306616112d55ce",
+        "apus-openjev-v1-4b": "3ad2cc7403304d86022b63fa426a5b80eea3cfbb",
         "clip-vit-b32": "01a6965ddfa33a11d7a4bd299077c2672c0a72cc",
         "colmodernvbert": "8b1e802cabc8f3980be5fb58d179139c5118a72a",
         "decider-0.8b": "ff60ccf563556efbf83442e891e57d68a1840728",

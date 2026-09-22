@@ -266,6 +266,21 @@
       "format": "slot"
     },
     {
+      "id": "apus-openjev-v1-4b",
+      "name": "APUS-OpenJev-v1 4B",
+      "repo": "mlboydaisuke/APUS-OpenJev-v1-4B-CoreAI",
+      "revision": "3ad2cc7403304d86022b63fa426a5b80eea3cfbb",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined-b2/apus_openjev_v1_4b_decode_int8hu_block32_sym",
+          "sizeMB": 5504
+        }
+      },
+      "engine": "pipelined",
+      "format": "sharedState"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

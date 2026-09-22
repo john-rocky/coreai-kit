@@ -371,6 +371,18 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
                 ],
                 engine: "pipelined", format: "slot"),
+            // ── APUS-OpenJev-v1-4B: a letter-readout decision model for browser actions and
+            //    workflow steps — one `Shared state:` + JSON task turn under its chat template,
+            //    read at A–P (`format: sharedState`). macOS only on purpose: 5.5 GB int8hu and
+            //    no device measurement. Add "ios" when one has been taken. ──
+            CatalogEntry(
+                id: "apus-openjev-v1-4b", name: "APUS-OpenJev-v1 4B",
+                repo: "mlboydaisuke/APUS-OpenJev-v1-4B-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined-b2/apus_openjev_v1_4b_decode_int8hu_block32_sym", sizeMB: 5504),
+                ],
+                engine: "pipelined", format: "sharedState"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,
