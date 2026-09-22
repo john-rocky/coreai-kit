@@ -92,6 +92,34 @@ at the top of the script, and "ask the user first" / "refuse" become the hook's
 (the script's header shows the entry), and the gate runs on your machine — each call loads the
 model (a few seconds with the weights cached) and decides in about 70 ms.
 
+**The same decisions as MCP tools.** `decide-cli mcp` (or `systemone mcp`, the same server in
+the Homebrew-installed binary) is a Model Context Protocol server on stdin/stdout with two
+tools: `decide` (the `/v1/systemone` request above as its arguments, the response as
+`structuredContent` and as text) and `models` (the catalog ids that can answer). Register the
+built binary once and the agent's own sessions see the tools:
+
+```bash
+claude mcp add systemone -- "$PWD/.build/release/decide-cli" mcp   # Claude Code (add --scope user for every project)
+codex mcp add systemone -- "$PWD/.build/release/decide-cli" mcp    # Codex (writes [mcp_servers.systemone] in ~/.codex/config.toml)
+```
+```json
+{"mcpServers": {"systemone": {"command": "/path/to/decide-cli", "args": ["mcp"]}}}
+```
+
+(Cursor: that JSON in `~/.cursor/mcp.json`, or `.cursor/mcp.json` in a project — from its
+docs, not run here.) The model loads on the first `decide` (`--preload` loads it at launch);
+calls run one at a time and protocol messages are answered as they arrive. Measured 2026-09-23
+on the Mac (M4 Max, MiniCPM5 2B, two model conversions running alongside): over stdio,
+`initialize` is answered in 15 ms and `tools/list` in 0.2 ms; four questions on a 119-token
+state take 348 ms once the model is loaded (4.2 s on the first call, 3.7 s of it the load);
+from a Claude Code 2.1 session a three-question classification round-tripped in 1,064 ms
+including the load, 285 ms of it decisions, and from Codex 0.154 in 4,131 ms with the load.
+On a quieter run of the same server earlier that day the Claude Code round trip was 766 ms.
+Both revisions of the protocol are served — the `initialize` handshake of 2025-11-25 and
+earlier (what Claude Code and Codex send today) and the per-request `_meta` form of
+2026-07-28 (`server/discover`) — by `SystemOneMCPServer` and `SystemOneMCP` in the kit;
+`runMCP` in `CLI/main.swift` is six lines over them.
+
 ## Run
 
 ```bash
@@ -316,9 +344,9 @@ coreai-assets `kit/decide/{drive,columns,guard,context,typing}-iphone.mp4`.
 - `Sources/QuickStart.swift` — the take-home: one typed function, no UI. The GUI and the CLI
   both call it.
 - `CLI/main.swift` — argument shell over that function, plus `bench`, `oracle`, `parity`
-  and `filter` (the numbers above) and `serve`, a shell over the kit's `SystemOneServer`
-  (`Sources/CoreAIKit/Decide/SystemOneServer.swift`); `clients/` — a curl and a Python
-  request to it.
+  and `filter` (the numbers above), `serve`, a shell over the kit's `SystemOneServer`
+  (`Sources/CoreAIKit/Decide/SystemOneServer.swift`), and `mcp`, one over
+  `SystemOneMCPServer`; `clients/` — a curl and a Python request to it.
 - `Sources/DecideRuntime.swift` — the one loaded `TypedDecisions` the screens share.
 - `Sources/Form*.swift` (Autofill; `FormPage.html` is the checkout page it fills through one
   JavaScript call), `Checklist*.swift`, `Sorter*.swift`, `Search*.swift`, `SpeechGate*.swift`,

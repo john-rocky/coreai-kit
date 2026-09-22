@@ -44,6 +44,12 @@ public enum SystemOne {
         } catch {
             throw WireError("invalid JSON: \(error.localizedDescription)")
         }
+        return try request(from: root)
+    }
+
+    /// The same request from an already parsed value (an MCP tool's arguments carry the
+    /// object rather than its bytes).
+    public static func request(from root: JSONValue) throws -> Request {
         guard let members = root.members else { throw WireError("the request must be a JSON object") }
         guard let stateValue = root["state"] else { throw WireError("'state' is required") }
         let state: String

@@ -97,6 +97,9 @@ cache; the first start after a reboot reads the 2.7 GB back from disk first). `s
 --state "…" --noul "…"` is one decision from the shell (`--json` for the wire form),
 `systemone models` says what can decide and what is downloaded. From source it is
 `swift run -c release systemone serve`, or `decide-cli serve` in `Examples/Decide`.
+`systemone mcp` is the same decisions as a Model Context Protocol server on stdio:
+`claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp` (Codex: `codex mcp add …`;
+Cursor: `~/.cursor/mcp.json`) and the agent's own sessions get a `decide` tool.
 
 MiniCPM5 2B answers a question in about 40–65 ms after the state is read once (M4 Max), and
 its decisions track the published full-precision readout (141/144 argmax on the authored

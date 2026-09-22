@@ -25,6 +25,7 @@ from `Op.allCases`.
 | [redact PII](#work-with-text) | `CoreAI.redact(text)` | Text → text with PII replaced by labels |
 | [find names/emails/anything in text](#work-with-text) | `CoreAI.extractEntities(from:labels:)` | Text → entities by zero-shot label |
 | [decide something about text, with a probability](#decide-without-generating) | `CoreAI.decide(state, questions)` | State + typed questions → answers with probabilities |
+| [give Claude Code / Codex / Cursor a decision tool](#decide-without-generating) | `systemone mcp` | An MCP server on stdio: tools `decide`, `models` |
 | [chat with a local LLM, streaming](#chat-tools-and-guided-json) | `ChatSession` | Prompt ⇄ streamed conversation |
 | [let the model call my functions](#chat-tools-and-guided-json) | `KitLanguageModel` + FM tools | Prompt → answer via your tools |
 | [get schema-valid JSON, guaranteed](#chat-tools-and-guided-json) | guided generation | Prompt → schema-valid JSON |
@@ -177,6 +178,18 @@ for (id, question) in request.questions {
     answers.append((id, question, try await prefilled.decide(question)))
 }
 let json = SystemOne.response(model: "minicpm5-2b", answers: answers).dumps()
+```
+
+**From a coding agent.** `systemone mcp` (or `decide-cli mcp` from a checkout) is the same over
+the Model Context Protocol: `claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp`
+(Codex: `codex mcp add …`; Cursor: `~/.cursor/mcp.json`) and the agent's sessions get a
+`decide` tool that takes the request above as its arguments and returns the response as
+`structuredContent`, plus `models`. The server is `SystemOneMCPServer` in `CoreAIKit` and the
+message forms `SystemOneMCP`, for an app that is the MCP server itself:
+
+```swift
+let server = SystemOneMCPServer(defaultModel: "minicpm5-2b")   // stdin/stdout by default; any FileHandle pair
+try await server.run()                                          // returns when the input closes
 ```
 
 **A model trained for this.** `decider-0.8b` (catalog kind `decision`) is not a chat model:

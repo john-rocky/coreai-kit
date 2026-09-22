@@ -46,6 +46,33 @@ clients that read `TYPESAFE_BASE_URL` or `SYSTEM_ONE_BASE_URL`: set it) and noth
 changes. The request and answer forms, and the one declared difference (16 options per
 choice, not 255), are in [`Examples/Decide/README.md`](../Examples/Decide/README.md#the-same-endpoint-your-client-already-speaks).
 
+## From a coding agent
+
+`systemone mcp` serves the same decisions as tools of a Model Context Protocol server on
+stdin/stdout. Register it once and the agent's own sessions see `decide` and `models`:
+
+```bash
+claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp     # Claude Code
+codex mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp      # Codex
+```
+```json
+{"mcpServers": {"systemone": {"command": "/opt/homebrew/bin/systemone", "args": ["mcp"]}}}
+```
+
+(Cursor: that JSON in `~/.cursor/mcp.json`. From a checkout, `.build/release/systemone` after
+`swift build -c release --product systemone`, or `decide-cli mcp` in `Examples/Decide`.)
+`decide` takes the `/v1/systemone` request above — `state`, `questions`, an optional `model` —
+as its arguments and returns the response as `structuredContent` (and as text); `models` lists
+the catalog ids that can answer. The model loads on the first call (`--preload` starts it at
+launch) and answers one call at a time; when the input closes, the calls in flight are
+answered and the process ends, so a one-shot pipe works too (`printf '…' | systemone mcp`).
+Asked from a Claude Code session to classify a ticket
+with three questions, the tool call round-tripped in 1,064 ms including the model load, 285 ms
+of it decisions (M4 Max, 2026-09-23, two model conversions running on the same Mac); from a
+Codex session 4,131 ms, 3.7 s of it the load under that load. The server is
+`SystemOneMCPServer` in the kit and the message forms `SystemOneMCP`, for an app that is the
+MCP server itself.
+
 ## What it costs
 
 | | Mac (M4 Max, macOS 27.0) | iPhone 17 Pro (iOS 27.0) |
@@ -115,11 +142,13 @@ Clips of each on the Mac and on the iPhone are in
   (the three renderings: a chat model's JSON turn, a decision model's plain text, a slot-head
   model's control tokens), `SystemOneWire` + `OrderedJSON` (the hosted forms), `SystemOneServer` (the
   endpoint over Network.framework — the same code listens in an app, `host: "0.0.0.0"` for the
-  local network) and `DecisionQueue` (one decision at a time over a shared model).
+  local network), `DecisionQueue` (one decision at a time over a shared model), and
+  `SystemOneMCPServer` + `SystemOneMCP` (the same decisions as Model Context Protocol tools
+  over stdio, and the message forms).
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op.
-- `Sources/systemone` — the `systemone` binary (`serve | ask | models`), built, signed and
+- `Sources/systemone` — the `systemone` binary (`serve | ask | models | mcp`), built, signed and
   notarized per tag by `.github/workflows/release.yml`; the Homebrew formula lives in
   [john-rocky/homebrew-tap](https://github.com/john-rocky/homebrew-tap).
-- `Examples/Decide/CLI` — `decide-cli ask | bench | oracle | parity | filter | serve`.
+- `Examples/Decide/CLI` — `decide-cli ask | bench | oracle | parity | filter | serve | mcp`.
 - Android: the same request and answer forms over LiteRT decision encoders are in
   [hfmodels-android](https://github.com/john-rocky/hfmodels-android) (typed-decisions branch).
