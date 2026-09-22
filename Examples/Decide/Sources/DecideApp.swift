@@ -24,6 +24,21 @@ struct DecideApp: App {
                 SpeechGateView()
                     .tabItem { Label("Speech gate", systemImage: "waveform") }
                     .tag(Autoplay.Screen.speech)
+                DriveView()
+                    .tabItem { Label("Drive", systemImage: "car") }
+                    .tag(Autoplay.Screen.drive)
+                ColumnsView()
+                    .tabItem { Label("Columns", systemImage: "tablecells") }
+                    .tag(Autoplay.Screen.columns)
+                GuardView()
+                    .tabItem { Label("Guard", systemImage: "hand.raised") }
+                    .tag(Autoplay.Screen.guard)
+                ContextView()
+                    .tabItem { Label("Context", systemImage: "arrow.down.right.and.arrow.up.left") }
+                    .tag(Autoplay.Screen.context)
+                TypingView()
+                    .tabItem { Label("Typing", systemImage: "keyboard") }
+                    .tag(Autoplay.Screen.typing)
             }
             .environment(runtime)
             .environment(autoplay)

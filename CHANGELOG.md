@@ -42,6 +42,16 @@ policy.
   the two Shortcuts actions stay. `decide-cli` gains `filter` (one decision per stdin line — a
   semantic grep) and `parity`; the app takes `-autoplay <screen>` (`-trigger`, `-log`, `-feed`)
   for hands-off runs and recordings.
+- Five more whole uses in `Examples/Decide`, the shapes of the most-viewed System One posts
+  with the model on the device: **Drive** (the model drives a car down a three-lane road, one
+  choice per tick, 80 ticks in 25 s at a 40 ms median on an M4 Max), **Columns** (a CSV and
+  the columns you ask for — every row read once, one decision per column; sort, save),
+  **Command guard** (an agent's command log under a policy in plain words → run / ask /
+  refuse; `hooks/claude-code-guard.sh` runs the same decision as a Claude Code PreToolUse
+  hook), **Context** (an agent transcript's tool results scored against the question — the
+  unrelated ones drop out, tokens counted by the model's tokenizer) and **Typing** (tone,
+  intent and an emoji read from the text at every pause). The README records which
+  question shapes read correctly on MiniCPM5 2B and which did not.
 
 ### Changed
 
