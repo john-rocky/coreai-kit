@@ -229,6 +229,24 @@
       "engine": "pipelined"
     },
     {
+      "id": "decider-0.8b",
+      "name": "decider 0.8B",
+      "repo": "mlboydaisuke/decider-0.8b-CoreAI",
+      "revision": "ff60ccf563556efbf83442e891e57d68a1840728",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym",
+          "sizeMB": 1276
+        },
+        "ios": {
+          "path": "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym",
+          "sizeMB": 1276
+        }
+      },
+      "engine": "pipelined"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

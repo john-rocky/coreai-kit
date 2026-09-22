@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SearchView: View {
     @Environment(DecideRuntime.self) private var runtime
+    @Environment(Autoplay.self) private var autoplay
     @State private var model = SearchModel()
 
     var body: some View {
@@ -40,5 +41,8 @@ struct SearchView: View {
             }
         }
         .padding()
+        .task {
+            await autoplay.run(.search, runtime: runtime) { model.rank(runtime) }
+        }
     }
 }

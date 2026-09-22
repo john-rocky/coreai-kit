@@ -335,7 +335,7 @@ See `docs/GETTING_STARTED.md`.
 ## How the catalog is verified — and how you re-check it yourself
 
 The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 61 catalog entries:
+this is *what was checked, by whom, and can you check it again.* All 62 catalog entries:
 
 - **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
   that were gated — never "whatever is on `main` today." CI re-checks every pin

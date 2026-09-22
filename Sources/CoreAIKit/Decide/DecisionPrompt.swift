@@ -181,7 +181,8 @@ extension DecisionPrompt {
 
     /// Folds a probability vector into the question's answer shape.
     static func answer(
-        for question: Decision.Question, probabilities p: [Double], timing: Decision.Timing
+        for question: Decision.Question, probabilities p: [Double], timing: Decision.Timing,
+        fit: [Double]? = nil
     ) -> Decision.Answer {
         let value: Decision.Answer.Value
         switch question.kind {
@@ -200,7 +201,7 @@ extension DecisionPrompt {
             value = .score(
                 Decision.Score(
                     value: expected, level: best, confidence: p[best], certainty: certainty(p),
-                    probabilities: p))
+                    probabilities: p, fit: fit))
         case .noul:
             value = .noul(p[1])
         }

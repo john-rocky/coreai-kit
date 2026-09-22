@@ -28,10 +28,11 @@ final class DecideRuntime {
         }
     }
 
-    /// Chat models published for this platform — the picker's content, ids straight off the
-    /// model cards. Every one loads on the logits-capable engine; the default is the one whose
-    /// zero-shot decisions clear chance on the published fixtures.
-    let models = ModelCatalog.builtin.available(.chat)
+    /// Chat models published for this platform, then the decision models — the picker's
+    /// content, ids straight off the model cards. Every one loads on the logits-capable
+    /// engine; the default is the chat model whose zero-shot decisions clear chance on the
+    /// published fixtures.
+    let models = ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision)
     var selectedID = CoreAI.defaultDecisionModel
     var status: Status = .idle
     private(set) var decider: TypedDecisions?

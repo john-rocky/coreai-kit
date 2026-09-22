@@ -3,14 +3,15 @@ import SwiftUI
 
 struct SpeechGateView: View {
     @Environment(DecideRuntime.self) private var runtime
+    @Environment(Autoplay.self) private var autoplay
     @State private var model = SpeechGateModel()
 
     var body: some View {
         VStack(spacing: 12) {
             ScreenHeader(
                 title: "Speech gate",
-                subtitle: "One yes/no decision per utterance — only the ones that pass go to a language model")
-            TextField("Gate question", text: $model.question, axis: .vertical)
+                subtitle: "One decision per utterance — only the ones that pass go to a language model")
+            TextField("Gate question | option that passes | other option", text: $model.question, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .disabled(model.working)
             HStack {
@@ -33,13 +34,16 @@ struct SpeechGateView: View {
                             .foregroundStyle(utterance.passes ? .green : .secondary)
                         Text(utterance.text)
                     }
-                    ProbabilityBar(value: utterance.answer.noul ?? 0, tint: utterance.passes ? .green : .gray)
-                    Text("\(utterance.answer.summaryLine) · \(utterance.answer.timingLine)")
+                    ProbabilityBar(value: utterance.passProbability, tint: utterance.passes ? .green : .gray)
+                    Text("P(for the assistant) \(utterance.passProbability.formatted(.number.precision(.fractionLength(2)))) · \(utterance.answer.timingLine)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 2)
             }
         }
         .padding()
+        .task {
+            await autoplay.run(.speech, runtime: runtime) { model.runSample(runtime) }
+        }
     }
 }
