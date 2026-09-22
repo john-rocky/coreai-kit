@@ -13,27 +13,32 @@ struct FormView: View {
             ScreenHeader(
                 title: "Checkout autofill",
                 subtitle: "Copy an email or a message — every field fills at once, on device")
-            HStack(spacing: 10) {
-                Toggle("Watch the clipboard", isOn: Binding(
-                    get: { model.watching },
-                    set: { model.setWatching($0, runtime: runtime) }))
-                    .toggleStyle(.switch)
-                    .disabled(!runtime.isReady)
-                Button("Paste") { model.paste(runtime) }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!runtime.isReady || model.working)
-                Button("Sample email") { model.useSample(runtime) }
-                    .disabled(!runtime.isReady || model.working)
-                Button("Clear") { model.clear() }
-                Spacer()
-                if model.decisions > 0 {
-                    Text("\(model.filledCount) of \(FormModel.fields.count) fields · \(model.decisions) decisions · \(ms(model.milliseconds))")
-                        .font(.caption).foregroundStyle(.secondary)
+            controlsLayout {
+                HStack(spacing: 10) {
+                    Button("Paste") { model.paste(runtime) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!runtime.isReady || model.working)
+                    Button("Sample email") { model.useSample(runtime) }
+                        .disabled(!runtime.isReady || model.working)
+                    Button("Clear") { model.clear() }
+                }
+                HStack(spacing: 10) {
+                    Toggle("Watch the clipboard", isOn: Binding(
+                        get: { model.watching },
+                        set: { model.setWatching($0, runtime: runtime) }))
+                        .toggleStyle(.switch)
+                        .fixedSize()
+                        .disabled(!runtime.isReady)
+                    Spacer()
+                    if model.decisions > 0 {
+                        Text("\(model.filledCount) of \(FormModel.fields.count) fields · \(model.decisions) decisions · \(ms(model.milliseconds))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             FormWebView(values: model.values, version: model.fillVersion)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .frame(minHeight: 430)
+                .frame(minHeight: isPhone ? 360 : 430)
             Text(model.status).font(.callout).foregroundStyle(.secondary)
             if !model.fills.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {

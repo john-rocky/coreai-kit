@@ -148,7 +148,11 @@ on a no / partly / completely scale puts the address alone at completely. Prefer
 with a named "none" option, or a scale, over a bare yes/no when the state is short. The
 yes/no shape still reads well on a long state (the checklist's lease).
 
-No iPhone numbers yet; the engine path is the same.
+**iPhone 17 Pro** (iOS 27.0, the same app and the same model, 2026-09-23): the model loads in
+22 s cold and 1.4–4.1 s once the system has it cached; the lease reads in 1,740 ms
+and its twelve answers take 1,589 ms (median 104 ms); the email's seven
+decisions take 2,032 ms; the folder's twenty-four take 2,580 ms. Read back over
+`devicectl` from the app's `-log 1` file, the phone unlocked and wired.
 
 ## Where the code is
 

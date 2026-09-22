@@ -176,7 +176,7 @@ final class SorterModel {
                 moved += 1
             }
             applied = true
-            status = "Moved \(moved) files into \(Set(entries.compactMap(\.chosen)).count) folders under \(folder.lastPathComponent)."
+            status = "Moved \(moved) files into \(Set(entries.compactMap(\.chosen)).count) folders under \(folder.lastPathComponent) · \(entries.count * 2) decisions in \(ms(totalMilliseconds))"
         } catch {
             status = "Move failed after \(moved) files: \(error.localizedDescription)"
         }

@@ -24,16 +24,20 @@ struct SorterView: View {
             ScreenHeader(
                 title: "Sort a folder",
                 subtitle: "Every file read once — which folder it belongs in, and whether it needs you")
-            HStack(spacing: 10) {
-                Button("Open folder…") { importing = true }
-                Button("Sample folder") { model.makeSampleFolder() }
-                Button(editing ? "Hide folders" : "Folders…") { editing.toggle() }
-                Spacer()
-                Button("Sort") { model.sort(runtime) }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.working || model.entries.isEmpty)
-                Button("Move files") { model.apply() }
-                    .disabled(model.working || model.sorted == 0 || model.applied)
+            controlsLayout {
+                HStack(spacing: 10) {
+                    Button("Open folder…") { importing = true }
+                    Button("Sample folder") { model.makeSampleFolder() }
+                    Button(editing ? "Hide folders" : "Folders…") { editing.toggle() }
+                }
+                HStack(spacing: 10) {
+                    Spacer()
+                    Button("Sort") { model.sort(runtime) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.working || model.entries.isEmpty)
+                    Button("Move files") { model.apply() }
+                        .disabled(model.working || model.sorted == 0 || model.applied)
+                }
             }
             .disabled(model.working)
             .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
@@ -65,11 +69,18 @@ struct SorterView: View {
                 if !needsYou.isEmpty {
                     Section("Needs you (\(needsYou.count))") {
                         ForEach(needsYou) { entry in
-                            HStack(spacing: 8) {
+                            HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
-                                Text(entry.name).font(.body)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.name).font(.body)
+                                    if isPhone {
+                                        Text(entry.needLabel ?? "").font(.caption).foregroundStyle(.orange)
+                                    }
+                                }
                                 Spacer()
-                                Text(entry.needLabel ?? "").font(.caption).foregroundStyle(.orange)
+                                if !isPhone {
+                                    Text(entry.needLabel ?? "").font(.caption).foregroundStyle(.orange)
+                                }
                                 Text(entry.chosen ?? "").font(.caption.bold())
                                     .padding(.horizontal, 8).padding(.vertical, 2)
                                     .background(Capsule().fill(.blue.opacity(0.15)))
@@ -84,9 +95,11 @@ struct SorterView: View {
                                 Image(systemName: "doc.text").foregroundStyle(.secondary)
                                 Text(entry.name).font(.body)
                                 Spacer()
-                                Text(entry.excerpt.replacingOccurrences(of: "\n", with: " "))
-                                    .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
-                                    .frame(maxWidth: 360, alignment: .trailing)
+                                if !isPhone {
+                                    Text(entry.excerpt.replacingOccurrences(of: "\n", with: " "))
+                                        .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                                        .frame(maxWidth: 360, alignment: .trailing)
+                                }
                             }
                         }
                     }

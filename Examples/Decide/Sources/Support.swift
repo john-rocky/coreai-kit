@@ -2,6 +2,9 @@
 
 import CoreAIOps
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ScreenHeader: View {
     @Environment(DecideRuntime.self) private var runtime
@@ -58,6 +61,20 @@ struct ProbabilityBar: View {
 }
 
 func ms(_ value: Double) -> String { "\(Int(value.rounded())) ms" }
+
+/// The phone gets the screens' control rows stacked; the Mac and iPad keep them in a line.
+@MainActor var isPhone: Bool {
+    #if os(iOS)
+    UIDevice.current.userInterfaceIdiom == .phone
+    #else
+    false
+    #endif
+}
+
+/// A row of controls on a wide window, a column on a phone.
+@MainActor var controlsLayout: AnyLayout {
+    isPhone ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
+}
 
 func median(_ values: [Double]) -> Double {
     let sorted = values.sorted()

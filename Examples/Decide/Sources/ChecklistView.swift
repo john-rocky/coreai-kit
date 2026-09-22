@@ -15,15 +15,19 @@ struct ChecklistView: View {
             ScreenHeader(
                 title: "Contract check",
                 subtitle: "Open a document, ask it your questions — read once, every answer with its probability")
-            HStack(spacing: 10) {
-                Button("Open…") { importing = true }
-                Button("Sample lease") { model.loadSample() }
-                Button(editing ? "Hide questions" : "Edit questions") { editing.toggle() }
-                Spacer()
-                Text(model.documentName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Button("Check") { model.run(runtime) }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.working || model.document.isEmpty)
+            controlsLayout {
+                HStack(spacing: 10) {
+                    Button("Open…") { importing = true }
+                    Button("Sample lease") { model.loadSample() }
+                    Button(editing ? "Hide questions" : "Edit questions") { editing.toggle() }
+                }
+                HStack(spacing: 10) {
+                    Text(model.documentName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer()
+                    Button("Check") { model.run(runtime) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.working || model.document.isEmpty)
+                }
             }
             .disabled(model.working)
             .fileImporter(isPresented: $importing, allowedContentTypes: DocumentText.readableTypes) { result in
@@ -55,15 +59,28 @@ struct ChecklistView: View {
                 Text(model.status).font(.callout).foregroundStyle(.secondary)
             }
             List(model.items) { item in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    verdict(item.answer)
-                        .frame(width: 150, alignment: .leading)
-                    Text(item.question.instructions).font(.body)
-                    Spacer()
-                    Text(item.answer.confidence.formatted(.number.precision(.fractionLength(2))))
-                        .font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                if isPhone {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.question.instructions).font(.callout)
+                        HStack {
+                            verdict(item.answer)
+                            Spacer()
+                            Text(item.answer.confidence.formatted(.number.precision(.fractionLength(2))))
+                                .font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        verdict(item.answer)
+                            .frame(width: 150, alignment: .leading)
+                        Text(item.question.instructions).font(.body)
+                        Spacer()
+                        Text(item.answer.confidence.formatted(.number.precision(.fractionLength(2))))
+                            .font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 3)
                 }
-                .padding(.vertical, 3)
             }
         }
         .padding()
