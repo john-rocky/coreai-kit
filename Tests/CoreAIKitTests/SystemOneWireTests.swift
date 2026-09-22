@@ -151,6 +151,14 @@ struct SystemOneWireTests {
         #expect(response["answers"]?["queue"]?["confidence"]?.doubleValue == (DecisionPrompt.certainty([0.88123, 0.11877, 0.0]) * 10000).rounded() / 10000)
     }
 
+    @Test func modelsListHasTheReferenceShape() {
+        let text = SystemOne.modelsValue(id: "minicpm5-2b", description: "MiniCPM5 2B, on this machine", revision: "f306590").dumps()
+        // the hosted form first (`models`, each name / description / release_date), then the OpenAI-style keys
+        #expect(text == "{\"models\": [{\"name\": \"minicpm5-2b\", \"description\": \"MiniCPM5 2B, on this machine\", "
+            + "\"release_date\": \"\", \"revision\": \"f306590\"}], \"object\": \"list\", "
+            + "\"data\": [{\"id\": \"minicpm5-2b\", \"object\": \"model\", \"owned_by\": \"local\"}]}")
+    }
+
     @Test func errorsHaveTheReferenceEnvelope() {
         #expect(SystemOne.errorValue(type: "invalid_request_error", message: "'state' is required").dumps()
             == "{\"error\": {\"type\": \"invalid_request_error\", \"message\": \"'state' is required\"}}")

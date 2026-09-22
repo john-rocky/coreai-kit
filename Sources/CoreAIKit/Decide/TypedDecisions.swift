@@ -84,6 +84,14 @@ public actor TypedDecisions {
     /// Display name from the bundle metadata.
     public var modelName: String { runtime.modelName }
 
+    /// Whether this catalog entry can answer typed questions here: a `chat` or `decision`
+    /// model on a runtime that exposes logits. The Gemma 4 pairs and the raw-Metal pack sample
+    /// on the GPU and are refused by `init(catalog:)` with `DecisionError.unsupportedModel`.
+    public static func supports(_ entry: CatalogEntry) -> Bool {
+        (entry.kind == .chat || entry.kind == .decision) && entry.modelID != nil
+            && entry.id != Gemma4MetalRuntime.catalogID && GemmaModelID.byCatalogID[entry.id] == nil
+    }
+
     /// Loads a model by its catalog id (`kind: chat`); downloads on first use.
     public init(
         catalog id: String,

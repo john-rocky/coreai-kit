@@ -80,14 +80,23 @@ with package version, model ID/revision, OS/SDK build and the error text.
 
 A typed decision — a text, a question with fixed answers, each answer's probability, nothing
 generated — is what the hosted System One APIs sell by the call. The same call runs on the
-device with a catalog model: `CoreAI.decide` in Swift, or `decide-cli serve` for everything
+device with a catalog model: `CoreAI.decide` in Swift, or `systemone serve` for everything
 else. It answers `POST /v1/systemone` in the hosted request and answer forms, so a client
 written for the hosted endpoint is switched by its base URL and nothing else changes:
 
 ```bash
-cd Examples/Decide && swift run -c release decide-cli serve          # http://127.0.0.1:8090/v1/systemone
-export SYSTEM_ONE_BASE_URL=http://127.0.0.1:8090                     # your client's base-URL setting
+brew install john-rocky/tap/systemone && systemone serve     # http://127.0.0.1:8090/v1/systemone
+brew services start systemone                                 # the same, kept running by launchd
+export SYSTEM_ONE_BASE_URL=http://127.0.0.1:8090              # your client's base-URL setting
 ```
+
+`systemone` is one signed, notarized 21 MB binary with no Swift toolchain behind it. The first
+`serve` downloads MiniCPM5 2B (2.7 GB) into `~/Library/Application Support/CoreAIKit/Models`;
+after that `brew services start` answers `/health` 0.7 s later (M4 Max, weights in the file
+cache; the first start after a reboot reads the 2.7 GB back from disk first). `systemone ask
+--state "…" --noul "…"` is one decision from the shell (`--json` for the wire form),
+`systemone models` says what can decide and what is downloaded. From source it is
+`swift run -c release systemone serve`, or `decide-cli serve` in `Examples/Decide`.
 
 MiniCPM5 2B answers a question in about 40–65 ms after the state is read once (M4 Max), and
 its decisions track the published full-precision readout (141/144 argmax on the authored

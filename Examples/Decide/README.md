@@ -39,7 +39,9 @@ without opening the app.
 
 ## The same endpoint your client already speaks
 
-`decide-cli serve` puts the loaded model behind a `/v1/systemone` endpoint on this machine, in
+`decide-cli serve` (or `systemone serve`, the same server as one Homebrew-installed binary:
+`brew install john-rocky/tap/systemone`) puts the loaded model behind a `/v1/systemone`
+endpoint on this machine, in
 the request and answer forms of the hosted System One API — `state` (a string, or structured
 data), `model`, `questions` keyed by your ids with `type` / `instructions` / `criteria`;
 `answers` back with `choice` and every option's probability, `score` with its legend, `noul` as
@@ -273,8 +275,9 @@ coreai-assets `kit/decide/{drive,columns,guard,context,typing}-iphone.mp4`.
 - `Sources/QuickStart.swift` — the take-home: one typed function, no UI. The GUI and the CLI
   both call it.
 - `CLI/main.swift` — argument shell over that function, plus `bench`, `oracle`, `parity`
-  and `filter` (the numbers above); `CLI/Serve.swift` — the `/v1/systemone` endpoint
-  (`serve`); `clients/` — a curl and a Python request to it.
+  and `filter` (the numbers above) and `serve`, a shell over the kit's `SystemOneServer`
+  (`Sources/CoreAIKit/Decide/SystemOneServer.swift`); `clients/` — a curl and a Python
+  request to it.
 - `Sources/DecideRuntime.swift` — the one loaded `TypedDecisions` the screens share.
 - `Sources/Form*.swift` (Autofill; `FormPage.html` is the checkout page it fills through one
   JavaScript call), `Checklist*.swift`, `Sorter*.swift`, `Search*.swift`, `SpeechGate*.swift`,

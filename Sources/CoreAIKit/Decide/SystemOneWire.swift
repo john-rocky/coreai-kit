@@ -201,6 +201,25 @@ public enum SystemOne {
         ])
     }
 
+    /// `GET /v1/models` in the hosted form — `models`, each `name` / `description` /
+    /// `release_date` (empty for a local bundle; its identity is the pinned `revision`, given
+    /// beside it) — with the OpenAI-style `object` / `data` keys after it for a client that
+    /// reads that form instead.
+    public static func modelsValue(id: String, description: String, revision: String?) -> JSONValue {
+        .object([
+            .init("models", .array([.object([
+                .init("name", .string(id)),
+                .init("description", .string(description)),
+                .init("release_date", .string("")),
+                .init("revision", .string(revision ?? "")),
+            ])])),
+            .init("object", .string("list")),
+            .init("data", .array([.object([
+                .init("id", .string(id)), .init("object", .string("model")), .init("owned_by", .string("local")),
+            ])])),
+        ])
+    }
+
     /// An error body: `{"error": {"type": …, "message": …}}`.
     public static func errorValue(type: String, message: String) -> JSONValue {
         .object([.init("error", .object([.init("type", .string(type)), .init("message", .string(message))]))])

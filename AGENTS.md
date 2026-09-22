@@ -60,6 +60,10 @@ for try await event in await chat.streamResponse(to: "Hello!") {
 
 Importing `CoreAIOps` re-exports the model layer, so one import covers both.
 
+No Swift at all — a System One client that only needs an endpoint on this machine:
+`brew install john-rocky/tap/systemone && systemone serve` (the `/v1/systemone` forms over a
+catalog model; `brew services start systemone` keeps it running).
+
 ## The catalog is data — read it, do not invent it
 
 `catalog.json` holds **62 entries**, each `{id, kind, name, repo, revision, variants}`. Ids look

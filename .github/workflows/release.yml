@@ -1,0 +1,140 @@
+name: Release systemone
+
+# One signed, notarized `systemone` binary per kit tag, attached to that tag's GitHub Release
+# as systemone-<tag>-macos-arm64.zip (+ .sha256), which the Homebrew formula in
+# john-rocky/homebrew-tap points at. The job summary prints the formula's url/sha256 stanza.
+#
+# Runs on the self-hosted Apple silicon machine (the CoreAI framework is not on any hosted
+# image), where the Developer ID certificate lives in the login keychain. The notary
+# credentials are an App Store Connect API key in three repository secrets:
+#   ASC_KEY_ID      the key's id (10 characters)
+#   ASC_ISSUER_ID   the issuer id (UUID)
+#   ASC_KEY_P8      the .p8 file's contents
+# A dispatch run (any ref) builds, signs and notarizes the same way and leaves the zip as a
+# workflow artifact only — the rehearsal before a tag.
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  SIGNING_IDENTITY: "Developer ID Application: Daisuke Majima (MFN25KNUGJ)"
+
+jobs:
+  systemone:
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The pinned Xcode is the one being used
+        run: ./scripts/check-xcode-pin.sh
+
+      - name: Version from the tag
+        id: version
+        # The committed Version.swift says "dev"; the binary that ships says the tag.
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="dev-$(git rev-parse --short HEAD)"
+          fi
+          printf 'let systemoneVersion = "%s"\n' "$VERSION" > Sources/systemone/Version.swift
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=systemone-$VERSION-macos-arm64.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        # Serialized on the machine-wide GPU lock like every other job here: the runner is
+        # also the measurement machine, and a concurrent build shows up in the numbers.
+        run: python3 scripts/with-gpu-lock.py -- swift build -c release --product systemone
+
+      - name: Sign
+        run: |
+          mkdir -p dist
+          cp "$(swift build -c release --product systemone --show-bin-path)/systemone" dist/systemone
+          codesign --force --sign "$SIGNING_IDENTITY" --timestamp --options runtime dist/systemone
+          codesign --verify --verbose=2 dist/systemone
+          dist/systemone --version
+          ls -l dist/systemone
+
+      - name: Notarize
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ZIP: ${{ steps.version.outputs.zip }}
+        run: |
+          set -o pipefail
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ]; then
+            echo "::error::ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8 must be repository secrets"
+            exit 1
+          fi
+          KEY=$(mktemp -t asc-key)
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          (cd dist && zip -X -q "../$ZIP" systemone)
+          xcrun notarytool submit "$ZIP" --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+            --wait --timeout 30m | tee notary.log
+          rm -f "$KEY"
+          grep -q "status: Accepted" notary.log
+          # A bare executable takes no staple; Gatekeeper fetches the ticket. Assess it the
+          # way a user's Mac will, allowing the ticket a minute to become visible.
+          for i in 1 2 3 4 5 6; do
+            if spctl --assess --type execute --verbose=2 dist/systemone 2>&1 | tee spctl.log | grep -q "source=Notarized Developer ID"; then
+              break
+            fi
+            [ "$i" -lt 6 ] || { cat spctl.log; echo "::error::not assessed as Notarized Developer ID"; exit 1; }
+            sleep 10
+          done
+          cat spctl.log
+          shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
+
+      - name: Formula stanza
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: ${{ steps.version.outputs.zip }}
+        run: |
+          SHA=$(cut -d' ' -f1 "$ZIP.sha256")
+          {
+            echo "## systemone $VERSION"
+            echo
+            echo "Binary $(stat -f %z dist/systemone) bytes, zip $(stat -f %z "$ZIP") bytes."
+            echo
+            echo '```ruby'
+            echo "  url \"https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/$ZIP\""
+            echo "  sha256 \"$SHA\""
+            echo "  version \"$VERSION\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.zip }}
+          path: |
+            ${{ steps.version.outputs.zip }}
+            ${{ steps.version.outputs.zip }}.sha256
+          if-no-files-found: error
+
+      - name: Attach to the tag's GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP: ${{ steps.version.outputs.zip }}
+        # The release notes are written by a person (the release PR carries them); when the
+        # tag arrives before the release exists, a release is created with generated notes
+        # so the asset has a home, and the notes are edited afterwards.
+        run: |
+          if ! gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --title "$VERSION" --generate-notes --verify-tag
+          fi
+          gh release upload "$VERSION" "$ZIP" "$ZIP.sha256" --repo "$GITHUB_REPOSITORY" --clobber

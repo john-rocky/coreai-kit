@@ -1,19 +1,24 @@
-// Serve.swift — `decide-cli serve`: a `/v1/systemone` endpoint on this machine over one loaded
-// model, in the request and answer forms a hosted System One client already speaks. Point the
-// client's base URL at it and the decisions happen here:
+// SystemOneServer.swift — a `/v1/systemone` endpoint over one loaded model, in the request and
+// answer forms a hosted System One client already speaks. Point the client's base URL at it
+// and the decisions happen on this machine:
 //
-//   swift run -c release decide-cli serve --model minicpm5-2b --port 8090
+//   let decider = try await TypedDecisions(catalog: "minicpm5-2b")
+//   try await SystemOneServer(modelID: "minicpm5-2b", decider: decider).run()
+//
 //   curl -s http://127.0.0.1:8090/v1/systemone -H 'Content-Type: application/json' \
 //     -d '{"state": "Help! My payouts have been failing for 3 days.", "model": "minicpm5-2b",
 //          "questions": {"is_urgent": {"type": "noul", "instructions": "Does this convey urgency?"}}}'
 //
-// Routes: POST /v1/systemone (the decisions), GET /v1/models (what is loaded), GET /health.
+// Routes: POST /v1/systemone (the decisions), GET /v1/models (what is loaded, in the hosted
+// list form plus the OpenAI-style keys — `SystemOne.modelsValue`), GET /health.
 // One connection per request (Connection: close), CORS open so a page or a browser extension
 // can call it. The model answers one request at a time (`DecisionQueue`); the HTTP side
-// accepts concurrently.
-// HTTP/1.1 over Network.framework, no dependency added to the kit.
+// accepts concurrently. HTTP/1.1 over Network.framework — no dependency added, and the same
+// code listens on an iPhone (`host: "0.0.0.0"` serves the local network).
+//
+// `systemone serve` (the Homebrew-installed CLI) and `decide-cli serve` (Examples/Decide) are
+// argument shells over this type.
 
-import CoreAIOps
 import Foundation
 import Network
 
@@ -27,13 +32,13 @@ struct HTTPRequest {
     /// Throws when the head is not HTTP.
     static func parse(_ buffer: Data) throws -> HTTPRequest? {
         guard let headEnd = buffer.range(of: Data("\r\n\r\n".utf8)) else {
-            if buffer.count > 64 * 1024 { throw ServeError.badRequest("request head too large") }
+            if buffer.count > 64 * 1024 { throw HTTPError.badRequest("request head too large") }
             return nil
         }
         let head = String(decoding: buffer[..<headEnd.lowerBound], as: UTF8.self)
         var lines = head.components(separatedBy: "\r\n")
         let requestLine = lines.removeFirst().split(separator: " ")
-        guard requestLine.count >= 2 else { throw ServeError.badRequest("malformed request line") }
+        guard requestLine.count >= 2 else { throw HTTPError.badRequest("malformed request line") }
         var headers: [String: String] = [:]
         for line in lines {
             guard let colon = line.firstIndex(of: ":") else { continue }
@@ -41,7 +46,7 @@ struct HTTPRequest {
                 line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
         let length = Int(headers["content-length"] ?? "0") ?? 0
-        guard length <= 8 * 1024 * 1024 else { throw ServeError.badRequest("body too large") }
+        guard length <= 8 * 1024 * 1024 else { throw HTTPError.badRequest("body too large") }
         let bodyStart = headEnd.upperBound
         guard buffer.count >= bodyStart + length else { return nil }
         return HTTPRequest(
@@ -70,82 +75,136 @@ struct HTTPResponse {
     }
 }
 
-enum ServeError: Error {
+enum HTTPError: Error {
     case badRequest(String)
 }
 
-/// One decision at a time. `TypedDecisions` is an actor, but its calls await the engine
-/// twice (the rewind, then the scoring pass) and the actor lets another caller in at each
-/// await, so two concurrent requests would drive the engine at once (six concurrent calls on
-/// one instance come back with no logits, or crash inside the engine). Requests queue here
-/// and run in arrival order; the HTTP side still accepts them concurrently.
-actor DecisionQueue {
-    private var tail: Task<Void, Never> = Task {}
-
-    func run<T: Sendable>(_ operation: @Sendable @escaping () async throws -> T) async throws -> T {
-        let previous = tail
-        let task = Task { () throws -> T in
-            await previous.value
-            return try await operation()
-        }
-        tail = Task { _ = try? await task.value }
-        return try await task.value
-    }
-}
-
 /// NWConnection is not Sendable; the box lets the receive loop hand it to a task.
-final class ConnectionBox: @unchecked Sendable {
+private final class ConnectionBox: @unchecked Sendable {
     let connection: NWConnection
     init(_ connection: NWConnection) { self.connection = connection }
 }
 
-final class SystemOneServer: @unchecked Sendable {
-    let host: String
-    let port: UInt16
-    let modelID: String
-    let decider: TypedDecisions
+/// Resumes a continuation once, whichever listener state arrives first.
+private final class Once<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, any Error>?
+    init(_ continuation: CheckedContinuation<T, any Error>) { self.continuation = continuation }
+    func resume(with result: Result<T, any Error>) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(with: result)
+    }
+}
+
+public final class SystemOneServer: @unchecked Sendable {
+    public enum Failure: Error, LocalizedError, Equatable {
+        /// `host` was not an IP address.
+        case invalidHost(String)
+        /// The listener could not bind or stopped (the port is taken, the interface went away).
+        case listenerFailed(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidHost(let host):
+                return "host must be an IP address (127.0.0.1 for this machine, 0.0.0.0 for the network), not \(host)"
+            case .listenerFailed(let reason):
+                return "listener failed: \(reason)"
+            }
+        }
+    }
+
+    public let host: String
+    public let port: UInt16
+    /// What `GET /v1/models` and every response name as the model.
+    public let modelID: String
+    /// What `GET /v1/models` says about the loaded model (`SystemOne.modelsValue`).
+    public let models: JSONValue
+    public let decider: TypedDecisions
+    /// One line per event (listening, each request served); stderr by default.
+    public let log: @Sendable (String) -> Void
     private let decisions = DecisionQueue()
-    private let queue = DispatchQueue(label: "decide-cli.serve")
+    private let queue = DispatchQueue(label: "coreai-kit.systemone.serve")
+    private let lock = NSLock()
     private var listener: NWListener?
 
-    init(host: String, port: UInt16, modelID: String, decider: TypedDecisions) {
+    /// - Parameters:
+    ///   - host: an IP address; `127.0.0.1` answers this machine only, `0.0.0.0` the network.
+    ///   - port: `8090` is what the reference implementations and the clients default to.
+    ///   - models: the `GET /v1/models` body; `SystemOne.modelsValue(id:description:revision:)`
+    ///     with the catalog entry's name and pin says what a hosted client expects. Left nil,
+    ///     the id stands in for the description and the revision is empty.
+    public init(
+        host: String = "127.0.0.1", port: UInt16 = 8090, modelID: String, models: JSONValue? = nil,
+        decider: TypedDecisions,
+        log: @escaping @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+    ) {
         self.host = host
         self.port = port
         self.modelID = modelID
+        self.models = models ?? SystemOne.modelsValue(id: modelID, description: modelID, revision: nil)
         self.decider = decider
+        self.log = log
     }
 
-    /// Listens until the process ends.
-    func run() async throws {
+    /// Listens until `stop()` is called or the task is cancelled; throws when the listener
+    /// cannot bind or fails later.
+    public func run() async throws {
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else { throw Failure.listenerFailed("port \(port)") }
         if let address = IPv4Address(host) {
-            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(address), port: NWEndpoint.Port(rawValue: port)!)
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(address), port: nwPort)
         } else if let address = IPv6Address(host) {
-            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv6(address), port: NWEndpoint.Port(rawValue: port)!)
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv6(address), port: nwPort)
         } else {
-            throw ServeError.badRequest("--host must be an IP address (127.0.0.1 for this machine, 0.0.0.0 for the network)")
+            throw Failure.invalidHost(host)
         }
-        let listener = try NWListener(using: parameters)
-        self.listener = listener
+        let listener: NWListener
+        do {
+            listener = try NWListener(using: parameters)
+        } catch {
+            throw Failure.listenerFailed("\(error)")
+        }
+        lock.withLock { self.listener = listener }
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else { return }
             let box = ConnectionBox(connection)
             connection.start(queue: self.queue)
             self.receive(box, buffer: Data())
         }
-        listener.stateUpdateHandler = { [modelID, host, port] state in
-            switch state {
-            case .ready:
-                stderrPrint("decide-cli serve: \(modelID) at http://\(host):\(port)\(SystemOne.path)  (GET /v1/models, GET /health; Ctrl-C stops)")
-            case .failed(let error):
-                stderrPrint("decide-cli serve: listener failed: \(error)")
-                exit(1)
-            default: break
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                let once = Once(continuation)
+                listener.stateUpdateHandler = { [modelID, host, port, log] state in
+                    switch state {
+                    case .ready:
+                        log("listening: \(modelID) at http://\(host):\(port)\(SystemOne.path)  (GET /v1/models, GET /health)")
+                    case .failed(let error):
+                        once.resume(with: .failure(Failure.listenerFailed("\(error)")))
+                    case .cancelled:
+                        once.resume(with: .success(()))
+                    default:
+                        break
+                    }
+                }
+                listener.start(queue: queue)
             }
+        } onCancel: {
+            stop()
         }
-        listener.start(queue: queue)
-        while true { try await Task.sleep(for: .seconds(3600)) }
+    }
+
+    /// Stops listening; `run()` returns.
+    public func stop() {
+        let listener = lock.withLock { () -> NWListener? in
+            let current = self.listener
+            self.listener = nil
+            return current
+        }
+        listener?.cancel()
     }
 
     private func receive(_ box: ConnectionBox, buffer: Data) {
@@ -190,13 +249,7 @@ final class SystemOneServer: @unchecked Sendable {
         case ("GET", "/health"), ("GET", "/"):
             return .json(200, .object([.init("status", .string("ok")), .init("model", .string(modelID))]))
         case ("GET", "/v1/models"):
-            return .json(200, .object([
-                .init("object", .string("list")),
-                .init("data", .array([.object([
-                    .init("id", .string(modelID)), .init("object", .string("model")),
-                    .init("owned_by", .string("local")),
-                ])])),
-            ]))
+            return .json(200, models)
         case ("POST", SystemOne.path):
             return await decide(request)
         case (_, SystemOne.path), (_, "/v1/models"), (_, "/health"):
@@ -225,7 +278,7 @@ final class SystemOneServer: @unchecked Sendable {
                 let milliseconds = answers.map(\.answer.timing.milliseconds).reduce(0, +) + prefilled.timing.milliseconds
                 return (SystemOne.response(model: modelID, answers: answers), prefilled.tokens, milliseconds)
             }
-            stderrPrint("POST \(SystemOne.path)  \(parsed.questions.count) question(s), state \(tokens) tokens, \(fmt(milliseconds, 0)) ms")
+            log("POST \(SystemOne.path)  \(parsed.questions.count) question(s), state \(tokens) tokens, \(Int(milliseconds.rounded())) ms")
             return .json(200, response)
         } catch let error as DecisionError {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.localizedDescription))

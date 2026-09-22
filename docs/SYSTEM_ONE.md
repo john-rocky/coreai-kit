@@ -26,7 +26,8 @@ a["urgent"]?.score    // expected level, 0…2
 Anything else, over HTTP, in the hosted API's own forms:
 
 ```bash
-cd Examples/Decide && swift run -c release decide-cli serve      # http://127.0.0.1:8090/v1/systemone
+brew install john-rocky/tap/systemone && systemone serve         # http://127.0.0.1:8090/v1/systemone
+brew services start systemone                                     # the same, kept running by launchd
 curl -s http://127.0.0.1:8090/v1/systemone -H 'Content-Type: application/json' -d '{
   "state": "Help! My payouts have been failing for 3 days.", "model": "minicpm5-2b",
   "questions": {"is_urgent": {"type": "noul", "instructions": "Does this convey urgency?"},
@@ -34,6 +35,11 @@ curl -s http://127.0.0.1:8090/v1/systemone -H 'Content-Type: application/json' -
                           "criteria": {"billing": "invoices, payments, refunds", "technical": "bugs, outages", "other": "everything else"}}}}'
 ```
 
+`systemone` is one signed, notarized binary (21 MB); the first `serve` downloads MiniCPM5 2B
+(2.7 GB) into `~/Library/Application Support/CoreAIKit/Models`; after that `brew services start`
+answers `/health` 0.7 s later (M4 Max, weights in the file cache). From a checkout the same
+server is `swift run -c release systemone serve`,
+or `decide-cli serve` in `Examples/Decide`.
 A client library written for the hosted endpoint is pointed at this one by its base URL
 (`system-one` on PyPI: `HTTPConfig(base_url="http://127.0.0.1:8090", model="minicpm5-2b")`;
 clients that read `TYPESAFE_BASE_URL` or `SYSTEM_ONE_BASE_URL`: set it) and nothing else
@@ -99,8 +105,13 @@ Clips of each on the Mac and on the iPhone are in
 
 - `Sources/CoreAIKit/Decide/` — `TypedDecisions` (the model-level API: prefill once, decide
   N times), `Decision` (the value types), `DecisionPrompt` / `DeciderPrompt` (the two
-  renderings), `SystemOneWire` + `OrderedJSON` (the hosted forms).
+  renderings), `SystemOneWire` + `OrderedJSON` (the hosted forms), `SystemOneServer` (the
+  endpoint over Network.framework — the same code listens in an app, `host: "0.0.0.0"` for the
+  local network) and `DecisionQueue` (one decision at a time over a shared model).
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op.
+- `Sources/systemone` — the `systemone` binary (`serve | ask | models`), built, signed and
+  notarized per tag by `.github/workflows/release.yml`; the Homebrew formula lives in
+  [john-rocky/homebrew-tap](https://github.com/john-rocky/homebrew-tap).
 - `Examples/Decide/CLI` — `decide-cli ask | bench | oracle | parity | filter | serve`.
 - Android: the same request and answer forms over LiteRT decision encoders are in
   [hfmodels-android](https://github.com/john-rocky/hfmodels-android) (typed-decisions branch).
