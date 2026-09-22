@@ -164,7 +164,9 @@ public actor TypedDecisions {
             format: configuration.format
                 ?? (layout != nil
                     ? .slot
-                    : name.contains("decider") ? .decider : name.contains("openjev") ? .sharedState : .chat),
+                    : name.contains("decider")
+                        ? .decider
+                        : name.contains("openjev") ? .sharedState : name.contains("decision") ? .decisionFunction : .chat),
             layout: layout)
     }
 
@@ -182,6 +184,7 @@ public actor TypedDecisions {
         switch format {
         case .chat, .sharedState: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
         case .decider: _ = try DeciderPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .decisionFunction: _ = try DecisionFunctionPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
         case .slot:
             guard let layout else {
                 throw DecisionError.unsupportedModel(
@@ -196,9 +199,13 @@ public actor TypedDecisions {
         self.format = format
         self.slotLayout = format == .slot ? layout : nil
         self.slotEncoder = encoder
-        self.maxOptions = format == .slot ? (layout?.maxOptions ?? DecisionPrompt.maxOptions) : DecisionPrompt.maxOptions
         switch format {
-        case .chat, .sharedState: self.temperature = configuration.temperature ?? 1
+        case .slot: self.maxOptions = layout?.maxOptions ?? DecisionPrompt.maxOptions
+        case .decisionFunction: self.maxOptions = DecisionFunctionPrompt.maxOptions
+        case .chat, .decider, .sharedState: self.maxOptions = DecisionPrompt.maxOptions
+        }
+        switch format {
+        case .chat, .sharedState, .decisionFunction: self.temperature = configuration.temperature ?? 1
         case .decider: self.temperature = configuration.temperature ?? DeciderPrompt.defaultTemperature
         case .slot: self.temperature = configuration.temperature ?? layout?.choiceTemperature ?? 1
         }
@@ -248,6 +255,13 @@ public actor TypedDecisions {
             let (letterOrder, timing) = try await readout(rendered)
             return DecisionPrompt.answer(
                 for: question, probabilities: SharedStatePrompt.probabilities(kitOrder: letterOrder, for: question),
+                timing: timing)
+        case .decisionFunction:
+            let rendered = try DecisionFunctionPrompt.render(
+                state: state, question: question, tokenizer: runtime.tokenizer)
+            let (letterOrder, timing) = try await readout(rendered)
+            return DecisionPrompt.answer(
+                for: question, probabilities: DecisionFunctionPrompt.probabilities(kitOrder: letterOrder, for: question),
                 timing: timing)
         case .slot:
             guard let layout = slotLayout, let encoder = slotEncoder else { throw DecisionError.noLogits }
@@ -321,6 +335,7 @@ public actor TypedDecisions {
             guard let encoder = slotEncoder else { throw DecisionError.noLogits }
             prefix = try SlotPrompt.contextTokens(state: state, encoder: encoder)
         case .sharedState: prefix = try SharedStatePrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .decisionFunction: prefix = DecisionFunctionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         }
         let (_, timing) = try await score(prefix, includeLogits: false)
         return PrefilledState(state: state, tokens: prefix.count, timing: timing, decider: self)
@@ -350,6 +365,9 @@ public actor TypedDecisions {
             return [(rendered.tokens, rendered.slots)]
         case .sharedState:
             let rendered = try SharedStatePrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
+            return [(rendered.tokens, rendered.slots)]
+        case .decisionFunction:
+            let rendered = try DecisionFunctionPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
             return [(rendered.tokens, rendered.slots)]
         }
     }

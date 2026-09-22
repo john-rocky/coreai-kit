@@ -247,6 +247,35 @@ struct SharedStatePromptTests {
     }
 }
 
+/// The plain-text decision-function form (Jev-Style-Qwen3.5-2B-Decision): the prompt byte
+/// for byte the author's `build_prompt`, the three shapes as one choice each, the readout order.
+struct DecisionFunctionPromptTests {
+    @Test func promptIsTheAuthorsBuildPrompt() {
+        let question = Decision.Question.choice(
+            "Which news section does this article belong to?",
+            options: [.init("World"), .init("Sports"), .init(id: "biz", description: "Business"),
+                      .init(id: "sci", description: "sci: Science/Technology")])
+        let row = DecisionFunctionPrompt.row(for: question)
+        #expect(row.options == ["World", "Sports", "Business", "Science/Technology"])
+        #expect(
+            DecisionFunctionPrompt.text(state: "Shares of the chipmaker jumped 8% after it raised its revenue forecast.", row: row)
+                == "You are a decision function. Read the state, then answer the question by choosing exactly one option.\n\n"
+                + "[State]\nShares of the chipmaker jumped 8% after it raised its revenue forecast.\n\n"
+                + "[Question]\nWhich news section does this article belong to?\n\n"
+                + "[Options]\nA. World\nB. Sports\nC. Business\nD. Science/Technology\n\nAnswer:")
+    }
+
+    @Test func boolAndScoreAreChoices() {
+        let bool = DecisionFunctionPrompt.row(for: .noul("Does the premise entail the hypothesis?"))
+        #expect(bool.options == ["yes", "no"])
+        #expect(DecisionFunctionPrompt.probabilities(kitOrder: [0.976, 0.024], for: .noul("x")) == [0.024, 0.976])
+        let score = DecisionFunctionPrompt.row(for: .score("Rate the sentiment.", levels: ["very negative", "negative", "neutral", "positive", "very positive"]))
+        #expect(score.options.count == 5 && score.options[3] == "positive")
+        #expect(DecisionFunctionPrompt.maxOptions == 26)
+        #expect(Decision.Format(rawValue: "decisionFunction") == .decisionFunction)
+    }
+}
+
 /// The slot-head form (OpenThai-SystemOne): the control-token text, the readout arithmetic
 /// and the bundle declaration, checkable without a tokenizer or weights.
 struct SlotPromptTests {

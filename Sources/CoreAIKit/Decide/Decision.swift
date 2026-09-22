@@ -44,6 +44,13 @@ public enum Decision {
         /// yes/no on a proposition; a score is rendered as a choice over its levels.
         /// `SharedStatePrompt.swift`.
         case sharedState
+        /// The plain-text "decision function" form (Jev-Style-Qwen3.5-2B-Decision): a fixed
+        /// header, `[State]`, `[Question]`, `[Options]` as `A. …` lines and `Answer:`, no chat
+        /// template; the answer is the next token among the space-prefixed letters ` A`, ` B`, …
+        /// (up to 26), read at temperature 1 because the model's calibration is folded into its
+        /// weights. A bool is the choice `yes` / `no`, a score the choice over its levels.
+        /// `DecisionFunctionPrompt.swift`.
+        case decisionFunction
     }
 
     /// One listed answer for a `choice` question. `id` is what the answer reports;
