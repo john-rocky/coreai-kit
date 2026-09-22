@@ -161,9 +161,11 @@ once, a contract read once and answered as a checklist, a folder sorted with wha
 first, a passage reranker, a speech gate — on a Mac and on an iPhone from the same sources,
 with two Shortcuts actions on the side.
 
-**Your existing System One client, on this machine.** `decide-cli serve` (in `Examples/Decide`)
+**Your existing System One client, on this machine.** `systemone serve`
+(`brew install john-rocky/tap/systemone`; from a checkout, `decide-cli serve` in `Examples/Decide`)
 answers `POST /v1/systemone` in the hosted API's request and answer forms over a catalog
 model; point the client's base URL at `http://127.0.0.1:8090` and nothing else changes. The
+server is `SystemOneServer` in `CoreAIKit` for an app that wants to listen itself, and the
 codec is `SystemOne.request(from:)` / `SystemOne.response(model:answers:)` in `CoreAIKit`,
 for an app that wants to take the same JSON straight from a client or a file:
 

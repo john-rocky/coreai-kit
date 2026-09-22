@@ -517,12 +517,16 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
     stderrPrint("\(passed)/\(lines.count) lines · median \(fmt(median(milliseconds), 1)) ms per decision · \(id)")
 }
 
-// MARK: - serve (a /v1/systemone endpoint over the loaded model)
+// MARK: - serve (a /v1/systemone endpoint over the loaded model — `SystemOneServer` in the kit;
+// `systemone serve`, the Homebrew-installed binary, is the same server without a toolchain)
 
 @MainActor func runServe() async throws {
     let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
     stderrPrint("loaded \(id) (\(await decider.modelName)); one request at a time, questions share the state's prefill")
-    try await SystemOneServer(host: host, port: port, modelID: id, decider: decider).run()
+    let server = SystemOneServer(host: host, port: port, modelID: id, decider: decider) { line in
+        stderrPrint("decide-cli serve: \(line)  (Ctrl-C stops)")
+    }
+    try await server.run()
 }
 
 do {

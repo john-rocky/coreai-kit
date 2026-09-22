@@ -7,6 +7,31 @@ policy.
 
 ## [Unreleased]
 
+### Added
+
+- **`systemone` — the System One server without a Swift toolchain.** A root executable
+  product (`swift build -c release --product systemone`): `systemone serve [--model] [--host]
+  [--port]` is the `/v1/systemone` endpoint, `ask` one decision from the shell (`--json`
+  prints the wire form; the state comes from `--state`, `--state-file` or stdin), `models`
+  what can decide and what is downloaded. `.github/workflows/release.yml` builds it per tag on
+  the self-hosted Mac, signs it with Developer ID, notarizes it and attaches
+  `systemone-<tag>-macos-arm64.zip` to the tag's GitHub Release; the formula in
+  [john-rocky/homebrew-tap](https://github.com/john-rocky/homebrew-tap) installs that zip
+  (`brew install john-rocky/tap/systemone`) and `brew services start systemone` keeps it on
+  `127.0.0.1:8090` under launchd.
+- **`SystemOneServer` and `DecisionQueue` are public** (`CoreAIKit`). The HTTP/1.1 server over
+  Network.framework that `decide-cli serve` carried moves into the kit, so an app serves the
+  same endpoint itself (on an iPhone, `host: "0.0.0.0"` offers it to the local network);
+  `run()` now returns when `stop()` is called and throws when the listener fails instead of
+  exiting the process. `DecisionQueue` is the one-at-a-time funnel any concurrent caller of
+  one `TypedDecisions` needs. `TypedDecisions.supports(_:)` says whether a catalog entry can
+  decide here.
+
+### Changed
+
+- `Examples/Decide/CLI/Serve.swift` is gone; `decide-cli serve` is a shell over the kit's
+  `SystemOneServer` with the same flags and routes.
+
 ## [0.5.0] — 2026-09-23
 
 Typed decisions — System One on device — enter the release train: `CoreAI.decide` /
