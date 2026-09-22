@@ -44,8 +44,9 @@ choice, not 255), are in [`Examples/Decide/README.md`](../Examples/Decide/README
 
 | | Mac (M4 Max, macOS 27.0) | iPhone 17 Pro (iOS 27.0) |
 |---|---:|---:|
-| One decision after the state is read (MiniCPM5 2B int8) | 33–65 ms | ~100 ms |
+| One decision after the state is read (MiniCPM5 2B int8) | 33–65 ms | 63–95 ms |
 | Reading a 565-token contract once, then 12 answers | 316 ms + 532 ms | 508 ms + 1,134 ms |
+| Twenty tickets × three columns, 60 decisions | 3,963 ms | 7,420 ms |
 | A `/v1/systemone` request, 2 questions on a 59-token state, end to end | 204 ms | — |
 
 Measured 2026-09-22/23 on the runs in `Examples/Decide/README.md`, which says what each
@@ -91,7 +92,7 @@ iPhone ([`Examples/Decide`](../Examples/Decide)):
 | Context | an agent transcript's tool results → the unrelated ones dropped, tokens counted |
 | Typing | type → tone, intent and an emoji at every pause |
 
-Clips of each on the Mac and the first three on the iPhone are in
+Clips of each on the Mac and on the iPhone are in
 [coreai-assets `kit/decide`](https://github.com/john-rocky/coreai-assets/tree/main/kit/decide).
 
 ## Where the pieces are

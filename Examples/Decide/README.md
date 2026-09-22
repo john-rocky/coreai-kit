@@ -256,6 +256,18 @@ install: 1,740 / 1,589 ms); the email's seven decisions take 2,001 ms; the folde
 twenty-four take 2,579 ms. The clips in coreai-assets `kit/decide/*-iphone.mp4` show these
 runs; the first-run figures were read back over `devicectl` from the app's `-log 1` file.
 
+**iPhone 17 Pro, the five newer screens** (iOS 27.0, airplane mode, the same app and the
+same int8 bundle, the recorded runs, 2026-09-23): Drive, 17 seconds hands-off: 53 ticks, 53
+decisions, median 64 ms each, 19 rocks passed, no crash. Columns: the twenty tickets × three
+columns, 60 decisions in 7,420 ms, every cell the same as on the Mac (20/20). Command guard:
+fourteen commands in 1,906 ms, the same 6 / 6 / 2 verdicts at the same confidences. Context:
+the thirteen tool results in 1,454 ms, the same seven kept, scores within 0.01 of the Mac's.
+Typing: three decisions in 484 ms at the last pause. The model loads in 1.5–5.5 s from the
+cache; the hands-off `-log 1` runs before the recording gave the same figures within a few
+percent (Drive 80 ticks in 25 s at a 63 ms median). The same bundle on both machines gives
+the same decisions; the phone takes about twice the Mac's time per decision. Clips:
+coreai-assets `kit/decide/{drive,columns,guard,context,typing}-iphone.mp4`.
+
 ## Where the code is
 
 - `Sources/QuickStart.swift` — the take-home: one typed function, no UI. The GUI and the CLI

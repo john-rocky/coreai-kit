@@ -46,15 +46,8 @@ struct ContextView: View {
                 ForEach(model.items) { item in
                     let kept = item.kept(at: model.threshold)
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Image(systemName: kept == nil ? "doc.text" : (kept! ? "checkmark.circle.fill" : "minus.circle"))
-                                .foregroundStyle(kept == nil ? Color.secondary : (kept! ? Color.green : Color.secondary))
-                            Text(item.tool).font(.callout.bold())
-                                .foregroundStyle(kept == false ? .secondary : .primary)
-                            if item.tokens > 0 {
-                                Text("\(item.tokens) tokens").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
+                        // The phone stacks the name line and the score line; the Mac keeps them in one row.
+                        let scoreLine = HStack(spacing: 8) {
                             if let relevance = item.relevance {
                                 ProbabilityBar(value: relevance / 2, tint: kept == true ? .green : .gray).frame(width: 80)
                                 Text(relevance.formatted(.number.precision(.fractionLength(2))))
@@ -64,6 +57,18 @@ struct ContextView: View {
                                 Text("dropped").font(.caption).foregroundStyle(.secondary)
                             }
                         }
+                        HStack(spacing: 8) {
+                            Image(systemName: kept == nil ? "doc.text" : (kept! ? "checkmark.circle.fill" : "minus.circle"))
+                                .foregroundStyle(kept == nil ? Color.secondary : (kept! ? Color.green : Color.secondary))
+                            Text(item.tool).font(.callout.bold()).lineLimit(1)
+                                .foregroundStyle(kept == false ? .secondary : .primary)
+                            if item.tokens > 0 {
+                                Text("\(item.tokens) tokens").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            if !isPhone { scoreLine }
+                        }
+                        if isPhone, item.relevance != nil { scoreLine }
                         if kept != false || expanded.contains(item.id) {
                             Text(item.text).font(.caption.monospaced())
                                 .foregroundStyle(kept == false ? .tertiary : .secondary)
