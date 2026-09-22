@@ -2,6 +2,7 @@
 // weights: the request rendering (byte-for-byte the reference form), the answer-shape
 // validation, and the readout arithmetic from logits to an answer.
 
+import CoreAILanguageModels
 import Foundation
 import Testing
 
@@ -154,5 +155,35 @@ struct DecisionReadoutTests {
         #expect(CoreAI.Op.decide.defaultModelID == CoreAI.defaultDecisionModel)
         #expect(ModelCatalog.builtin.entry(id: CoreAI.defaultDecisionModel)?.kind == .chat)
         #expect(!CoreAI.Op.decide.summary.isEmpty)
+    }
+}
+
+struct DecisionLogitsTests {
+    private let timing = Decision.Timing(promptTokens: 10, reusedTokens: 4, seconds: 0.5)
+
+    /// The public logits are the engine's values widened, not rounded or rescaled: a caller
+    /// reading them its own way gets exactly what `decide` reads.
+    @Test func engineLogitsWidenUnchanged() {
+        let engine: [LogitsScalarType] = [0, 1.5, -2.25, 1024, -.infinity]
+        let logits = Decision.Logits(engine: engine, timing: timing)
+        #expect(logits.values == [0, 1.5, -2.25, 1024, -.infinity])
+        #expect(logits.values == engine.map { Float($0) })
+        #expect(logits.timing == timing)
+    }
+
+    /// The readout `decide` applies to its letter slots, applied to the public logits, is the
+    /// same arithmetic; the smoke test checks the two agree on a real bundle.
+    @Test func letterReadoutOverPublicLogits() {
+        let logits = Decision.Logits(values: [0.5, 3, -1, 2, 0], timing: timing)
+        let slots: [Int32] = [1, 3]
+        let p = DecisionPrompt.probabilities(
+            logits: slots.map { Double(logits.values[Int($0)]) }, temperature: 1)
+        #expect(abs(p[0] - 1 / (1 + exp(-1.0))) < 1e-12)
+        #expect(abs(p.reduce(0, +) - 1) < 1e-12)
+    }
+
+    @Test func emptyPromptIsRefusedWithAMessage() {
+        #expect(DecisionError.emptyPrompt.errorDescription?.isEmpty == false)
+        #expect(DecisionError.emptyPrompt == DecisionError.emptyPrompt)
     }
 }

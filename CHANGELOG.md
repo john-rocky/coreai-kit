@@ -22,6 +22,13 @@ policy.
   as speed-only. `Examples/Decide`: a speech gate, a clipboard check with two Shortcuts
   actions, and a passage reranker, each decision with its measured milliseconds, plus
   `decide-cli` with `bench` and `oracle`.
+- **Token-level scoring on `TypedDecisions`** — `logits(for:)` feeds a token sequence and
+  returns the logits at its last position for the whole vocabulary (`Decision.Logits`), with
+  the KV-cache prefix reuse `decide` has (`timing.reusedTokens`); `prefill(tokens:)` is the
+  token-level `prefill(_:)`; `tokenizer` is the bundle's own, to render the prompt with. For
+  a caller with its own readout — AnyDecisionModel's Core AI backend sums the variants of
+  each label, measures the allowed-answer mass and calibrates, where `decide` takes a softmax
+  over one letter token per option. `decide` is unchanged.
 
 ## [0.4.2] — 2026-09-15
 

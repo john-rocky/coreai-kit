@@ -9,6 +9,9 @@
 //   score   — where on this ordered scale (2–10 levels) → the expected level, plus the distribution
 //   noul    — yes or no                                  → P(yes)
 //
+// `Logits` is the raw form of an answer: every vocabulary entry's logit at the answer slot, for
+// a caller that reads it its own way (`TypedDecisions.logits(for:)`).
+//
 // Every question carries free-text instructions and, optionally, a description per option.
 // The same request shape is what `TypedDecisions` scores and what `CoreAI.decide` resolves a
 // catalog model behind.
@@ -150,6 +153,22 @@ public enum Decision {
         public var milliseconds: Double { seconds * 1000 }
     }
 
+    /// The logits a token sequence leaves at its last position: the whole vocabulary, for a
+    /// readout the kit does not do itself.
+    public struct Logits: Sendable, Equatable {
+        /// One value per vocabulary entry, indexed by token id: the logit of that token coming
+        /// next. The engine computes them in half precision on Apple silicon; each is widened
+        /// to `Float` unchanged.
+        public let values: [Float]
+        /// Where the tokens went.
+        public let timing: Timing
+
+        public init(values: [Float], timing: Timing) {
+            self.values = values
+            self.timing = timing
+        }
+    }
+
     /// One decision, with where its tokens went.
     public struct Answer: Sendable, Equatable {
         public enum Value: Sendable, Equatable {
@@ -217,6 +236,8 @@ public enum DecisionError: Error, LocalizedError, Equatable {
     /// The tokenizer has no single-token answer slot for this letter.
     case answerSlotNotSingleToken(letter: String)
     case promptTooLong(tokens: Int, max: Int)
+    /// The token sequence to score has no tokens.
+    case emptyPrompt
     /// The engine returned no logits for the prompt.
     case noLogits
 
@@ -237,6 +258,8 @@ public enum DecisionError: Error, LocalizedError, Equatable {
             return "The tokenizer does not encode answer slot '\(letter)' as one token."
         case .promptTooLong(let tokens, let max):
             return "The rendered prompt is \(tokens) tokens; this model takes at most \(max)."
+        case .emptyPrompt:
+            return "A prompt needs at least one token."
         case .noLogits:
             return "The engine returned no logits for the prompt."
         }

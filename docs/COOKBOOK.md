@@ -159,6 +159,29 @@ them every decision re-prefills its whole prompt — correct, and `timing.reused
 `Examples/Decide` runs the three shapes as a speech gate, a clipboard check with Shortcuts
 actions, and a passage reranker, each with its measured milliseconds.
 
+**Your own readout.** `decide` reads the answer as a softmax over one letter token per
+option. A library with its own scoring, one that sums the case and space variants of each
+label, measures how much probability landed on the allowed answers and then calibrates,
+renders its own prompt with the bundle's tokenizer and asks for the logits at the last
+position:
+
+```swift
+import Tokenizers                                                    // swift-transformers
+
+let decider = try await TypedDecisions(catalog: "minicpm5-2b")
+let tokens = try decider.tokenizer.applyChatTemplate(                 // the bundle's own tokenizer
+    messages: [["role": "system", "content": mySystemPrompt],
+               ["role": "user", "content": myQuestion]],
+    tools: nil, additionalContext: ["enable_thinking": false])
+let scored = try await decider.logits(for: tokens.map(Int32.init))
+scored.values[yesTokenID]      // one logit per vocabulary entry, at the answer slot
+scored.timing.reusedTokens     // what the engine kept from the previous call
+```
+
+The KV cache is the one `decide` uses: the longest prefix in common with the previous call
+is kept and only the tail runs, and `prefill(tokens:)` loads a shared prefix ahead of the
+first question. Recurrent hybrids re-prefill the whole prompt and report 0 reused, as above.
+
 ## Chat, tools, and guided JSON
 
 Streaming chat with history, live stats, and a stop button — `ChatSession`:

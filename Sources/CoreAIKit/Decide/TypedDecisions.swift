@@ -19,6 +19,15 @@
 // kept. Engines that cannot rewind mid-sequence (recurrent hybrids — Qwen3.5, LFM2.5,
 // Granite 4) fall back to a full re-prefill on every decision, losslessly; the timing says so.
 //
+// ## Your own readout
+//
+// `decide` reads the answer as a softmax over one letter token per option. A caller with a
+// different readout — one that sums the case and space variants of each label, measures how
+// much probability landed on the allowed answers, then calibrates — renders its own prompt
+// with `tokenizer` (the bundle's own) and calls `logits(for:)`: the same engine drive as a
+// decision, the whole vocabulary back, the prefix reuse above included. `prefill(tokens:)` is
+// the token-level `prefill(_:)`.
+//
 // ## Which engine
 //
 // The answer needs the logits at the answer slot, which the default GPU-pipelined engine does
@@ -67,6 +76,9 @@ public actor TypedDecisions {
 
     /// Display name from the bundle metadata.
     public var modelName: String { runtime.modelName }
+    /// The bundle's tokenizer, the one `decide` renders with. Render your own prompt with it
+    /// before `logits(for:)`, so the tokens are the ones the model was trained on.
+    public nonisolated var tokenizer: any Tokenizer { runtime.tokenizer }
 
     /// Loads a model by its catalog id (`kind: chat`); downloads on first use.
     public init(
@@ -202,6 +214,31 @@ public actor TypedDecisions {
         try await runtime.engine.reset()
     }
 
+    // MARK: - Your own readout
+
+    /// Feeds `tokens` and returns the logits at the position after the last one, for the
+    /// whole vocabulary. The prompt is the caller's: render it with `tokenizer`.
+    ///
+    /// The engine keeps its KV cache between calls. The longest prefix `tokens` shares with
+    /// the previous call, whether a decision, a prefill or another `logits(for:)`, is rewound
+    /// to and only the tail is processed; `timing.reusedTokens` says how much was kept. An
+    /// engine that cannot rewind mid-sequence (the recurrent hybrids: Qwen3.5, LFM2.5,
+    /// Granite 4) re-prefills the whole prompt and reports 0. One instance holds one cache,
+    /// so alternating between two states rewinds to their common prefix on every call.
+    /// Calls on one instance serialize.
+    public func logits(for tokens: [Int32]) async throws -> Decision.Logits {
+        let (logits, timing) = try await score(tokens)
+        return Decision.Logits(engine: logits, timing: timing)
+    }
+
+    /// Runs `tokens` into the engine's cache without reading logits, so a following
+    /// `logits(for:)` on a prompt that starts with them processes the rest only: the
+    /// token-level `prefill(_:)`. Returns what the prefill cost. On an engine that cannot
+    /// rewind it saves nothing.
+    public func prefill(tokens: [Int32]) async throws -> Decision.Timing {
+        try await score(tokens, includeLogits: false).1
+    }
+
     // MARK: - Engine
 
     /// Feeds `tokens` and returns the logits at the last position. Rewinds to the longest
@@ -210,6 +247,7 @@ public actor TypedDecisions {
     private func score(
         _ tokens: [Int32], includeLogits: Bool = true
     ) async throws -> ([LogitsScalarType], Decision.Timing) {
+        guard !tokens.isEmpty else { throw DecisionError.emptyPrompt }
         guard tokens.count < maxContextLength else {
             throw DecisionError.promptTooLong(tokens: tokens.count, max: maxContextLength - 1)
         }
@@ -268,5 +306,13 @@ public struct PrefilledState: Sendable {
 
     public func decide(_ questions: [String: Decision.Question]) async throws -> [String: Decision.Answer] {
         try await decider.decide(state, questions)
+    }
+}
+
+extension Decision.Logits {
+    /// The engine's logits widened to `Float` without change (`LogitsScalarType` is half
+    /// precision on Apple silicon, `Float` on Intel).
+    init(engine logits: [LogitsScalarType], timing: Decision.Timing) {
+        self.init(values: logits.map { Float($0) }, timing: timing)
     }
 }
