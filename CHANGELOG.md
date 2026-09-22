@@ -7,27 +7,11 @@ policy.
 
 ## [Unreleased]
 
-### Added
-
-- **`systemone mcp`** — the typed decisions as tools of a Model Context Protocol server on
-  stdio, so a coding agent calls the model on this machine: `claude mcp add systemone --
-  "$(brew --prefix)/bin/systemone" mcp` (Codex: `codex mcp add …`; Cursor: `~/.cursor/mcp.json`;
-  `decide-cli mcp` from a checkout). Tools `decide` (the `/v1/systemone` request form as
-  arguments, the response as `structuredContent` and as text) and `models` (the catalog ids
-  that can answer). Both revisions of the protocol are served — the `initialize` handshake of
-  2025-11-25 and earlier (what Claude Code 2.1 and Codex 0.154 send) and the per-request
-  `_meta` form of 2026-07-28 (`server/discover`). `SystemOneMCPServer` (the server over any
-  input/output pair; `run()` returns when the input closes, after the calls in flight have
-  answered, so a one-shot pipe works) and `SystemOneMCP` (the message
-  forms) are public API in `CoreAIKit`, with hermetic tests over pipes. On a Mac with two model
-  conversions running alongside, a three-question classification asked from a Claude Code
-  session round-tripped in 1,064 ms including the model load, 285 ms of it decisions.
-  `SystemOne.request(from: JSONValue)` joins the bytes overload.
-
 ## [0.6.0] — 2026-09-23
 
 The System One server as one signed, notarized binary: `brew install john-rocky/tap/systemone
-&& systemone serve`, and `brew services start systemone` to keep it running. `SystemOneServer`
+&& systemone serve`, and `brew services start systemone` to keep it running; `systemone mcp` serves the same decisions
+to a coding agent over the Model Context Protocol. `SystemOneServer`
 and `DecisionQueue` become public API, and `GET /v1/models` answers in the hosted list form
 (the official TypeSafe SDK's `models.list()` reads it). A minor: API added, one example file
 removed; `exact: "0.5.0"` resolvers move to `0.6.0`. Built and gated on macOS 27.0 (26A428)
@@ -45,6 +29,20 @@ and Xcode 27 (27A266a); the `coreai-models` runtime pin stays 0.2.4-zoo.
   [john-rocky/homebrew-tap](https://github.com/john-rocky/homebrew-tap) installs that zip
   (`brew install john-rocky/tap/systemone`) and `brew services start systemone` keeps it on
   `127.0.0.1:8090` under launchd.
+- **`systemone mcp`** — the typed decisions as tools of a Model Context Protocol server on
+  stdio, so a coding agent calls the model on this machine: `claude mcp add systemone --
+  "$(brew --prefix)/bin/systemone" mcp` (Codex: `codex mcp add …`; Cursor: `~/.cursor/mcp.json`;
+  `decide-cli mcp` from a checkout). Tools `decide` (the `/v1/systemone` request form as
+  arguments, the response as `structuredContent` and as text) and `models` (the catalog ids
+  that can answer). Both revisions of the protocol are served — the `initialize` handshake of
+  2025-11-25 and earlier (what Claude Code 2.1 and Codex 0.154 send) and the per-request
+  `_meta` form of 2026-07-28 (`server/discover`). `SystemOneMCPServer` (the server over any
+  input/output pair; `run()` returns when the input closes, after the calls in flight have
+  answered, so a one-shot pipe works) and `SystemOneMCP` (the message
+  forms) are public API in `CoreAIKit`, with hermetic tests over pipes. On a Mac with two model
+  conversions running alongside, a three-question classification asked from a Claude Code
+  session round-tripped in 1,064 ms including the model load, 285 ms of it decisions.
+  `SystemOne.request(from: JSONValue)` joins the bytes overload.
 - **`SystemOneServer` and `DecisionQueue` are public** (`CoreAIKit`). The HTTP/1.1 server over
   Network.framework that `decide-cli serve` carried moves into the kit, so an app serves the
   same endpoint itself (on an iPhone, `host: "0.0.0.0"` offers it to the local network);
