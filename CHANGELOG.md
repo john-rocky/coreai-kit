@@ -26,11 +26,35 @@ policy.
   exiting the process. `DecisionQueue` is the one-at-a-time funnel any concurrent caller of
   one `TypedDecisions` needs. `TypedDecisions.supports(_:)` says whether a catalog entry can
   decide here.
+- **`openthai-systemone`** — iApp's OpenThai-SystemOne (Thai + English, Qwen3.5-0.8B tower,
+  Apache-2.0) as a catalog `decision` model, and the readout it needs: `Decision.Format.slot`.
+  A slot-head model replaces the LM head with a 256-way head read at a `<|ts_answer|>` control
+  token — option i is slot i, the last slot means "none of these" — so a choice may list up to
+  255 options (`TypedDecisions.maxOptions`; the letter readouts keep 16) and every answer
+  carries `Decision.Answer.abstain` (also written to a `/v1/systemone` choice answer). The
+  bundle declares the head and a temperature per question type in its `metadata.json`
+  (`decision` block); `TypedDecisions.temperature(for:)` reports which applies. On the
+  author's 50-row fixture (Thai, English and JSON states; 2–16, 40 and 255 options) the kit's
+  rows are token-, slot- and argmax-identical to the author's fp32 readout on 50/50, int8 max
+  |Δp| 0.0226 (`decide-cli parity`); 0.725 mean family balanced accuracy on SemIf's 144
+  English rows through the kit.
+- `decide-cli --bundle <dir>` — any command on an unpublished bundle directory; `parity` reads
+  the slot fixture form (`coreai-slot-fixtures/1`) and renders JSON states itself.
 
 ### Changed
 
 - `Examples/Decide/CLI/Serve.swift` is gone; `decide-cli serve` is a shell over the kit's
   `SystemOneServer` with the same flags and routes.
+
+### Fixed
+
+- Thai, and every script that writes vowels and tones as combining marks, tokenizes through
+  swift-transformers differently from the reference tokenizer: the `Split` pre-tokenizer regex
+  is applied through Foundation's string search, whose matches snap to grapheme clusters, so a
+  letter run keeps its marks and BPE merges differently (23 of the 50 OpenThai fixture rows).
+  The slot-head path cuts each text segment with the same regex through ICU on UTF-16 and
+  encodes the pieces one by one (`SlotPrompt.Encoder`). The chat and decider paths still
+  tokenize through swift-transformers as before.
 
 ## [0.5.0] — 2026-09-23
 

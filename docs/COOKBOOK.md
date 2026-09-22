@@ -195,6 +195,22 @@ let a = try await trained.decide(ticket, .score("How upset is the customer?", le
 a.score            // expected level; a["…"] for the op form
 ```
 
+**A decision model with a head of its own.** `openthai-systemone` (Thai + English, kind
+`decision`) answers at a 256-way head instead of the vocabulary, so a choice may list up to
+255 options and every answer carries the probability that none of them fits
+(`Decision.Answer.abstain`). The bundle declares that head, and the kit reads it in the
+author's own control-token form (`Decision.Format.slot`, chosen from the bundle's metadata):
+token-identical and argmax-identical to the author's fp32 readout on all 50 of its fixture
+rows (int8 max |Δp| 0.023).
+
+```swift
+let thai = try await TypedDecisions(catalog: "openthai-systemone")   // Format.slot, temperatures from the bundle
+let team = try await thai.decide("ลูกค้าแจ้งว่าโดนหักเงินซ้ำสองครั้ง ขอเงินคืนด่วน",
+    .choice("ทีมใดควรรับผิดชอบ", ["billing", "technical", "sales"]))
+team.choice        // "billing"
+team.abstain       // P(none of these), reported beside the option probabilities
+```
+
 ## Chat, tools, and guided JSON
 
 Streaming chat with history, live stats, and a stop button — `ChatSession`:

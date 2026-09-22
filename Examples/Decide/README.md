@@ -114,6 +114,8 @@ gh issue list --json title -q '.[].title' | swift run -c release decide-cli filt
 # a decision model's own fixture: token ids, answer slots and probabilities, row by row
 swift run -c release decide-cli parity --model decider-0.8b \
     --fixture fixtures-decider-0.8b.json --states states.json
+swift run -c release decide-cli parity --model openthai-systemone \
+    --fixture fixtures-openthai-systemone.json      # JSON states render themselves; --bundle <dir> reads an unpublished port
 ```
 
 Hands-off, for a recording or a smoke run: `Decide.app/Contents/MacOS/Decide -autoplay
@@ -237,6 +239,28 @@ here, about 490 ms per clipboard kind and 710 ms per sorter need — five to sev
 `minicpm5-2b`'s shared-prefix figures. On the two demo questions it was not more accurate
 than the chat model (kinds 5/8, needs 11/12). Its place is where the probability must mean
 what the model's own API would report; the screens default to `minicpm5-2b`.
+
+**A decision model with a head of its own.** `openthai-systemone` (catalog kind `decision`,
+`Decision.Format.slot`; iApp's OpenThai-SystemOne, Thai + English, Qwen3.5-0.8B tower,
+Apache-2.0) replaces the LM head with a 256-way slot head read at a `<|ts_answer|>` control
+token: option i is slot i, the last slot means "none of these" (`Decision.Answer.abstain`), and
+a choice may list up to 255 options (`TypedDecisions.maxOptions`), not the 16 of the letter
+readouts. The bundle declares the head and its temperature per question type in its
+`metadata.json`; the kit renders the author's control-token layout, one question per row. On
+the author's 50-row fixture (`decide-cli parity`, 2026-09-23, Thai, English and JSON states,
+rows of 2–16, 40 and 255 options): tokens, slots and argmax identical on 50/50 for both the
+int8 bundle (max |Δp| 0.0226 on one two-option row, mean 0.0009) and the fp16 reference
+(0.0051 / 0.0003). On SemIf's 144 English authored rows, its own form, the same evaluator as
+the table above: mean family balanced accuracy 0.725 (int8). Speed on the Mac: a 137-token
+Thai ticket's first question 170 ms, the two that share its prefix 40 and 65 ms; over the
+fixture's 50 rows, two to three questions per state, 354 ms median per question (the graph
+prefills one token at a time, and a question on a new state pays for the whole state), the
+255-option row 7.2 s. Two things to know: its author's API lays several questions in one
+sequence and answers them in one pass, and those answers can differ from the one-question
+rows the kit sends (up to 0.375 on the fixture's requests) — the kit's rows equal the
+author's single-question API exactly; and Thai is cut the way the reference tokenizer cuts it
+(at every combining mark), which the Swift tokenizer alone does not do — `SlotPrompt.Encoder`
+does the cutting, and 23 of the 50 rows differed before it did.
 
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
