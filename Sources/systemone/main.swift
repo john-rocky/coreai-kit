@@ -5,9 +5,12 @@
 //   brew services start systemone           # the same, kept running by launchd
 //   systemone ask --state "…" --noul "Does the customer want a refund?"
 //   systemone models                        # what can decide, what is downloaded
+//   claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp
+//                                           # a Model Context Protocol server on stdio: the tools decide and models
+//                                           # in Claude Code (codex mcp add … for Codex; ~/.cursor/mcp.json for Cursor)
 //
-// The server is `SystemOneServer` in the kit (Sources/CoreAIKit/Decide); this file is the
-// argument shell. Progress and log lines go to stderr, answers to stdout.
+// The servers are `SystemOneServer` and `SystemOneMCPServer` in the kit (Sources/CoreAIKit/Decide);
+// this file is the argument shell. Progress and log lines go to stderr, answers to stdout.
 
 import CoreAIOps
 import Foundation
@@ -19,6 +22,9 @@ let usage = """
                             (--noul <q> | --choice "<q>|<opt>|<opt>…" | --score "<q>|<level>|<level>…")…
                             [--model <catalog-id>] [--json]
            systemone models (catalog models that can decide; * = default, cached = already downloaded)
+           systemone mcp    [--model <catalog-id>] [--preload]
+                            (a Model Context Protocol server on stdin/stdout — the tools decide and models — for
+                             Claude Code, Codex, Cursor: claude mcp add systemone -- /path/to/systemone mcp)
            systemone --version
 
     The first run of a model downloads it (MiniCPM5 2B: 2.7 GB) into
@@ -94,6 +100,7 @@ var questions: [(String, Decision.Question)] = []
 var host = "127.0.0.1"
 var port: UInt16 = 8090
 var json = false
+var preload = false
 
 func parts(_ spec: String) -> (String, [String]) {
     let pieces = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -121,6 +128,7 @@ while let arg = args.popFirst() {
         guard let p = UInt16(args.popFirst() ?? "") else { fail("--port takes a number 1–65535", status: 2) }
         port = p
     case "--json": json = true
+    case "--preload": preload = true
     case "--help", "-h":
         print(usage)
         exit(0)
@@ -209,11 +217,27 @@ func describe(_ answer: Decision.Answer) -> String {
     try await server.run()
 }
 
+// MARK: - mcp
+
+/// One JSON-RPC message per line on stdin and stdout for the MCP client that spawned us; the
+/// model loads on the first `decide` (`--preload`: at launch). Ends when stdin closes.
+@MainActor func runMCP() async throws {
+    signal(SIGPIPE, SIG_IGN)  // a client that closed its end is an error to report, not a signal
+    let server = SystemOneMCPServer(
+        defaultModel: id, downloadProgress: progress, codec: SystemOneMCP(version: systemoneVersion)
+    ) { line in
+        stderrPrint("systemone mcp: \(line)")
+    }
+    stderrPrint("systemone \(systemoneVersion): mcp on stdio, tools decide and models; \(id) loads on the first decide\(preload ? " (preloading)" : "")")
+    try await server.run(preload: preload)
+}
+
 do {
     switch command {
     case "serve": try await runServe()
     case "ask": try await runAsk()
     case "models": await runModels()
+    case "mcp": try await runMCP()
     default: fail("unknown command \(command)\n\n" + usage, status: 2)
     }
 } catch {

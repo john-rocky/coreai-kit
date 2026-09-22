@@ -10,6 +10,7 @@
 //   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
 //   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
+//   swift run -c release decide-cli mcp --preload      # a Model Context Protocol server on stdio (SystemOneMCPServer in the kit)
 //   swift run -c release decide-cli --list-models
 
 import CoreAIOps
@@ -27,6 +28,8 @@ let usage = """
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
                             (a /v1/systemone endpoint over the loaded model, in the hosted request and answer forms)
+           decide-cli mcp   [--model <catalog-id>] [--preload]
+                            (a Model Context Protocol server on stdin/stdout — tools decide, models — for Claude Code, Codex, Cursor)
            decide-cli --list-models
     """
 
@@ -82,6 +85,7 @@ var printAll = false
 var statesPath: String?
 var host = "127.0.0.1"
 var port: UInt16 = 8090
+var preload = false
 /// A local bundle directory instead of a catalog id — a port gated before it is published.
 var bundlePath: String?
 
@@ -126,6 +130,7 @@ while let arg = args.popFirst() {
     case "--all": printAll = true
     case "--host": host = args.popFirst() ?? host
     case "--port": port = UInt16(args.popFirst() ?? "") ?? port
+    case "--preload": preload = true
     case "--bundle":
         bundlePath = args.popFirst()
         if let bundlePath { modelID = URL(fileURLWithPath: bundlePath).lastPathComponent }
@@ -709,6 +714,19 @@ struct LetterFixture: Decodable {
     try await server.run()
 }
 
+// MARK: - mcp (the same decisions as Model Context Protocol tools — `SystemOneMCPServer` in the kit;
+// `systemone mcp` is the same server as the Homebrew-installed binary)
+
+@MainActor func runMCP() async throws {
+    if bundlePath != nil { fail("decide-cli mcp loads catalog ids (the decide tool's `model`); --bundle does not apply") }
+    signal(SIGPIPE, SIG_IGN)
+    let server = SystemOneMCPServer(defaultModel: id, downloadProgress: progress) { line in
+        stderrPrint("decide-cli mcp: \(line)")
+    }
+    stderrPrint("decide-cli mcp: stdio, tools decide and models; \(id) loads on the first decide\(preload ? " (preloading)" : "")")
+    try await server.run(preload: preload)
+}
+
 do {
     switch command {
     case "ask": try await runAsk()
@@ -717,6 +735,7 @@ do {
     case "parity": try await runParity()
     case "filter": try await runFilter()
     case "serve": try await runServe()
+    case "mcp": try await runMCP()
     default: fail(usage)
     }
 } catch {

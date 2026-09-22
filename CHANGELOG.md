@@ -7,6 +7,23 @@ policy.
 
 ## [Unreleased]
 
+### Added
+
+- **`systemone mcp`** — the typed decisions as tools of a Model Context Protocol server on
+  stdio, so a coding agent calls the model on this machine: `claude mcp add systemone --
+  "$(brew --prefix)/bin/systemone" mcp` (Codex: `codex mcp add …`; Cursor: `~/.cursor/mcp.json`;
+  `decide-cli mcp` from a checkout). Tools `decide` (the `/v1/systemone` request form as
+  arguments, the response as `structuredContent` and as text) and `models` (the catalog ids
+  that can answer). Both revisions of the protocol are served — the `initialize` handshake of
+  2025-11-25 and earlier (what Claude Code 2.1 and Codex 0.154 send) and the per-request
+  `_meta` form of 2026-07-28 (`server/discover`). `SystemOneMCPServer` (the server over any
+  input/output pair; `run()` returns when the input closes, after the calls in flight have
+  answered, so a one-shot pipe works) and `SystemOneMCP` (the message
+  forms) are public API in `CoreAIKit`, with hermetic tests over pipes. On a Mac with two model
+  conversions running alongside, a three-question classification asked from a Claude Code
+  session round-tripped in 1,064 ms including the model load, 285 ms of it decisions.
+  `SystemOne.request(from: JSONValue)` joins the bytes overload.
+
 ## [0.6.0] — 2026-09-23
 
 The System One server as one signed, notarized binary: `brew install john-rocky/tap/systemone
