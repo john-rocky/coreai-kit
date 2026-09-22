@@ -9,7 +9,8 @@
 //     -d '{"state": "Help! My payouts have been failing for 3 days.", "model": "minicpm5-2b",
 //          "questions": {"is_urgent": {"type": "noul", "instructions": "Does this convey urgency?"}}}'
 //
-// Routes: POST /v1/systemone (the decisions), GET /v1/models (what is loaded), GET /health.
+// Routes: POST /v1/systemone (the decisions), GET /v1/models (what is loaded, in the hosted
+// list form plus the OpenAI-style keys — `SystemOne.modelsValue`), GET /health.
 // One connection per request (Connection: close), CORS open so a page or a browser extension
 // can call it. The model answers one request at a time (`DecisionQueue`); the HTTP side
 // accepts concurrently. HTTP/1.1 over Network.framework — no dependency added, and the same
@@ -119,6 +120,8 @@ public final class SystemOneServer: @unchecked Sendable {
     public let port: UInt16
     /// What `GET /v1/models` and every response name as the model.
     public let modelID: String
+    /// What `GET /v1/models` says about the loaded model (`SystemOne.modelsValue`).
+    public let models: JSONValue
     public let decider: TypedDecisions
     /// One line per event (listening, each request served); stderr by default.
     public let log: @Sendable (String) -> Void
@@ -130,13 +133,18 @@ public final class SystemOneServer: @unchecked Sendable {
     /// - Parameters:
     ///   - host: an IP address; `127.0.0.1` answers this machine only, `0.0.0.0` the network.
     ///   - port: `8090` is what the reference implementations and the clients default to.
+    ///   - models: the `GET /v1/models` body; `SystemOne.modelsValue(id:description:revision:)`
+    ///     with the catalog entry's name and pin says what a hosted client expects. Left nil,
+    ///     the id stands in for the description and the revision is empty.
     public init(
-        host: String = "127.0.0.1", port: UInt16 = 8090, modelID: String, decider: TypedDecisions,
+        host: String = "127.0.0.1", port: UInt16 = 8090, modelID: String, models: JSONValue? = nil,
+        decider: TypedDecisions,
         log: @escaping @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
     ) {
         self.host = host
         self.port = port
         self.modelID = modelID
+        self.models = models ?? SystemOne.modelsValue(id: modelID, description: modelID, revision: nil)
         self.decider = decider
         self.log = log
     }
@@ -241,13 +249,7 @@ public final class SystemOneServer: @unchecked Sendable {
         case ("GET", "/health"), ("GET", "/"):
             return .json(200, .object([.init("status", .string("ok")), .init("model", .string(modelID))]))
         case ("GET", "/v1/models"):
-            return .json(200, .object([
-                .init("object", .string("list")),
-                .init("data", .array([.object([
-                    .init("id", .string(modelID)), .init("object", .string("model")),
-                    .init("owned_by", .string("local")),
-                ])])),
-            ]))
+            return .json(200, models)
         case ("POST", SystemOne.path):
             return await decide(request)
         case (_, SystemOne.path), (_, "/v1/models"), (_, "/health"):

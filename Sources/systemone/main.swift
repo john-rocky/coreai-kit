@@ -191,9 +191,15 @@ func describe(_ answer: Decision.Answer) -> String {
 
 @MainActor func runServe() async throws {
     let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let entry = try await ModelCatalog.entry(forID: id)
+    // GET /v1/models in the hosted list form: the TypeSafe SDK's models.list() reads this one.
+    let models = SystemOne.modelsValue(
+        id: id,
+        description: "\(entry.name), CoreAIKit catalog kind \(entry.kind.rawValue), bundle \(await decider.modelName), on this machine",
+        revision: entry.revision)
     let loaded = secondsSinceLaunch()
     stderrPrint("systemone \(systemoneVersion): loaded \(id) (\(await decider.modelName)) \(fmt(loaded, 1)) s after launch; one request at a time, questions share the state's prefill")
-    let server = SystemOneServer(host: host, port: port, modelID: id, decider: decider) { line in
+    let server = SystemOneServer(host: host, port: port, modelID: id, models: models, decider: decider) { line in
         if line.hasPrefix("listening") {
             stderrPrint("systemone serve: \(line); ready \(fmt(secondsSinceLaunch(), 1)) s after launch, Ctrl-C stops")
         } else {

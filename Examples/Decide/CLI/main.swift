@@ -522,8 +522,13 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
 
 @MainActor func runServe() async throws {
     let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let entry = try await ModelCatalog.entry(forID: id)
+    let models = SystemOne.modelsValue(
+        id: id,
+        description: "\(entry.name), CoreAIKit catalog kind \(entry.kind.rawValue), bundle \(await decider.modelName), on this machine",
+        revision: entry.revision)
     stderrPrint("loaded \(id) (\(await decider.modelName)); one request at a time, questions share the state's prefill")
-    let server = SystemOneServer(host: host, port: port, modelID: id, decider: decider) { line in
+    let server = SystemOneServer(host: host, port: port, modelID: id, models: models, decider: decider) { line in
         stderrPrint("decide-cli serve: \(line)  (Ctrl-C stops)")
     }
     try await server.run()
