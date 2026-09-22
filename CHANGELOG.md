@@ -7,6 +7,14 @@ policy.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-23
+
+Typed decisions — System One on device — enter the release train: `CoreAI.decide` /
+`TypedDecisions`, the `/v1/systemone` forms and `decide-cli serve`, and the ten whole uses
+in `Examples/Decide`. A minor: API added, nothing removed; `exact: "0.4.2"` resolvers move to
+`0.5.0`. Built and gated on macOS 27.0 (26A428) and Xcode 27 (27A266a); the `coreai-models`
+runtime pin stays 0.2.4-zoo.
+
 ### Added
 
 - **Typed decisions** — `CoreAI.decide(state, questions)` (CoreAIOps) and `TypedDecisions`
