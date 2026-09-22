@@ -63,14 +63,16 @@ struct ProbabilityBar: View {
 func ms(_ value: Double) -> String { "\(Int(value.rounded())) ms" }
 
 /// The phone gets the screens' control rows stacked; the Mac and iPad keep them in a line.
-#if os(iOS)
-let isPhone = UIDevice.current.userInterfaceIdiom == .phone
-#else
-let isPhone = false
-#endif
+@MainActor var isPhone: Bool {
+    #if os(iOS)
+    UIDevice.current.userInterfaceIdiom == .phone
+    #else
+    false
+    #endif
+}
 
 /// A row of controls on a wide window, a column on a phone.
-var controlsLayout: AnyLayout {
+@MainActor var controlsLayout: AnyLayout {
     isPhone ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
 }
 
