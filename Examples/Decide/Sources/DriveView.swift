@@ -38,7 +38,7 @@ struct DriveView: View {
         .padding()
         .task {
             await autoplay.run(.drive, runtime: runtime, status: { model.status }) {
-                showingPrompt = true
+                showingPrompt = !isPhone   // the phone keeps the road full-width; the Mac has room for both
                 model.start(runtime)
                 let end = Date().addingTimeInterval(25)
                 while Date() < end, model.running { try? await Task.sleep(for: .milliseconds(200)) }
