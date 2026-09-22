@@ -448,12 +448,25 @@ struct LetterFixture: Decodable {
     }
     struct Row: Decodable {
         let id: String
-        let request: Request
+        /// The author's request object (APUS form), or the flat fields of a plain-text form.
+        let request: Request?
+        let kind: String?
+        let state: String?
+        let question: String?
+        let options: [String]?
         let ids: [Int32]
         let slot: Int
         let label_ids: [Int32]
         let p_oracle: [Double]
         let zoo_only: Bool?
+
+        /// The request either way: primitive, state, instructions and the criteria texts.
+        var shape: (primitive: String, state: String, instructions: String, criteria: [Criterion])? {
+            if let request { return (request.primitive, request.state, request.instructions, request.criteria) }
+            guard let kind, let state, let question, let options else { return nil }
+            let primitive = kind == "bool" ? "noul" : kind
+            return (primitive, state, question, options.map { Criterion(id: $0, description: $0) })
+        }
     }
     let schema: String
     let rows: [Row]
@@ -469,13 +482,19 @@ struct LetterFixture: Decodable {
     var milliseconds: [Double] = []
     var lines: [String] = []
     for row in fx.rows {
-        let request = row.request
+        guard let request = row.shape else {
+            skipped.append("\(row.id) (no request or state/question/options)")
+            continue
+        }
         let question: Decision.Question
         switch request.primitive {
         case "choice":
             question = .choice(request.instructions, options: request.criteria.map { .init(id: $0.id, description: $0.description) })
         case "noul":
             question = .noul(request.instructions)
+        case "score":
+            // The plain-text form scores by listing the levels as the options.
+            question = .score(request.instructions, levels: request.criteria.map(\.description))
         default:
             // score_level is the author's yes/no on one proposition; the kit's questions have no such kind.
             skipped.append("\(row.id) (primitive \(request.primitive); the kit renders choice and noul)")
