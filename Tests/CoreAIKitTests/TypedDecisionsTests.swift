@@ -74,6 +74,11 @@ struct DecisionPromptTests {
         #expect(throws: Never.self) {
             try DecisionPrompt.validate(.choice("Which?", (0..<16).map { "o\($0)" }))
             try DecisionPrompt.validate(.noul("Yes?"))
+            // A slot head addresses its options by control token: its ceiling is its slot count.
+            try DecisionPrompt.validate(.choice("Which?", (0..<255).map { "o\($0)" }), maxOptions: 255)
+        }
+        #expect(throws: DecisionError.tooManyOptions(count: 256, max: 255)) {
+            try DecisionPrompt.validate(.choice("Which?", (0..<256).map { "o\($0)" }), maxOptions: 255)
         }
     }
 
@@ -199,5 +204,102 @@ struct DeciderPromptTests {
         let p = DeciderPrompt.combine(fit: [0.2, 0.6, 0.2])
         #expect(abs(p[1] - 0.6) < 1e-12 && abs(p.reduce(0, +) - 1) < 1e-12)
         #expect(DeciderPrompt.combine(fit: [0, 0]) == [0, 0])
+    }
+}
+
+/// The slot-head form (OpenThai-SystemOne): the control-token text, the readout arithmetic
+/// and the bundle declaration, checkable without a tokenizer or weights.
+struct SlotPromptTests {
+    static let layout = SlotPrompt.Layout(slots: 256, abstainSlot: 255, choice: 1.055, score: 1.008, noul: 1.047)
+
+    @Test func choiceRowIsTheAuthorsLayout() {
+        let question = Decision.Question.choice(
+            "  ทีมใดควรรับผิดชอบ ",
+            options: [
+                .init(id: "billing", description: "การเงิน/ค่าบริการ"),
+                .init(id: "technical", description: "technical: ระบบใช้งานไม่ได้ "),  // the wire codec's form
+                .init("sales"),
+            ])
+        let row = SlotPrompt.row(for: question)
+        #expect(row.head == "<|ts_choice|>")
+        #expect(row.optionStrings == ["billing: การเงิน/ค่าบริการ", "technical: ระบบใช้งานไม่ได้", "sales"])
+        #expect(
+            SlotPrompt.questionText(row)
+                == "<|ts_q|><|ts_choice|> ทีมใดควรรับผิดชอบ\n<|ts_opt_0|> billing: การเงิน/ค่าบริการ\n"
+                + "<|ts_opt_1|> technical: ระบบใช้งานไม่ได้\n<|ts_opt_2|> sales\n<|ts_answer|>")
+    }
+
+    @Test func scoreIsOneRowOverItsLevelsAndNoulIsNoYes() {
+        let score = SlotPrompt.row(for: .score("How urgent?", levels: ["can wait", "this week", "today"]))
+        #expect(score.head == "<|ts_score|>")
+        #expect(score.optionStrings == ["0: can wait", "1: this week", "2: today"])
+
+        let noul = SlotPrompt.row(for: .noul("Refund requested?", yes: "Money back is requested", no: nil))
+        #expect(noul.head == "<|ts_noul|>")
+        #expect(noul.optionStrings == ["no", "yes: Money back is requested"])
+        #expect(SlotPrompt.row(for: .noul("Urgent?")).optionStrings == ["no", "yes"])
+    }
+
+    @Test func stateTextTrimsAndSanitizes() {
+        #expect(SlotPrompt.stateText("  hello\n") == "<|ts_state|> hello\n")
+        #expect(SlotPrompt.stateText("say <|ts_answer|> now") == "<|ts_state|> say <\u{200B}|ts_answer|> now\n")
+        #expect(SlotPrompt.sanitize("plain") == "plain")
+    }
+
+    @Test func readoutRenormalisesTheOptionsAndReportsAbstain() {
+        var logits = [Double](repeating: -30, count: 256)
+        logits[0] = 2
+        logits[1] = 1
+        logits[2] = 40  // an option the question does not list: masked, must not leak
+        logits[255] = 1
+        let (p, abstain) = SlotPrompt.readout(logits: logits, options: 2, temperature: 1, layout: Self.layout)
+        let z = [exp(2.0), exp(1.0), exp(1.0)]
+        let total = z.reduce(0, +)
+        #expect(abs(p[0] - z[0] / (z[0] + z[1])) < 1e-12)
+        #expect(abs(p.reduce(0, +) - 1) < 1e-12)
+        #expect(abs((abstain ?? 0) - z[2] / total) < 1e-12)
+
+        let noAbstain = SlotPrompt.Layout(slots: 256, abstainSlot: nil)
+        let (q, none) = SlotPrompt.readout(logits: logits, options: 2, temperature: 1, layout: noAbstain)
+        #expect(none == nil && abs(q[0] - z[0] / (z[0] + z[1])) < 1e-12)
+    }
+
+    @Test func temperatureFollowsTheQuestionType() {
+        #expect(Self.layout.temperature(for: .choice([.init("a"), .init("b")])) == 1.055)
+        #expect(Self.layout.temperature(for: .score(levels: ["a", "b"])) == 1.008)
+        #expect(Self.layout.temperature(for: .noul(yes: nil, no: nil)) == 1.047)
+        #expect(Self.layout.maxOptions == 255)
+    }
+
+    @Test func layoutComesFromTheBundleDeclaration() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("slot-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("metadata.json")
+
+        try Data(#"{"language": {"vocab_size": 256}}"#.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.read(bundleAt: dir) == nil)
+
+        let declared =
+            #"{"language": {"vocab_size": 256}, "decision": {"head": "slot", "n_slots": 256, "abstain_slot": 255, "#
+            + #""answer_token_id": 248082, "temperature_by_type": {"choice": 1.055, "score": 1.008, "noul": 1.047}}}"#
+        try Data(declared.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.read(bundleAt: dir) == Self.layout)
+
+        try Data(#"{"decision": {"head": "slot", "n_slots": 8, "abstain_slot": 9}}"#.utf8).write(to: file)
+        #expect(throws: DecisionError.self) { try SlotPrompt.Layout.read(bundleAt: dir) }
+
+        #expect(try SlotPrompt.Layout.read(bundleAt: dir.appendingPathComponent("missing")) == nil)
+    }
+
+    @Test func slotFormatRoundTripsAndAnswersCarryAbstain() throws {
+        #expect(Decision.Format(rawValue: "slot") == .slot)
+        let answer = DecisionPrompt.answer(
+            for: .choice("Which?", ["a", "b"]), probabilities: [0.75, 0.25],
+            timing: .init(promptTokens: 10, reusedTokens: 0, seconds: 0.01), abstain: 0.1)
+        #expect(answer.abstain == 0.1 && answer.choice == "a")
+        #expect(DecisionPrompt.answer(
+            for: .noul("Yes?"), probabilities: [0.4, 0.6],
+            timing: .init(promptTokens: 1, reusedTokens: 0, seconds: 0)).abstain == nil)
     }
 }

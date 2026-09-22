@@ -155,12 +155,16 @@ public enum SystemOne {
     public static func answerValue(_ question: Decision.Question, _ answer: Decision.Answer) -> JSONValue {
         switch answer.value {
         case .choice(let c):
-            return .object([
+            var members: [JSONValue.Member] = [
                 .init("type", .string("choice")),
                 .init("choice", .string(c.id)),
                 .init("probabilities", .object(c.options.map { .init($0, rounded(c.probabilities[$0] ?? 0)) })),
                 .init("confidence", rounded(c.certainty)),
-            ])
+            ]
+            // A slot-head model's "none of these" mass, the way its own API adds it beside
+            // the renormalised option probabilities; absent for every other model.
+            if let abstain = answer.abstain { members.append(.init("abstain", rounded(abstain))) }
+            return .object(members)
         case .score(let s):
             var legend: [JSONValue.Member] = []
             if case .score(let levels) = question.kind {

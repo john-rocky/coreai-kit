@@ -8,6 +8,7 @@
 //   swift run -c release decide-cli oracle --model qwen3-0.6b --fixture authored144.jsonl \
 //       --prompts prompts.jsonl --reference predictions.jsonl --limit 48 --out predictions.out.jsonl
 //   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
+//   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
 //   swift run -c release decide-cli --list-models
 
@@ -21,6 +22,7 @@ let usage = """
            decide-cli oracle --fixture <rows.jsonl> [--prompts <rows.jsonl>] [--reference <rows.jsonl>]
                             [--model <catalog-id>] [--limit <n>] [--out <predictions.jsonl>]
            decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
+                            (--bundle <dir> loads a local bundle directory instead of a catalog id, for any command)
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
@@ -80,6 +82,16 @@ var printAll = false
 var statesPath: String?
 var host = "127.0.0.1"
 var port: UInt16 = 8090
+/// A local bundle directory instead of a catalog id — a port gated before it is published.
+var bundlePath: String?
+
+/// The decider every command loads: the `--bundle` directory when given, else the catalog id.
+@MainActor func loadDecider(configuration: TypedDecisions.Configuration = .init()) async throws -> TypedDecisions {
+    if let bundlePath {
+        return try await TypedDecisions(bundleAt: URL(fileURLWithPath: bundlePath), configuration: configuration)
+    }
+    return try await TypedDecisions(catalog: modelID, configuration: configuration, downloadProgress: progress)
+}
 
 func parts(_ spec: String) -> (String, [String]) {
     let pieces = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -114,6 +126,9 @@ while let arg = args.popFirst() {
     case "--all": printAll = true
     case "--host": host = args.popFirst() ?? host
     case "--port": port = UInt16(args.popFirst() ?? "") ?? port
+    case "--bundle":
+        bundlePath = args.popFirst()
+        if let bundlePath { modelID = URL(fileURLWithPath: bundlePath).lastPathComponent }
     default: fail(usage)
     }
 }
@@ -195,14 +210,14 @@ let benchQuestions: [Decision.Question] = [
     let text = try stateFile.map { try String(contentsOfFile: $0, encoding: .utf8) } ?? benchState
     var shared = TypedDecisions.Configuration()
     shared.sharePrefix = true
-    let decider = try await TypedDecisions(catalog: id, configuration: shared, downloadProgress: progress)
+    let decider = try await loadDecider(configuration: shared)
     let name = await decider.modelName
     // Warm: the first prompt at a new length pays the engine's specialization.
     _ = try await decider.decide(text, benchQuestions[0])
     let s = try await bench(decider: decider, state: text, label: "shared")
     var direct = TypedDecisions.Configuration()
     direct.sharePrefix = false
-    let directDecider = try await TypedDecisions(catalog: id, configuration: direct)
+    let directDecider = try await loadDecider(configuration: direct)
     _ = try await directDecider.decide(text, benchQuestions[0])
     let d = try await bench(decider: directDecider, state: text, label: "direct")
     let stateTokens = try await decider.prefill(text).tokens
@@ -257,7 +272,7 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     let references = try referencePath.map { try readRows($0, as: ReferenceRow.self) } ?? []
     let referenceByID = Dictionary(uniqueKeysWithValues: references.map { ($0.id, $0) })
 
-    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let decider = try await loadDecider()
     let name = await decider.modelName
     var out: [String] = []
     var scored = 0, tokensExact = 0, tokensChecked = 0, argmaxAgree = 0, labelCorrect = 0, labelled = 0
@@ -342,7 +357,7 @@ struct DeciderFixture: Decodable {
         let id: String
         let request_id: String
         let question_id: String
-        let kind: String  // "list" (one row) or "iso" (one row per score level)
+        let kind: String  // "list" (one row) or "iso" (one row per score level); "slot" (a slot-head row)
         let type: String  // choice / score / noul
         let level_index: Int?
         let question: String
@@ -352,9 +367,15 @@ struct DeciderFixture: Decodable {
         let nopts: Int
         let label_ids: [Int32]
         let p_oracle: [Double]
+        /// A slot-head fixture (`coreai-slot-fixtures/1`): the abstain mass and this row's
+        /// temperature beside the renormalised option probabilities.
+        let abstain: Double?
+        let temperature: Double?
     }
     let schema: String
-    let temperature: Double
+    /// One temperature for the letter readout; a slot-head fixture carries one per type instead.
+    let temperature: Double?
+    let temperature_by_type: [String: Double]?
     let requests: [Request]
     let rows: [Row]
 }
@@ -379,6 +400,13 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
         }
         return .noul(first.question, yes: tail(first.options[1], "yes"), no: tail(first.options[0], "no"))
     case "score":
+        if first.kind == "slot" {  // one row, the levels as "i: level"
+            let levels = first.options.enumerated().compactMap { index, text -> String? in
+                let prefix = "\(index): "
+                return text.hasPrefix(prefix) ? String(text.dropFirst(prefix.count)) : nil
+            }
+            return levels.count == first.options.count ? .score(first.question, levels: levels) : nil
+        }
         let marker = "\nProposed answer: "
         guard let head = first.question.range(of: marker) else { return nil }
         let instructions = String(first.question[..<head.lowerBound])
@@ -400,15 +428,26 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
     let fx = try JSONDecoder().decode(DeciderFixture.self, from: data)
     var stateByRequest: [String: String] = [:]
     for request in fx.requests { if let state = request.state { stateByRequest[request.id] = state } }
+    // A structured state is what the model's API serialises itself; `JSONValue.dumps` writes
+    // the reference bytes (Python's json.dumps, ensure_ascii=False), so no --states is needed.
+    if let requests = try JSONValue.parse(data)["requests"]?.elements {
+        for request in requests {
+            guard let rid = request["id"]?.stringValue, stateByRequest[rid] == nil, let state = request["state"] else { continue }
+            if state.stringValue == nil, state != .null { stateByRequest[rid] = state.dumps() }
+        }
+    }
     if let statesPath {
         let rendered = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: URL(fileURLWithPath: statesPath)))
         for (id, state) in rendered where stateByRequest[id] == nil { stateByRequest[id] = state }
     }
-    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let decider = try await loadDecider()
     let name = await decider.modelName
     let format = decider.format
     let temperature = decider.temperature
-    print("model: \(id) (\(name))   format: \(format.rawValue)   temperature: \(temperature) (fixture \(fx.temperature))")
+    let fixtureTemperature = fx.temperature.map { String($0) }
+        ?? fx.temperature_by_type.map { t in t.keys.sorted().map { "\($0) \(t[$0]!)" }.joined(separator: ", ") }
+        ?? "-"
+    print("model: \(id) (\(name))   format: \(format.rawValue)   temperature: \(temperature) (fixture \(fixtureTemperature))")
 
     // Group rows by (request, question), keeping request order.
     var groups: [(key: String, rows: [DeciderFixture.Row])] = []
@@ -425,6 +464,7 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
 
     var checked = 0, tokensExact = 0, slotExact = 0, argmaxAgree = 0, skipped: [String] = []
     var deltas: [Double] = []
+    var abstainDeltas: [Double] = []
     var milliseconds: [Double] = []
     var lines: [String] = []
     for group in groups {
@@ -437,8 +477,8 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
             skipped.append("\(group.key) (could not rebuild the question)")
             continue
         }
-        if rows[0].nopts > 16 {  // the kit's choice ceiling (DecisionPrompt.maxOptions)
-            skipped.append("\(group.key) (\(rows[0].nopts) options; the kit lists at most 16)")
+        if rows[0].nopts > decider.maxOptions {  // 16 for a letter readout, the slot count for a slot head
+            skipped.append("\(group.key) (\(rows[0].nopts) options; this model lists at most \(decider.maxOptions))")
             continue
         }
         let rendered = try decider.promptRows(state, question)
@@ -468,6 +508,7 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
             if best == refBest { argmaxAgree += 1 }
             let delta = zip(p, row.p_oracle).map { abs($0 - $1) }.max() ?? 0
             deltas.append(delta)
+            if let reference = row.abstain, let abstain = answer.abstain { abstainDeltas.append(abs(abstain - reference)) }
             let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
             lines.append("| \(row.id) | \(row.type) | \(row.nopts) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
             if verbose || flag == "DIFF" {
@@ -482,6 +523,9 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
     print("rows checked: \(checked)   tokens identical: \(tokensExact)/\(checked)   slot + labels identical: \(slotExact)/\(checked)")
     print("argmax agreement with the fp32 readout: \(argmaxAgree)/\(checked)")
     print("|Δp| vs the fp32 readout: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(max(1, deltas.count)), 4))")
+    if !abstainDeltas.isEmpty {
+        print("|Δabstain| vs the fp32 readout: max \(fmt(abstainDeltas.max() ?? 0, 4)), mean \(fmt(abstainDeltas.reduce(0, +) / Double(abstainDeltas.count), 4)) over \(abstainDeltas.count) rows")
+    }
     print("ms per question (all rows of a score question summed): median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
     if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
 }
@@ -495,7 +539,7 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty { lines.append(trimmed) }
     }
-    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let decider = try await loadDecider()
     var passed = 0
     var milliseconds: [Double] = []
     for line in lines {
@@ -521,12 +565,18 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
 // `systemone serve`, the Homebrew-installed binary, is the same server without a toolchain)
 
 @MainActor func runServe() async throws {
-    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
-    let entry = try await ModelCatalog.entry(forID: id)
-    let models = SystemOne.modelsValue(
-        id: id,
-        description: "\(entry.name), CoreAIKit catalog kind \(entry.kind.rawValue), bundle \(await decider.modelName), on this machine",
-        revision: entry.revision)
+    let decider = try await loadDecider()
+    let models: JSONValue
+    if bundlePath == nil {
+        let entry = try await ModelCatalog.entry(forID: id)
+        models = SystemOne.modelsValue(
+            id: id,
+            description: "\(entry.name), CoreAIKit catalog kind \(entry.kind.rawValue), bundle \(await decider.modelName), on this machine",
+            revision: entry.revision)
+    } else {
+        models = SystemOne.modelsValue(
+            id: id, description: "local bundle \(await decider.modelName), on this machine", revision: nil)
+    }
     stderrPrint("loaded \(id) (\(await decider.modelName)); one request at a time, questions share the state's prefill")
     let server = SystemOneServer(host: host, port: port, modelID: id, models: models, decider: decider) { line in
         stderrPrint("decide-cli serve: \(line)  (Ctrl-C stops)")

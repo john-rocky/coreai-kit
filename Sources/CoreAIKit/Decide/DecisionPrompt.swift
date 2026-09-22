@@ -35,8 +35,10 @@ enum DecisionPrompt {
         let slots: [Int32]
     }
 
-    /// Validates the question's shape against the letter table.
-    static func validate(_ question: Decision.Question) throws {
+    /// Validates the question's shape: instructions present, at least two options, at most
+    /// `maxOptions` for a choice (the letter table's 16 unless the model addresses its options
+    /// another way — a slot head takes up to its slot count) and `maxScoreLevels` for a score.
+    static func validate(_ question: Decision.Question, maxOptions: Int = maxOptions) throws {
         guard !question.instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw DecisionError.emptyInstructions
         }
@@ -182,7 +184,7 @@ extension DecisionPrompt {
     /// Folds a probability vector into the question's answer shape.
     static func answer(
         for question: Decision.Question, probabilities p: [Double], timing: Decision.Timing,
-        fit: [Double]? = nil
+        fit: [Double]? = nil, abstain: Double? = nil
     ) -> Decision.Answer {
         let value: Decision.Answer.Value
         switch question.kind {
@@ -205,6 +207,6 @@ extension DecisionPrompt {
         case .noul:
             value = .noul(p[1])
         }
-        return Decision.Answer(value: value, timing: timing)
+        return Decision.Answer(value: value, timing: timing, abstain: abstain)
     }
 }
