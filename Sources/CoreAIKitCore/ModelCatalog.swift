@@ -90,10 +90,17 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// states) only load on the pipelined engine — "sequential" validates exactly 2 states
     /// and rejects them. Official-recipe bundles (dynamic shapes) leave this nil (auto).
     public let engine: String?
+    /// For a `decision` entry: the prompt form its readout needs, by the raw value of
+    /// `Decision.Format` — `decider` (plain `Context:` / `Options:` rows), `slot` (a slot head
+    /// read at a control token; the bundle's metadata declares it too), `sharedState` (a
+    /// `Shared state:` + JSON task user turn read at the option letters). nil = the kind's
+    /// default (`decider` for a decision entry).
+    public let format: String?
 
     public init(
         id: String, name: String, repo: String, revision: String? = nil, kind: Kind,
-        variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil
+        variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil,
+        format: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -103,6 +110,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.variants = variants
         self.thinking = thinking
         self.engine = engine
+        self.format = format
     }
 
     static var platformKey: String {
@@ -198,7 +206,7 @@ public struct ModelCatalog: Sendable, Codable {
                 guard e.revision == nil, let rev = pins[e.id] else { return e }
                 return CatalogEntry(
                     id: e.id, name: e.name, repo: e.repo, revision: rev, kind: e.kind,
-                    variants: e.variants, thinking: e.thinking, engine: e.engine)
+                    variants: e.variants, thinking: e.thinking, engine: e.engine, format: e.format)
             })
     }
 
@@ -349,6 +357,20 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
                 ],
                 engine: "pipelined"),
+            // ── OpenThai-SystemOne: a slot-head decision model (Thai + English) — the LM head
+            //    replaced by a 256-way head read at a control token, so a choice may list 255
+            //    options and every answer carries an abstain probability. The bundle's own
+            //    metadata declares the head; `format` names the readout for the catalog's sake.
+            //    Ships to both platforms like decider-0.8b (1.0 GB int8; the phone number is
+            //    still to be taken). ──
+            CatalogEntry(
+                id: "openthai-systemone", name: "OpenThai-SystemOne 0.8B",
+                repo: "mlboydaisuke/OpenThai-SystemOne-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
+                    "ios": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
+                ],
+                engine: "pipelined", format: "slot"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

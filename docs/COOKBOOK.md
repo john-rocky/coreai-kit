@@ -195,6 +195,39 @@ let a = try await trained.decide(ticket, .score("How upset is the customer?", le
 a.score            // expected level; a["…"] for the op form
 ```
 
+**A decision model with a head of its own.** `openthai-systemone` (Thai + English, kind
+`decision`) answers at a 256-way head instead of the vocabulary, so a choice may list up to
+255 options and every answer carries the probability that none of them fits
+(`Decision.Answer.abstain`). The bundle declares that head, and the kit reads it in the
+author's own control-token form (`Decision.Format.slot`, chosen from the bundle's metadata):
+token-identical and argmax-identical to the author's fp32 readout on all 50 of its fixture
+rows (int8 max |Δp| 0.023).
+
+```swift
+let thai = try await TypedDecisions(catalog: "openthai-systemone")   // Format.slot, temperatures from the bundle
+let team = try await thai.decide("ลูกค้าแจ้งว่าโดนหักเงินซ้ำสองครั้ง ขอเงินคืนด่วน",
+    .choice("ทีมใดควรรับผิดชอบ", ["billing", "technical", "sales"]))
+team.choice        // "billing"
+team.abstain       // P(none of these), reported beside the option probabilities
+```
+
+**A decision model for agent steps.** `apus-openjev-v1-4b` (English + Chinese, kind `decision`)
+keeps its LM head and is read at the letters A–P after a `Shared state:` + JSON task turn under
+its chat template (`Decision.Format.sharedState`, named by the catalog entry's `format`). Its
+choices take 2–16 described criteria and its yes/no a proposition; a score becomes a choice over
+its levels. Token-identical to the author's compiled prompts on the fixture's 40 choice and
+yes/no rows (max |Δp| 0.0055); a 4B, so about 2 s per decision on the Mac and no iPhone
+number yet.
+
+```swift
+let agent = try await TypedDecisions(catalog: "apus-openjev-v1-4b")   // Format.sharedState, T = 1
+let next = try await agent.decide(pageState,
+    .choice("Choose the next browser action that advances the goal.",
+            options: [.init(id: "submit", description: "Submit the completed form."),
+                      .init(id: "back", description: "Return to the previous page.")]))
+next.choice        // "submit"
+```
+
 ## Chat, tools, and guided JSON
 
 Streaming chat with history, live stats, and a stop button — `ChatSession`:

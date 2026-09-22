@@ -30,6 +30,27 @@ public enum Decision {
         /// level alone as a yes/no, and the levels' P(yes) normalised into the distribution;
         /// that is the form the model's own API uses, and its temperature is 1.03.
         case decider
+        /// The control-token form of a slot-head decision model (OpenThai-SystemOne): the
+        /// state and one question laid out with `<|ts_…|>` tokens, the hidden state at
+        /// `<|ts_answer|>` projected by a small head whose slot i is option i and whose last
+        /// slot abstains. The bundle declares it (`decision.head == "slot"` in its
+        /// metadata.json) together with a temperature per question type; a score is one row
+        /// over its levels. `SlotPrompt.swift`.
+        case slot
+        /// The `Shared state:` + JSON task form (APUS-OpenJev-v1): one user turn under the chat
+        /// template holding the state, then a JSON object whose criteria carry the letters
+        /// A–P, then `Answer:`; the answer is the letter at the next token, read from the
+        /// ordinary LM head with no temperature. The model's own primitives are `choice` and a
+        /// yes/no on a proposition; a score is rendered as a choice over its levels.
+        /// `SharedStatePrompt.swift`.
+        case sharedState
+        /// The plain-text "decision function" form (Jev-Style-Qwen3.5-2B-Decision): a fixed
+        /// header, `[State]`, `[Question]`, `[Options]` as `A. …` lines and `Answer:`, no chat
+        /// template; the answer is the next token among the space-prefixed letters ` A`, ` B`, …
+        /// (up to 26), read at temperature 1 because the model's calibration is folded into its
+        /// weights. A bool is the choice `yes` / `no`, a score the choice over its levels.
+        /// `DecisionFunctionPrompt.swift`.
+        case decisionFunction
     }
 
     /// One listed answer for a `choice` question. `id` is what the answer reports;
@@ -181,10 +202,15 @@ public enum Decision {
 
         public let value: Value
         public let timing: Timing
+        /// The probability the model puts on "none of the listed options", when its head has
+        /// a slot for that (`Format.slot`); nil for the other formats. The option
+        /// probabilities are renormalised without it, as the model's own API reports them.
+        public let abstain: Double?
 
-        public init(value: Value, timing: Timing) {
+        public init(value: Value, timing: Timing, abstain: Double? = nil) {
             self.value = value
             self.timing = timing
+            self.abstain = abstain
         }
 
         /// P(yes) of a `noul` question; nil for the other shapes.
@@ -236,6 +262,8 @@ public enum DecisionError: Error, LocalizedError, Equatable {
     case tooManyOptions(count: Int, max: Int)
     /// The tokenizer has no single-token answer slot for this letter.
     case answerSlotNotSingleToken(letter: String)
+    /// A slot-head bundle's tokenizer does not carry this control token as one token.
+    case controlTokenNotSingleToken(token: String)
     case promptTooLong(tokens: Int, max: Int)
     /// The engine returned no logits for the prompt.
     case noLogits
@@ -255,6 +283,9 @@ public enum DecisionError: Error, LocalizedError, Equatable {
             return "A question can list at most \(max) options, got \(count)."
         case .answerSlotNotSingleToken(let letter):
             return "The tokenizer does not encode answer slot '\(letter)' as one token."
+        case .controlTokenNotSingleToken(let token):
+            return "The tokenizer does not encode control token '\(token)' as one token; "
+                + "this bundle is not the slot-head decision model its metadata declares."
         case .promptTooLong(let tokens, let max):
             return "The rendered prompt is \(tokens) tokens; this model takes at most \(max)."
         case .noLogits:

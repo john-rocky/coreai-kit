@@ -64,7 +64,14 @@ number is and what else was running.
 141/144 argmax agreement on SemIf's authored fixture, mean |Δp| 0.02, family-balanced accuracy
 0.681 against 0.686 published. The 4-bit `qwen3-0.6b` does not (59/144) and is documented as
 speed-only. `decider-0.8b`, a model trained for these questions, is token-identical to its
-author's readout on the 43 fixture rows the kit can list.
+author's readout on the 43 fixture rows the kit can list. `openthai-systemone`, a Thai +
+English decision model with a 256-way answer head of its own (up to 255 options, an abstain
+probability), is token-identical and argmax-identical to its author's readout on all 50 of its
+fixture rows (int8 max |Δp| 0.023) and scores 0.725 on SemIf's 144 English rows through the kit.
+`apus-openjev-v1-4b`, a Qwen3.5-4B decision model for browser and workflow steps read at the
+letters A–P under its chat template, is token-identical to its author's compiled prompts on the
+40 choice and yes/no fixture rows (max |Δp| 0.0055) and scores 0.906 on the same 144 rows, at
+about 2 s per decision on the Mac.
 
 The shape of the question decides more than the model. On MiniCPM5 2B, measured on the
 screens' samples:
@@ -104,8 +111,9 @@ Clips of each on the Mac and on the iPhone are in
 ## Where the pieces are
 
 - `Sources/CoreAIKit/Decide/` — `TypedDecisions` (the model-level API: prefill once, decide
-  N times), `Decision` (the value types), `DecisionPrompt` / `DeciderPrompt` (the two
-  renderings), `SystemOneWire` + `OrderedJSON` (the hosted forms), `SystemOneServer` (the
+  N times), `Decision` (the value types), `DecisionPrompt` / `DeciderPrompt` / `SlotPrompt`
+  (the three renderings: a chat model's JSON turn, a decision model's plain text, a slot-head
+  model's control tokens), `SystemOneWire` + `OrderedJSON` (the hosted forms), `SystemOneServer` (the
   endpoint over Network.framework — the same code listens in an app, `host: "0.0.0.0"` for the
   local network) and `DecisionQueue` (one decision at a time over a shared model).
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op.

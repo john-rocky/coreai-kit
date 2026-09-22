@@ -26,11 +26,45 @@ policy.
   exiting the process. `DecisionQueue` is the one-at-a-time funnel any concurrent caller of
   one `TypedDecisions` needs. `TypedDecisions.supports(_:)` says whether a catalog entry can
   decide here.
+- **`openthai-systemone`** — iApp's OpenThai-SystemOne (Thai + English, Qwen3.5-0.8B tower,
+  Apache-2.0) as a catalog `decision` model, and the readout it needs: `Decision.Format.slot`.
+  A slot-head model replaces the LM head with a 256-way head read at a `<|ts_answer|>` control
+  token — option i is slot i, the last slot means "none of these" — so a choice may list up to
+  255 options (`TypedDecisions.maxOptions`; the letter readouts keep 16) and every answer
+  carries `Decision.Answer.abstain` (also written to a `/v1/systemone` choice answer). The
+  bundle declares the head and a temperature per question type in its `metadata.json`
+  (`decision` block); `TypedDecisions.temperature(for:)` reports which applies. On the
+  author's 50-row fixture (Thai, English and JSON states; 2–16, 40 and 255 options) the kit's
+  rows are token-, slot- and argmax-identical to the author's fp32 readout on 50/50, int8 max
+  |Δp| 0.0226 (`decide-cli parity`); 0.725 mean family balanced accuracy on SemIf's 144
+  English rows through the kit.
+- **`apus-openjev-v1-4b`** — APUS AI Lab's APUS-OpenJev-v1-4B (Qwen3.5-4B, English + Chinese,
+  Apache-2.0), a decision model for browser actions and workflow steps, as a catalog `decision`
+  model with its readout: `Decision.Format.sharedState`, one `Shared state:` + JSON task user
+  turn under the chat template read at the letters A–P, no calibration (the author's own
+  statement). A catalog entry may now name a decision model's readout (`CatalogEntry.format`),
+  read after the bundle's own declaration and before the kind's default. On the author's
+  48-row fixture the kit's prompts are token-identical to the author's compiled ones on all 40
+  choice and yes/no rows, argmax 40/40, max |Δp| 0.0055 (`decide-cli parity`, which also reads
+  the letter fixture form, `coreai-letter-fixtures/1`); 0.906 mean family balanced accuracy on
+  SemIf's 144 English rows through the kit. Mac only (5.8 GB).
+- `decide-cli --bundle <dir>` — any command on an unpublished bundle directory; `parity` reads
+  the slot fixture form (`coreai-slot-fixtures/1`) and renders JSON states itself.
 
 ### Changed
 
 - `Examples/Decide/CLI/Serve.swift` is gone; `decide-cli serve` is a shell over the kit's
   `SystemOneServer` with the same flags and routes.
+
+### Fixed
+
+- Thai, and every script that writes vowels and tones as combining marks, tokenizes through
+  swift-transformers differently from the reference tokenizer: the `Split` pre-tokenizer regex
+  is applied through Foundation's string search, whose matches snap to grapheme clusters, so a
+  letter run keeps its marks and BPE merges differently (23 of the 50 OpenThai fixture rows).
+  The slot-head path cuts each text segment with the same regex through ICU on UTF-16 and
+  encodes the pieces one by one (`SlotPrompt.Encoder`). The chat and decider paths still
+  tokenize through swift-transformers as before.
 
 ## [0.5.0] — 2026-09-23
 

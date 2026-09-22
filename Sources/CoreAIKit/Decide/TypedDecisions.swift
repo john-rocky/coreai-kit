@@ -24,8 +24,14 @@
 // A chat model reads the request as JSON in one user turn under its chat template
 // (`Decision.Format.chat`); a model trained for decisions (`decider-0.8b`, catalog kind
 // `decision`) reads the plain `Context:` / `Question:` / `Options:` / `Answer: (` form it was
-// trained on (`Decision.Format.decider`, `DeciderPrompt.swift`). The format follows the
-// catalog kind; `Configuration.format` overrides it for a local bundle.
+// trained on (`Decision.Format.decider`, `DeciderPrompt.swift`); a slot-head model
+// (OpenThai-SystemOne) reads its control-token layout and is read at a 256-way head
+// (`Decision.Format.slot`, `SlotPrompt.swift`); a model trained on the `Shared state:` + JSON
+// task turn (APUS-OpenJev-v1) is read at the letters under its chat template
+// (`Decision.Format.sharedState`, `SharedStatePrompt.swift`). A slot-head bundle declares
+// itself in its metadata.json (`decision.head == "slot"`, with its temperatures); otherwise
+// the catalog entry's `format` decides, then the catalog kind. `Configuration.format`
+// overrides all of them.
 //
 // ## Which engine
 //
@@ -49,8 +55,9 @@ public actor TypedDecisions {
         /// a chat model (its raw distribution), the card's calibration temperature for a
         /// decision model (1.03 for `decider-0.8b`).
         public var temperature: Double? = nil
-        /// How the prompt is rendered. `nil` follows the catalog kind — `.decider` for a
-        /// `decision` entry, `.chat` otherwise — and, for a local bundle, the bundle name.
+        /// How the prompt is rendered. `nil` follows the bundle — `.slot` when its
+        /// metadata.json declares a slot head — then the catalog kind (`.decider` for a
+        /// `decision` entry, `.chat` otherwise) and, for a local bundle, the bundle name.
         public var format: Decision.Format? = nil
         /// Reuse the engine's KV cache across decisions on the same state (rewind to the shared
         /// prefix, prefill only the question). Off, every decision re-prefills its whole prompt
@@ -70,8 +77,17 @@ public actor TypedDecisions {
     private let configuration: Configuration
     /// The prompt form this model is scored with.
     nonisolated public let format: Decision.Format
-    /// The temperature applied to the answer-slot logits.
+    /// The temperature applied to the answer-slot logits. A slot-head model carries one per
+    /// question type; this is its choice temperature, and `temperature(for:)` has the rest.
     nonisolated public let temperature: Double
+    /// What a slot-head bundle declares about its head (`Format.slot`); nil otherwise.
+    nonisolated let slotLayout: SlotPrompt.Layout?
+    /// The tokenizer path of a slot-head bundle (control tokens by id, text cut the
+    /// reference way); nil for the other formats.
+    nonisolated private let slotEncoder: SlotPrompt.Encoder?
+    /// Options a choice may list on this model: 16 for the letter readouts, every slot but
+    /// the abstain one (255 for OpenThai-SystemOne) for a slot head. A score keeps 10 levels.
+    nonisolated public let maxOptions: Int
     /// The catalog id, or the bundle directory name for a local bundle.
     public let id: String
     /// The bundle's `max_context_length`; a prompt must leave one slot for the answer.
@@ -117,13 +133,19 @@ public actor TypedDecisions {
         Self.configureSingleTokenPrefill(
             bundleName: model.resolvedPath, override: configuration.singleTokenPrefill)
         let bundle = try LanguageBundle(at: url)
+        let layout = try SlotPrompt.Layout.read(bundleAt: url)
         let runtime = try await ModelRuntime(
             bundleAt: url,
             engineVariant: Self.resolveEngine(configuration.engineVariant, hint: entry.engine))
         try self.init(
             runtime: runtime, configuration: configuration, id: id,
             maxContextLength: bundle.maxContextLength,
-            format: configuration.format ?? (entry.kind == .decision ? .decider : .chat))
+            format: configuration.format
+                ?? (layout != nil
+                    ? .slot
+                    : entry.format.flatMap(Decision.Format.init(rawValue:))
+                        ?? (entry.kind == .decision ? .decider : .chat)),
+            layout: layout)
     }
 
     /// Loads a local bundle directory (metadata.json + *.aimodel/ + tokenizer/). The prompt
@@ -135,31 +157,66 @@ public actor TypedDecisions {
         let runtime = try await ModelRuntime(
             bundleAt: url, engineVariant: Self.resolveEngine(configuration.engineVariant, hint: nil))
         let name = url.lastPathComponent.lowercased()
+        let layout = try SlotPrompt.Layout.read(bundleAt: url)
         try self.init(
             runtime: runtime, configuration: configuration, id: url.lastPathComponent,
             maxContextLength: bundle.maxContextLength,
-            format: configuration.format ?? (name.contains("decider") ? .decider : .chat))
+            format: configuration.format
+                ?? (layout != nil
+                    ? .slot
+                    : name.contains("decider")
+                        ? .decider
+                        : name.contains("openjev") ? .sharedState : name.contains("decision") ? .decisionFunction : .chat),
+            layout: layout)
     }
 
     private init(
         runtime: ModelRuntime, configuration: Configuration, id: String, maxContextLength: Int,
-        format: Decision.Format
+        format: Decision.Format, layout: SlotPrompt.Layout?
     ) throws {
         guard runtime.engine.supportsLogits else {
             throw DecisionError.engineWithoutLogits(model: id)
         }
         // The first two letters cover every question shape; a tokenizer that cannot slot
-        // them fails here, at load, not on the first decision.
+        // them fails here, at load, not on the first decision. A slot-head model has no
+        // letters: its control tokens must each be one token, and its bundle must say so.
+        var encoder: SlotPrompt.Encoder? = nil
         switch format {
-        case .chat: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .chat, .sharedState: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
         case .decider: _ = try DeciderPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .decisionFunction: _ = try DecisionFunctionPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .slot:
+            guard let layout else {
+                throw DecisionError.unsupportedModel(
+                    id: id, reason: "its metadata.json declares no slot head ('decision' block), which Format.slot needs")
+            }
+            encoder = try SlotPrompt.Encoder(tokenizer: runtime.tokenizer, layout: layout)
         }
         self.runtime = runtime
         self.configuration = configuration
         self.id = id
         self.maxContextLength = maxContextLength
         self.format = format
-        self.temperature = configuration.temperature ?? (format == .decider ? DeciderPrompt.defaultTemperature : 1)
+        self.slotLayout = format == .slot ? layout : nil
+        self.slotEncoder = encoder
+        switch format {
+        case .slot: self.maxOptions = layout?.maxOptions ?? DecisionPrompt.maxOptions
+        case .decisionFunction: self.maxOptions = DecisionFunctionPrompt.maxOptions
+        case .chat, .decider, .sharedState: self.maxOptions = DecisionPrompt.maxOptions
+        }
+        switch format {
+        case .chat, .sharedState, .decisionFunction: self.temperature = configuration.temperature ?? 1
+        case .decider: self.temperature = configuration.temperature ?? DeciderPrompt.defaultTemperature
+        case .slot: self.temperature = configuration.temperature ?? layout?.choiceTemperature ?? 1
+        }
+    }
+
+    /// The temperature a question's logits are read at: the configured one when set, else
+    /// the model's own — per question type for a slot-head model, one value otherwise.
+    nonisolated public func temperature(for question: Decision.Question) -> Double {
+        if let configured = configuration.temperature { return configured }
+        if let layout = slotLayout { return layout.temperature(for: question.kind) }
+        return temperature
     }
 
     /// `.auto` → the static-shape engine for a chunked static bundle, else the sequential
@@ -185,13 +242,37 @@ public actor TypedDecisions {
     /// One question on one state. Under `.decider` a score question is several rows (one
     /// per level), and the answer's timing is their sum.
     public func decide(_ state: String, _ question: Decision.Question) async throws -> Decision.Answer {
-        try DecisionPrompt.validate(question)
+        try DecisionPrompt.validate(question, maxOptions: maxOptions)
         switch format {
         case .chat:
             let rendered = try DecisionPrompt.render(
                 state: state, question: question, tokenizer: runtime.tokenizer)
             let (probabilities, timing) = try await readout(rendered)
             return DecisionPrompt.answer(for: question, probabilities: probabilities, timing: timing)
+        case .sharedState:
+            let rendered = try SharedStatePrompt.render(
+                state: state, question: question, tokenizer: runtime.tokenizer)
+            let (letterOrder, timing) = try await readout(rendered)
+            return DecisionPrompt.answer(
+                for: question, probabilities: SharedStatePrompt.probabilities(kitOrder: letterOrder, for: question),
+                timing: timing)
+        case .decisionFunction:
+            let rendered = try DecisionFunctionPrompt.render(
+                state: state, question: question, tokenizer: runtime.tokenizer)
+            let (letterOrder, timing) = try await readout(rendered)
+            return DecisionPrompt.answer(
+                for: question, probabilities: DecisionFunctionPrompt.probabilities(kitOrder: letterOrder, for: question),
+                timing: timing)
+        case .slot:
+            guard let layout = slotLayout, let encoder = slotEncoder else { throw DecisionError.noLogits }
+            let rendered = try SlotPrompt.render(state: state, question: question, encoder: encoder)
+            let (logits, timing) = try await score(rendered.tokens)
+            guard logits.count >= layout.slots else { throw DecisionError.noLogits }
+            let (probabilities, abstain) = SlotPrompt.readout(
+                logits: logits.map(Double.init), options: rendered.slots.count,
+                temperature: temperature(for: question), layout: layout)
+            return DecisionPrompt.answer(
+                for: question, probabilities: probabilities, timing: timing, abstain: abstain)
         case .decider:
             var fit: [Double] = []
             var last: [Double] = []
@@ -250,6 +331,11 @@ public actor TypedDecisions {
         switch format {
         case .chat: prefix = try DecisionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         case .decider: prefix = DeciderPrompt.contextTokens(state: state, tokenizer: runtime.tokenizer)
+        case .slot:
+            guard let encoder = slotEncoder else { throw DecisionError.noLogits }
+            prefix = try SlotPrompt.contextTokens(state: state, encoder: encoder)
+        case .sharedState: prefix = try SharedStatePrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .decisionFunction: prefix = DecisionFunctionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         }
         let (_, timing) = try await score(prefix, includeLogits: false)
         return PrefilledState(state: state, tokens: prefix.count, timing: timing, decider: self)
@@ -262,7 +348,7 @@ public actor TypedDecisions {
     nonisolated public func promptRows(
         _ state: String, _ question: Decision.Question
     ) throws -> [(tokens: [Int32], slots: [Int32])] {
-        try DecisionPrompt.validate(question)
+        try DecisionPrompt.validate(question, maxOptions: maxOptions)
         switch format {
         case .chat:
             let rendered = try DecisionPrompt.render(
@@ -273,6 +359,16 @@ public actor TypedDecisions {
                 let rendered = try DeciderPrompt.render(state: state, row: row, tokenizer: runtime.tokenizer)
                 return (rendered.tokens, rendered.slots)
             }
+        case .slot:
+            guard let encoder = slotEncoder else { throw DecisionError.noLogits }
+            let rendered = try SlotPrompt.render(state: state, question: question, encoder: encoder)
+            return [(rendered.tokens, rendered.slots)]
+        case .sharedState:
+            let rendered = try SharedStatePrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
+            return [(rendered.tokens, rendered.slots)]
+        case .decisionFunction:
+            let rendered = try DecisionFunctionPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
+            return [(rendered.tokens, rendered.slots)]
         }
     }
 

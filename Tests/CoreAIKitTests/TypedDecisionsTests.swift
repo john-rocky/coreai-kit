@@ -74,6 +74,11 @@ struct DecisionPromptTests {
         #expect(throws: Never.self) {
             try DecisionPrompt.validate(.choice("Which?", (0..<16).map { "o\($0)" }))
             try DecisionPrompt.validate(.noul("Yes?"))
+            // A slot head addresses its options by control token: its ceiling is its slot count.
+            try DecisionPrompt.validate(.choice("Which?", (0..<255).map { "o\($0)" }), maxOptions: 255)
+        }
+        #expect(throws: DecisionError.tooManyOptions(count: 256, max: 255)) {
+            try DecisionPrompt.validate(.choice("Which?", (0..<256).map { "o\($0)" }), maxOptions: 255)
         }
     }
 
@@ -199,5 +204,198 @@ struct DeciderPromptTests {
         let p = DeciderPrompt.combine(fit: [0.2, 0.6, 0.2])
         #expect(abs(p[1] - 0.6) < 1e-12 && abs(p.reduce(0, +) - 1) < 1e-12)
         #expect(DeciderPrompt.combine(fit: [0, 0]) == [0, 0])
+    }
+}
+
+/// The `Shared state:` + JSON task form (APUS-OpenJev-v1): the user turn byte for byte the
+/// author's `render_prompt`, the fixed yes/no criteria, and the readout order.
+struct SharedStatePromptTests {
+    @Test func userTurnIsTheAuthorsRenderPrompt() {
+        let question = Decision.Question.choice(
+            "Select the appropriate next workflow action.",
+            options: [
+                .init(id: "close", description: "Close the resolved support ticket."),
+                .init(id: "refund", description: "refund: Refund an undelivered order."),  // the wire codec's form
+            ])
+        let row = SharedStatePrompt.row(for: question)
+        #expect(row == .init(primitive: "choice", instructions: "Select the appropriate next workflow action.",
+                             options: ["Close the resolved support ticket.", "Refund an undelivered order."]))
+        #expect(
+            SharedStatePrompt.userContent(state: "Order 731 has been delivered. The customer's message says thank you.", row: row)
+                == "Shared state:\nOrder 731 has been delivered. The customer's message says thank you.\n\n"
+                + "{\"criteria\": [{\"description\": \"Close the resolved support ticket.\", \"label\": \"A\"}, "
+                + "{\"description\": \"Refund an undelivered order.\", \"label\": \"B\"}], "
+                + "\"instructions\": \"Select the appropriate next workflow action.\", \"primitive\": \"choice\"}"
+                + "\nReturn only the selected letter: A, B.\nAnswer:")
+        let sixteen = SharedStatePrompt.row(for: .choice("Which?", (1...16).map { "Click the Page \($0) button." }))
+        #expect(SharedStatePrompt.userContent(state: "s", row: sixteen).hasSuffix(
+            "\nReturn only the selected letter: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P.\nAnswer:"))
+    }
+
+    @Test func noulUsesTheFixedCriteriaYesFirstAndTheKitReportsNoThenYes() {
+        let noul = Decision.Question.noul("The customer thanked the agent.")
+        let row = SharedStatePrompt.row(for: noul)
+        #expect(row.primitive == "noul")
+        #expect(row.descriptions == ["The stated proposition is true.", "The stated proposition is false."])
+        #expect(SharedStatePrompt.probabilities(kitOrder: [0.8, 0.2], for: noul) == [0.2, 0.8])
+        let described = SharedStatePrompt.row(for: .noul("Urgent?", yes: "needs action today", no: "can wait"))
+        #expect(described.instructions == "Urgent?\nyes: needs action today\nno: can wait")
+        let score = SharedStatePrompt.row(for: .score("How upset?", levels: ["calm", "annoyed", "furious"]))
+        #expect(score.primitive == "choice" && score.descriptions == ["calm", "annoyed", "furious"])
+        #expect(SharedStatePrompt.probabilities(kitOrder: [0.1, 0.2, 0.7], for: .score("x", levels: ["a", "b", "c"])) == [0.1, 0.2, 0.7])
+        #expect(Decision.Format(rawValue: "sharedState") == .sharedState)
+    }
+}
+
+/// The plain-text decision-function form (Jev-Style-Qwen3.5-2B-Decision): the prompt byte
+/// for byte the author's `build_prompt`, the three shapes as one choice each, the readout order.
+struct DecisionFunctionPromptTests {
+    @Test func promptIsTheAuthorsBuildPrompt() {
+        let question = Decision.Question.choice(
+            "Which news section does this article belong to?",
+            options: [.init("World"), .init("Sports"), .init(id: "biz", description: "Business"),
+                      .init(id: "sci", description: "sci: Science/Technology")])
+        let row = DecisionFunctionPrompt.row(for: question)
+        #expect(row.options == ["World", "Sports", "Business", "Science/Technology"])
+        #expect(
+            DecisionFunctionPrompt.text(state: "Shares of the chipmaker jumped 8% after it raised its revenue forecast.", row: row)
+                == "You are a decision function. Read the state, then answer the question by choosing exactly one option.\n\n"
+                + "[State]\nShares of the chipmaker jumped 8% after it raised its revenue forecast.\n\n"
+                + "[Question]\nWhich news section does this article belong to?\n\n"
+                + "[Options]\nA. World\nB. Sports\nC. Business\nD. Science/Technology\n\nAnswer:")
+    }
+
+    @Test func boolAndScoreAreChoices() {
+        let bool = DecisionFunctionPrompt.row(for: .noul("Does the premise entail the hypothesis?"))
+        #expect(bool.options == ["yes", "no"])
+        #expect(DecisionFunctionPrompt.probabilities(kitOrder: [0.976, 0.024], for: .noul("x")) == [0.024, 0.976])
+        let score = DecisionFunctionPrompt.row(for: .score("Rate the sentiment.", levels: ["very negative", "negative", "neutral", "positive", "very positive"]))
+        #expect(score.options.count == 5 && score.options[3] == "positive")
+        #expect(DecisionFunctionPrompt.maxOptions == 26)
+        #expect(Decision.Format(rawValue: "decisionFunction") == .decisionFunction)
+    }
+}
+
+/// The slot-head form (OpenThai-SystemOne): the control-token text, the readout arithmetic
+/// and the bundle declaration, checkable without a tokenizer or weights.
+struct SlotPromptTests {
+    static let layout = SlotPrompt.Layout(slots: 256, abstainSlot: 255, choice: 1.055, score: 1.008, noul: 1.047)
+
+    @Test func choiceRowIsTheAuthorsLayout() {
+        let question = Decision.Question.choice(
+            "  ทีมใดควรรับผิดชอบ ",
+            options: [
+                .init(id: "billing", description: "การเงิน/ค่าบริการ"),
+                .init(id: "technical", description: "technical: ระบบใช้งานไม่ได้ "),  // the wire codec's form
+                .init("sales"),
+            ])
+        let row = SlotPrompt.row(for: question)
+        #expect(row.head == "<|ts_choice|>")
+        #expect(row.optionStrings == ["billing: การเงิน/ค่าบริการ", "technical: ระบบใช้งานไม่ได้", "sales"])
+        #expect(
+            SlotPrompt.questionText(row)
+                == "<|ts_q|><|ts_choice|> ทีมใดควรรับผิดชอบ\n<|ts_opt_0|> billing: การเงิน/ค่าบริการ\n"
+                + "<|ts_opt_1|> technical: ระบบใช้งานไม่ได้\n<|ts_opt_2|> sales\n<|ts_answer|>")
+    }
+
+    @Test func scoreIsOneRowOverItsLevelsAndNoulIsNoYes() {
+        let score = SlotPrompt.row(for: .score("How urgent?", levels: ["can wait", "this week", "today"]))
+        #expect(score.head == "<|ts_score|>")
+        #expect(score.optionStrings == ["0: can wait", "1: this week", "2: today"])
+
+        let noul = SlotPrompt.row(for: .noul("Refund requested?", yes: "Money back is requested", no: nil))
+        #expect(noul.head == "<|ts_noul|>")
+        #expect(noul.optionStrings == ["no", "yes: Money back is requested"])
+        #expect(SlotPrompt.row(for: .noul("Urgent?")).optionStrings == ["no", "yes"])
+    }
+
+    @Test func stateTextTrimsAndSanitizes() {
+        #expect(SlotPrompt.stateText("  hello\n") == "<|ts_state|> hello\n")
+        #expect(SlotPrompt.stateText("say <|ts_answer|> now") == "<|ts_state|> say <\u{200B}|ts_answer|> now\n")
+        #expect(SlotPrompt.sanitize("plain") == "plain")
+    }
+
+    @Test func readoutRenormalisesTheOptionsAndReportsAbstain() {
+        var logits = [Double](repeating: -30, count: 256)
+        logits[0] = 2
+        logits[1] = 1
+        logits[2] = 40  // an option the question does not list: masked, must not leak
+        logits[255] = 1
+        let (p, abstain) = SlotPrompt.readout(logits: logits, options: 2, temperature: 1, layout: Self.layout)
+        let z = [exp(2.0), exp(1.0), exp(1.0)]
+        let total = z.reduce(0, +)
+        #expect(abs(p[0] - z[0] / (z[0] + z[1])) < 1e-12)
+        #expect(abs(p.reduce(0, +) - 1) < 1e-12)
+        #expect(abs((abstain ?? 0) - z[2] / total) < 1e-12)
+
+        let noAbstain = SlotPrompt.Layout(slots: 256, abstainSlot: nil)
+        let (q, none) = SlotPrompt.readout(logits: logits, options: 2, temperature: 1, layout: noAbstain)
+        #expect(none == nil && abs(q[0] - z[0] / (z[0] + z[1])) < 1e-12)
+    }
+
+    @Test func temperatureFollowsTheQuestionType() {
+        #expect(Self.layout.temperature(for: .choice([.init("a"), .init("b")])) == 1.055)
+        #expect(Self.layout.temperature(for: .score(levels: ["a", "b"])) == 1.008)
+        #expect(Self.layout.temperature(for: .noul(yes: nil, no: nil)) == 1.047)
+        #expect(Self.layout.maxOptions == 255)
+    }
+
+    @Test func layoutComesFromTheBundleDeclaration() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("slot-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("metadata.json")
+
+        try Data(#"{"language": {"vocab_size": 256}}"#.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.read(bundleAt: dir) == nil)
+
+        let declared =
+            #"{"language": {"vocab_size": 256}, "decision": {"head": "slot", "n_slots": 256, "abstain_slot": 255, "#
+            + #""answer_token_id": 248082, "temperature_by_type": {"choice": 1.055, "score": 1.008, "noul": 1.047}}}"#
+        try Data(declared.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.read(bundleAt: dir) == Self.layout)
+
+        try Data(#"{"decision": {"head": "slot", "n_slots": 8, "abstain_slot": 9}}"#.utf8).write(to: file)
+        #expect(throws: DecisionError.self) { try SlotPrompt.Layout.read(bundleAt: dir) }
+
+        #expect(try SlotPrompt.Layout.read(bundleAt: dir.appendingPathComponent("missing")) == nil)
+    }
+
+    /// The reference tokenizer cuts a letter run at every combining mark; Foundation's string
+    /// search would keep the mark on its consonant. The cuts here are ICU's on UTF-16.
+    @Test func piecesAreCutAtCombiningMarksLikeTheReference() throws {
+        let pattern = #"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"#
+        let split = try NSRegularExpression(pattern: pattern)
+        #expect(SlotPrompt.pieces(of: "กล่องมีตัวล็อกแตก", split: split) == ["กล", "\u{0E48}องม", "\u{0E35}ต", "\u{0E31}วล", "\u{0E47}อกแตก"])
+        #expect(SlotPrompt.pieces(of: " Hello, world\n", split: split) == [" Hello", ",", " world", "\n"])
+        #expect(SlotPrompt.pieces(of: "", split: split) == [])
+        #expect(SlotPrompt.questionSegments(SlotPrompt.row(for: .noul("Urgent?"))) == [
+            .control("<|ts_q|>"), .control("<|ts_noul|>"), .text(" Urgent?\n"),
+            .control("<|ts_opt_0|>"), .text(" no\n"), .control("<|ts_opt_1|>"), .text(" yes\n"),
+            .control("<|ts_answer|>"),
+        ])
+    }
+
+    @Test func splitPatternComesFromTheTokenizerFile() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("tok-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("tokenizer.json")
+        try Data(#"{"pre_tokenizer": {"type": "Sequence", "pretokenizers": [{"type": "Split", "pattern": {"Regex": "\\p{L}+"}, "behavior": "Isolated"}, {"type": "ByteLevel"}]}}"#.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.splitPattern(tokenizerAt: file) == #"\p{L}+"#)
+        try Data(#"{"pre_tokenizer": {"type": "ByteLevel"}}"#.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.splitPattern(tokenizerAt: file) == nil)
+        #expect(try SlotPrompt.Layout.splitPattern(tokenizerAt: dir.appendingPathComponent("none.json")) == nil)
+    }
+
+    @Test func slotFormatRoundTripsAndAnswersCarryAbstain() throws {
+        #expect(Decision.Format(rawValue: "slot") == .slot)
+        let answer = DecisionPrompt.answer(
+            for: .choice("Which?", ["a", "b"]), probabilities: [0.75, 0.25],
+            timing: .init(promptTokens: 10, reusedTokens: 0, seconds: 0.01), abstain: 0.1)
+        #expect(answer.abstain == 0.1 && answer.choice == "a")
+        #expect(DecisionPrompt.answer(
+            for: .noul("Yes?"), probabilities: [0.4, 0.6],
+            timing: .init(promptTokens: 1, reusedTokens: 0, seconds: 0)).abstain == nil)
     }
 }
