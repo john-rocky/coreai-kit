@@ -37,6 +37,52 @@ compression by relevance, as-you-type reading — with the model on the device:
 The two Shortcuts actions (“Ask yes/no”, “Classify text”) run the same decisions on any text
 without opening the app.
 
+## The same endpoint your client already speaks
+
+`decide-cli serve` puts the loaded model behind a `/v1/systemone` endpoint on this machine, in
+the request and answer forms of the hosted System One API — `state` (a string, or structured
+data), `model`, `questions` keyed by your ids with `type` / `instructions` / `criteria`;
+`answers` back with `choice` and every option's probability, `score` with its legend, `noul` as
+the probability the statement holds, `confidence`, `usage`. A client written for the hosted
+endpoint is pointed at this one by its base URL and nothing else changes:
+
+```bash
+swift run -c release decide-cli serve --model minicpm5-2b          # http://127.0.0.1:8090/v1/systemone
+clients/systemone.sh                                               # one request with curl
+python3 clients/systemone.py                                       # the same from Python, standard library only
+SYSTEM_ONE_BASE_URL=http://127.0.0.1:8090 python3 your_client.py   # a client library that takes a base URL
+```
+
+```json
+{"state": "Help! My payouts have been failing for 3 days.", "model": "minicpm5-2b",
+ "questions": {"is_urgent": {"type": "noul", "instructions": "Does this convey urgency?",
+                             "criteria": {"true": "explicitly time-sensitive", "false": "no urgency expressed"}},
+               "queue": {"type": "choice", "instructions": "Which queue should handle this?",
+                         "criteria": {"billing": "invoices, payments, refunds", "technical": "bugs, outages", "other": "everything else"}}}}
+```
+```json
+{"model": "minicpm5-2b",
+ "answers": {"is_urgent": {"type": "noul", "noul": 0.9274, "confidence": 0.9274},
+             "queue": {"type": "choice", "choice": "billing", "probabilities": {"billing": 0.5886, "technical": 0.4109, "other": 0.0004}, "confidence": 0.3804}},
+ "usage": {"input_tokens": 239, "output_tokens": 2}, "timing_ms": 103.5733}
+```
+
+The state is prefilled once per request and every question rewinds to it; that request took
+204 ms end to end on the Mac (M4 Max, 2026-09-23), four questions on a 69-token state 436 ms.
+A third-party client library written for the hosted endpoint (`system-one` 0.1.0 on PyPI,
+`HTTPConfig(base_url=…)`) got its typed answers back from this server unchanged, 179 ms round
+trip for three questions.
+A structured `state` or `instructions` (an object or an array) is serialized the way Python's
+`json.dumps(…, ensure_ascii=False)` writes it, key order kept, so the model reads the bytes a
+Python client would have sent (`JSONValue` in the kit). `confidence` is 1 − normalised entropy
+of the distribution for a choice or a score and max(p, 1 − p) for a noul; probabilities are
+rounded to four decimals. One declared difference from the hosted API: a choice lists at most
+16 options here (the answer slots are single letters), so a longer list comes back as a 422
+that says so. `GET /v1/models` names the loaded model, `GET /health` answers `ok`, CORS is open
+so a page or a browser extension can call it, and `--host 0.0.0.0` serves the local network
+(a phone on the same Wi-Fi, another machine). The codec is public API (`SystemOne.request(from:)`,
+`SystemOne.response(model:answers:)`) for an app that wants to accept or emit the form itself.
+
 **The same decision as a hook.** `hooks/claude-code-guard.sh` is a Claude Code `PreToolUse`
 hook: every Bash command the agent is about to run goes through `decide-cli` under the policy
 at the top of the script, and "ask the user first" / "refuse" become the hook's
@@ -215,7 +261,8 @@ runs; the first-run figures were read back over `devicectl` from the app's `-log
 - `Sources/QuickStart.swift` — the take-home: one typed function, no UI. The GUI and the CLI
   both call it.
 - `CLI/main.swift` — argument shell over that function, plus `bench`, `oracle`, `parity`
-  and `filter` (the numbers above).
+  and `filter` (the numbers above); `CLI/Serve.swift` — the `/v1/systemone` endpoint
+  (`serve`); `clients/` — a curl and a Python request to it.
 - `Sources/DecideRuntime.swift` — the one loaded `TypedDecisions` the screens share.
 - `Sources/Form*.swift` (Autofill; `FormPage.html` is the checkout page it fills through one
   JavaScript call), `Checklist*.swift`, `Sorter*.swift`, `Search*.swift`, `SpeechGate*.swift`,

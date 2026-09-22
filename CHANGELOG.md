@@ -52,6 +52,17 @@ policy.
   unrelated ones drop out, tokens counted by the model's tokenizer) and **Typing** (tone,
   intent and an emoji read from the text at every pause). The README records which
   question shapes read correctly on MiniCPM5 2B and which did not.
+- **The `/v1/systemone` forms** — `SystemOne.request(from:)` / `SystemOne.response(model:answers:)`
+  (CoreAIKit) read and write the request and answer JSON of the hosted System One API
+  (`state` as a string or structured data, `questions` keyed by id with `type` /
+  `instructions` / `criteria`; `answers` with `choice` + probabilities, `score` + legend,
+  `noul`, `confidence`, `usage`), over an order-keeping `JSONValue` that writes what Python's
+  `json.dumps(…, ensure_ascii=False)` writes, so a structured state reaches the model as the
+  same bytes a Python client sends. `decide-cli serve` puts a loaded model behind that
+  endpoint on this machine (`GET /v1/models`, `GET /health`, CORS open, `--host 0.0.0.0` for
+  the local network); a client written for the hosted endpoint switches by base URL. One
+  declared difference: at most 16 options per choice. `Examples/Decide/clients/` holds a curl
+  and a Python request.
 
 ### Changed
 
