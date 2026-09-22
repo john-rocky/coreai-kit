@@ -37,7 +37,8 @@ curl -s http://127.0.0.1:8090/v1/systemone -H 'Content-Type: application/json' -
 
 `systemone` is one signed, notarized binary (21 MB); the first `serve` downloads MiniCPM5 2B
 (2.7 GB) into `~/Library/Application Support/CoreAIKit/Models`; after that `brew services start`
-answers `/health` 0.7 s later (M4 Max, weights in the file cache). From a checkout the same
+answers `/health` 0.7–4.6 s later (M4 Max, depending on how much of the model is still in the
+file cache). From a checkout the same
 server is `swift run -c release systemone serve`,
 or `decide-cli serve` in `Examples/Decide`.
 A client library written for the hosted endpoint is pointed at this one by its base URL
