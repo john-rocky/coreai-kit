@@ -37,6 +37,13 @@ public enum Decision {
         /// metadata.json) together with a temperature per question type; a score is one row
         /// over its levels. `SlotPrompt.swift`.
         case slot
+        /// The `Shared state:` + JSON task form (APUS-OpenJev-v1): one user turn under the chat
+        /// template holding the state, then a JSON object whose criteria carry the letters
+        /// A–P, then `Answer:`; the answer is the letter at the next token, read from the
+        /// ordinary LM head with no temperature. The model's own primitives are `choice` and a
+        /// yes/no on a proposition; a score is rendered as a choice over its levels.
+        /// `SharedStatePrompt.swift`.
+        case sharedState
     }
 
     /// One listed answer for a `choice` question. `id` is what the answer reports;

@@ -207,6 +207,46 @@ struct DeciderPromptTests {
     }
 }
 
+/// The `Shared state:` + JSON task form (APUS-OpenJev-v1): the user turn byte for byte the
+/// author's `render_prompt`, the fixed yes/no criteria, and the readout order.
+struct SharedStatePromptTests {
+    @Test func userTurnIsTheAuthorsRenderPrompt() {
+        let question = Decision.Question.choice(
+            "Select the appropriate next workflow action.",
+            options: [
+                .init(id: "close", description: "Close the resolved support ticket."),
+                .init(id: "refund", description: "refund: Refund an undelivered order."),  // the wire codec's form
+            ])
+        let row = SharedStatePrompt.row(for: question)
+        #expect(row == .init(primitive: "choice", instructions: "Select the appropriate next workflow action.",
+                             options: ["Close the resolved support ticket.", "Refund an undelivered order."]))
+        #expect(
+            SharedStatePrompt.userContent(state: "Order 731 has been delivered. The customer's message says thank you.", row: row)
+                == "Shared state:\nOrder 731 has been delivered. The customer's message says thank you.\n\n"
+                + "{\"criteria\": [{\"description\": \"Close the resolved support ticket.\", \"label\": \"A\"}, "
+                + "{\"description\": \"Refund an undelivered order.\", \"label\": \"B\"}], "
+                + "\"instructions\": \"Select the appropriate next workflow action.\", \"primitive\": \"choice\"}"
+                + "\nReturn only the selected letter: A, B.\nAnswer:")
+        let sixteen = SharedStatePrompt.row(for: .choice("Which?", (1...16).map { "Click the Page \($0) button." }))
+        #expect(SharedStatePrompt.userContent(state: "s", row: sixteen).hasSuffix(
+            "\nReturn only the selected letter: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P.\nAnswer:"))
+    }
+
+    @Test func noulUsesTheFixedCriteriaYesFirstAndTheKitReportsNoThenYes() {
+        let noul = Decision.Question.noul("The customer thanked the agent.")
+        let row = SharedStatePrompt.row(for: noul)
+        #expect(row.primitive == "noul")
+        #expect(row.descriptions == ["The stated proposition is true.", "The stated proposition is false."])
+        #expect(SharedStatePrompt.probabilities(kitOrder: [0.8, 0.2], for: noul) == [0.2, 0.8])
+        let described = SharedStatePrompt.row(for: .noul("Urgent?", yes: "needs action today", no: "can wait"))
+        #expect(described.instructions == "Urgent?\nyes: needs action today\nno: can wait")
+        let score = SharedStatePrompt.row(for: .score("How upset?", levels: ["calm", "annoyed", "furious"]))
+        #expect(score.primitive == "choice" && score.descriptions == ["calm", "annoyed", "furious"])
+        #expect(SharedStatePrompt.probabilities(kitOrder: [0.1, 0.2, 0.7], for: .score("x", levels: ["a", "b", "c"])) == [0.1, 0.2, 0.7])
+        #expect(Decision.Format(rawValue: "sharedState") == .sharedState)
+    }
+}
+
 /// The slot-head form (OpenThai-SystemOne): the control-token text, the readout arithmetic
 /// and the bundle declaration, checkable without a tokenizer or weights.
 struct SlotPromptTests {

@@ -26,9 +26,12 @@
 // `decision`) reads the plain `Context:` / `Question:` / `Options:` / `Answer: (` form it was
 // trained on (`Decision.Format.decider`, `DeciderPrompt.swift`); a slot-head model
 // (OpenThai-SystemOne) reads its control-token layout and is read at a 256-way head
-// (`Decision.Format.slot`, `SlotPrompt.swift`). A slot-head bundle declares itself in its
-// metadata.json (`decision.head == "slot"`, with its temperatures); otherwise the format
-// follows the catalog kind. `Configuration.format` overrides both.
+// (`Decision.Format.slot`, `SlotPrompt.swift`); a model trained on the `Shared state:` + JSON
+// task turn (APUS-OpenJev-v1) is read at the letters under its chat template
+// (`Decision.Format.sharedState`, `SharedStatePrompt.swift`). A slot-head bundle declares
+// itself in its metadata.json (`decision.head == "slot"`, with its temperatures); otherwise
+// the catalog entry's `format` decides, then the catalog kind. `Configuration.format`
+// overrides all of them.
 //
 // ## Which engine
 //
@@ -138,7 +141,10 @@ public actor TypedDecisions {
             runtime: runtime, configuration: configuration, id: id,
             maxContextLength: bundle.maxContextLength,
             format: configuration.format
-                ?? (layout != nil ? .slot : entry.kind == .decision ? .decider : .chat),
+                ?? (layout != nil
+                    ? .slot
+                    : entry.format.flatMap(Decision.Format.init(rawValue:))
+                        ?? (entry.kind == .decision ? .decider : .chat)),
             layout: layout)
     }
 
@@ -156,7 +162,9 @@ public actor TypedDecisions {
             runtime: runtime, configuration: configuration, id: url.lastPathComponent,
             maxContextLength: bundle.maxContextLength,
             format: configuration.format
-                ?? (layout != nil ? .slot : name.contains("decider") ? .decider : .chat),
+                ?? (layout != nil
+                    ? .slot
+                    : name.contains("decider") ? .decider : name.contains("openjev") ? .sharedState : .chat),
             layout: layout)
     }
 
@@ -172,7 +180,7 @@ public actor TypedDecisions {
         // letters: its control tokens must each be one token, and its bundle must say so.
         var encoder: SlotPrompt.Encoder? = nil
         switch format {
-        case .chat: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .chat, .sharedState: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
         case .decider: _ = try DeciderPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
         case .slot:
             guard let layout else {
@@ -190,7 +198,7 @@ public actor TypedDecisions {
         self.slotEncoder = encoder
         self.maxOptions = format == .slot ? (layout?.maxOptions ?? DecisionPrompt.maxOptions) : DecisionPrompt.maxOptions
         switch format {
-        case .chat: self.temperature = configuration.temperature ?? 1
+        case .chat, .sharedState: self.temperature = configuration.temperature ?? 1
         case .decider: self.temperature = configuration.temperature ?? DeciderPrompt.defaultTemperature
         case .slot: self.temperature = configuration.temperature ?? layout?.choiceTemperature ?? 1
         }
@@ -234,6 +242,13 @@ public actor TypedDecisions {
                 state: state, question: question, tokenizer: runtime.tokenizer)
             let (probabilities, timing) = try await readout(rendered)
             return DecisionPrompt.answer(for: question, probabilities: probabilities, timing: timing)
+        case .sharedState:
+            let rendered = try SharedStatePrompt.render(
+                state: state, question: question, tokenizer: runtime.tokenizer)
+            let (letterOrder, timing) = try await readout(rendered)
+            return DecisionPrompt.answer(
+                for: question, probabilities: SharedStatePrompt.probabilities(kitOrder: letterOrder, for: question),
+                timing: timing)
         case .slot:
             guard let layout = slotLayout, let encoder = slotEncoder else { throw DecisionError.noLogits }
             let rendered = try SlotPrompt.render(state: state, question: question, encoder: encoder)
@@ -305,6 +320,7 @@ public actor TypedDecisions {
         case .slot:
             guard let encoder = slotEncoder else { throw DecisionError.noLogits }
             prefix = try SlotPrompt.contextTokens(state: state, encoder: encoder)
+        case .sharedState: prefix = try SharedStatePrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         }
         let (_, timing) = try await score(prefix, includeLogits: false)
         return PrefilledState(state: state, tokens: prefix.count, timing: timing, decider: self)
@@ -331,6 +347,9 @@ public actor TypedDecisions {
         case .slot:
             guard let encoder = slotEncoder else { throw DecisionError.noLogits }
             let rendered = try SlotPrompt.render(state: state, question: question, encoder: encoder)
+            return [(rendered.tokens, rendered.slots)]
+        case .sharedState:
+            let rendered = try SharedStatePrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
             return [(rendered.tokens, rendered.slots)]
         }
     }
