@@ -15,7 +15,7 @@ a["topic"]?.choice    // "delivery"
 a["urgent"]?.score    // expected level, 0…2
 ```
 
-Five screens, one loaded model, every decision with its measured milliseconds. The same
+Six screens, one loaded model, every decision with its measured milliseconds. The same
 sources build for the Mac and for the iPhone:
 
 | Screen | What it decides | Shape |
@@ -25,6 +25,7 @@ sources build for the Mac and for the iPhone:
 | **Search** | Query × passages: one decision per passage, ranked by its probability — a reranker made of a chat model, no index. | noul or score |
 | **Checklist** | One document prefilled once, then a list of typed questions answered against it — `noul:` / `choice:` / `score:` lines you edit. A lease, a policy, a report: read once, answered N times. | noul + choice + score |
 | **Sorter** | A folder: every file read once (text, Markdown, PDF, or an image through Vision's text recognizer), asked which of your named folders it belongs in and what it needs from you. **Apply** moves the files. | choice + choice |
+| **Form** | Copy anywhere — a name, an address, a phone number — and the matching field of a checkout form (HTML, in a web view) fills itself on the spot. A secret is refused and said so; a kind the form has no field for is left where it is. | choice |
 
 ## Run
 
@@ -80,6 +81,11 @@ kinds are named as intended — an address, a secret key, a phone number, a link
 email address, ordinary prose, a tracking number — and against "a shipping address" the
 address alone is "paste as-is", the phone number "part of what you need", the rest "not what
 you need".
+
+**Form, watching** (2026-09-22): eight copies from the sample email, one decision each,
+140–175 ms per copy. Six land in their field — name, address, phone, email, order
+reference, delivery note — the API key is refused ("a secret key, token or password" 0.62),
+the date has no field and stays on the clipboard.
 
 **Speech gate, sample** (2026-09-22): eight utterances, median 64 ms per decision. Five pass:
 the four requests and "Hold on, let me find my keys." (0.89); the three remarks are held back
@@ -148,7 +154,8 @@ No iPhone numbers yet; the engine path is the same.
   and `filter` (the numbers above).
 - `Sources/DecideRuntime.swift` — the one loaded `TypedDecisions` the screens share.
 - `Sources/SpeechGate*.swift`, `Clipboard*.swift`, `Search*.swift`, `Checklist*.swift`,
-  `Sorter*.swift` — the five screens; `Intents.swift` — the Shortcuts actions;
+  `Sorter*.swift`, `Form*.swift` — the six screens (`FormPage.html` is the checkout page the
+  Form screen fills through one JavaScript call); `Intents.swift` — the Shortcuts actions;
   `DocumentText.swift` — a file as text (plain, Markdown, PDF, image via Vision);
   `Autoplay.swift` — the hands-off runner.
 

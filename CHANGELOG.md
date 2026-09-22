@@ -37,8 +37,9 @@ policy.
   iPhone: **Checklist** (one document prefilled once, a list of typed questions answered
   against it — `noul:` / `choice:` / `score:` lines), **Sorter** (a folder of files read once
   each and asked which named folder they belong in and what they need from you; Apply moves
-  them) and a **Watch** mode on the clipboard screen that decides every new copy as it lands
-  (on the Mac the verdict sits in the menu bar). `decide-cli` gains `filter` (one decision per
+  them), a **Watch** mode on the clipboard screen that decides every new copy as it lands
+  (on the Mac the verdict sits in the menu bar), and **Form** (copy anywhere and the matching
+  field of a checkout form fills itself; a secret is refused). `decide-cli` gains `filter` (one decision per
   stdin line — a semantic grep) and `parity`; the app takes `-autoplay <screen>` for a
   hands-off run.
 

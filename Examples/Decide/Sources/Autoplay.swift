@@ -14,7 +14,7 @@ import Observation
 @Observable
 final class Autoplay {
     enum Screen: String, CaseIterable {
-        case speech, clipboard, search, checklist, sorter
+        case speech, clipboard, search, checklist, sorter, form
     }
 
     let screen: Screen?

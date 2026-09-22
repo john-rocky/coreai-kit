@@ -26,6 +26,9 @@ struct DecideApp: App {
                 SorterView()
                     .tabItem { Label("Sorter", systemImage: "folder") }
                     .tag(Autoplay.Screen.sorter)
+                FormView()
+                    .tabItem { Label("Form", systemImage: "rectangle.and.pencil.and.ellipsis") }
+                    .tag(Autoplay.Screen.form)
             }
             .environment(runtime)
             .environment(clipboard)
