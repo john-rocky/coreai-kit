@@ -92,8 +92,8 @@ export SYSTEM_ONE_BASE_URL=http://127.0.0.1:8090              # your client's ba
 
 `systemone` is one signed, notarized 21 MB binary with no Swift toolchain behind it. The first
 `serve` downloads MiniCPM5 2B (2.7 GB) into `~/Library/Application Support/CoreAIKit/Models`;
-after that `brew services start` answers `/health` 0.7 s later (M4 Max, weights in the file
-cache; the first start after a reboot reads the 2.7 GB back from disk first). `systemone ask
+after that `brew services start` answers `/health` 0.7–4.6 s later (M4 Max; the spread is
+how much of the 2.7 GB is still in the file cache, and the model load is most of it). `systemone ask
 --state "…" --noul "…"` is one decision from the shell (`--json` for the wire form),
 `systemone models` says what can decide and what is downloaded. From source it is
 `swift run -c release systemone serve`, or `decide-cli serve` in `Examples/Decide`.
