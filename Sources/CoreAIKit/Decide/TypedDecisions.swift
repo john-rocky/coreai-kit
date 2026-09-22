@@ -79,6 +79,9 @@ public actor TypedDecisions {
     nonisolated public let temperature: Double
     /// What a slot-head bundle declares about its head (`Format.slot`); nil otherwise.
     nonisolated let slotLayout: SlotPrompt.Layout?
+    /// The tokenizer path of a slot-head bundle (control tokens by id, text cut the
+    /// reference way); nil for the other formats.
+    nonisolated private let slotEncoder: SlotPrompt.Encoder?
     /// Options a choice may list on this model: 16 for the letter readouts, every slot but
     /// the abstain one (255 for OpenThai-SystemOne) for a slot head. A score keeps 10 levels.
     nonisolated public let maxOptions: Int
@@ -167,15 +170,16 @@ public actor TypedDecisions {
         // The first two letters cover every question shape; a tokenizer that cannot slot
         // them fails here, at load, not on the first decision. A slot-head model has no
         // letters: its control tokens must each be one token, and its bundle must say so.
+        var encoder: SlotPrompt.Encoder? = nil
         switch format {
         case .chat: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
         case .decider: _ = try DeciderPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
         case .slot:
-            guard layout != nil else {
+            guard let layout else {
                 throw DecisionError.unsupportedModel(
                     id: id, reason: "its metadata.json declares no slot head ('decision' block), which Format.slot needs")
             }
-            try SlotPrompt.controlTokenIDs(tokenizer: runtime.tokenizer)
+            encoder = try SlotPrompt.Encoder(tokenizer: runtime.tokenizer, layout: layout)
         }
         self.runtime = runtime
         self.configuration = configuration
@@ -183,6 +187,7 @@ public actor TypedDecisions {
         self.maxContextLength = maxContextLength
         self.format = format
         self.slotLayout = format == .slot ? layout : nil
+        self.slotEncoder = encoder
         self.maxOptions = format == .slot ? (layout?.maxOptions ?? DecisionPrompt.maxOptions) : DecisionPrompt.maxOptions
         switch format {
         case .chat: self.temperature = configuration.temperature ?? 1
@@ -230,8 +235,8 @@ public actor TypedDecisions {
             let (probabilities, timing) = try await readout(rendered)
             return DecisionPrompt.answer(for: question, probabilities: probabilities, timing: timing)
         case .slot:
-            guard let layout = slotLayout else { throw DecisionError.noLogits }
-            let rendered = SlotPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
+            guard let layout = slotLayout, let encoder = slotEncoder else { throw DecisionError.noLogits }
+            let rendered = try SlotPrompt.render(state: state, question: question, encoder: encoder)
             let (logits, timing) = try await score(rendered.tokens)
             guard logits.count >= layout.slots else { throw DecisionError.noLogits }
             let (probabilities, abstain) = SlotPrompt.readout(
@@ -297,7 +302,9 @@ public actor TypedDecisions {
         switch format {
         case .chat: prefix = try DecisionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         case .decider: prefix = DeciderPrompt.contextTokens(state: state, tokenizer: runtime.tokenizer)
-        case .slot: prefix = SlotPrompt.contextTokens(state: state, tokenizer: runtime.tokenizer)
+        case .slot:
+            guard let encoder = slotEncoder else { throw DecisionError.noLogits }
+            prefix = try SlotPrompt.contextTokens(state: state, encoder: encoder)
         }
         let (_, timing) = try await score(prefix, includeLogits: false)
         return PrefilledState(state: state, tokens: prefix.count, timing: timing, decider: self)
@@ -322,7 +329,8 @@ public actor TypedDecisions {
                 return (rendered.tokens, rendered.slots)
             }
         case .slot:
-            let rendered = SlotPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
+            guard let encoder = slotEncoder else { throw DecisionError.noLogits }
+            let rendered = try SlotPrompt.render(state: state, question: question, encoder: encoder)
             return [(rendered.tokens, rendered.slots)]
         }
     }

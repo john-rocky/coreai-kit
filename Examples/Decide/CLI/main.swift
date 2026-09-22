@@ -388,10 +388,12 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
     switch first.type {
     case "choice":
         let options = first.options.map { text -> Decision.Option in
-            if let range = text.range(of: ": ") {
-                return .init(id: String(text[..<range.lowerBound]), description: String(text[range.upperBound...]))
-            }
-            return .init(text)
+            guard let range = text.range(of: ": ") else { return .init(text) }
+            // A slot row keeps the wire codec's composed form (`name: description` as the
+            // description), so a description equal to its name survives; the decider rows
+            // were produced from separate fields.
+            if first.kind == "slot" { return .init(id: String(text[..<range.lowerBound]), description: text) }
+            return .init(id: String(text[..<range.lowerBound]), description: String(text[range.upperBound...]))
         }
         return .choice(first.question, options: options)
     case "noul":
@@ -514,6 +516,9 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
             if verbose || flag == "DIFF" {
                 let firstDiff = zip(r.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
                 stderrPrint("  \(row.id): tokens kit \(r.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(row.p_oracle.map { fmt($0) })")
+                if verbose, !tokensOK {
+                    stderrPrint("  \(row.id): kit tokens \(r.tokens.map(String.init).joined(separator: ","))")
+                }
             }
         }
     }

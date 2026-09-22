@@ -292,6 +292,33 @@ struct SlotPromptTests {
         #expect(try SlotPrompt.Layout.read(bundleAt: dir.appendingPathComponent("missing")) == nil)
     }
 
+    /// The reference tokenizer cuts a letter run at every combining mark; Foundation's string
+    /// search would keep the mark on its consonant. The cuts here are ICU's on UTF-16.
+    @Test func piecesAreCutAtCombiningMarksLikeTheReference() throws {
+        let pattern = #"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"#
+        let split = try NSRegularExpression(pattern: pattern)
+        #expect(SlotPrompt.pieces(of: "กล่องมีตัวล็อกแตก", split: split) == ["กล", "\u{0E48}องม", "\u{0E35}ต", "\u{0E31}วล", "\u{0E47}อกแตก"])
+        #expect(SlotPrompt.pieces(of: " Hello, world\n", split: split) == [" Hello", ",", " world", "\n"])
+        #expect(SlotPrompt.pieces(of: "", split: split) == [])
+        #expect(SlotPrompt.questionSegments(SlotPrompt.row(for: .noul("Urgent?"))) == [
+            .control("<|ts_q|>"), .control("<|ts_noul|>"), .text(" Urgent?\n"),
+            .control("<|ts_opt_0|>"), .text(" no\n"), .control("<|ts_opt_1|>"), .text(" yes\n"),
+            .control("<|ts_answer|>"),
+        ])
+    }
+
+    @Test func splitPatternComesFromTheTokenizerFile() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("tok-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("tokenizer.json")
+        try Data(#"{"pre_tokenizer": {"type": "Sequence", "pretokenizers": [{"type": "Split", "pattern": {"Regex": "\\p{L}+"}, "behavior": "Isolated"}, {"type": "ByteLevel"}]}}"#.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.splitPattern(tokenizerAt: file) == #"\p{L}+"#)
+        try Data(#"{"pre_tokenizer": {"type": "ByteLevel"}}"#.utf8).write(to: file)
+        #expect(try SlotPrompt.Layout.splitPattern(tokenizerAt: file) == nil)
+        #expect(try SlotPrompt.Layout.splitPattern(tokenizerAt: dir.appendingPathComponent("none.json")) == nil)
+    }
+
     @Test func slotFormatRoundTripsAndAnswersCarryAbstain() throws {
         #expect(Decision.Format(rawValue: "slot") == .slot)
         let answer = DecisionPrompt.answer(
