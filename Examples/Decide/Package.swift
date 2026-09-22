@@ -17,7 +17,7 @@ let package = Package(
             name: "decide-cli",
             dependencies: [.product(name: "CoreAIOps", package: "coreai-kit")],
             path: ".",
-            sources: ["Sources/QuickStart.swift", "CLI/main.swift"]
+            sources: ["Sources/QuickStart.swift", "CLI/main.swift", "CLI/Serve.swift"]
         )
     ]
 )

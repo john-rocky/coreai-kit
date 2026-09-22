@@ -23,6 +23,8 @@ let usage = """
            decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
+           decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
+                            (a /v1/systemone endpoint over the loaded model, in the hosted request and answer forms)
            decide-cli --list-models
     """
 
@@ -76,6 +78,8 @@ var verbose = false
 var threshold = 0.5
 var printAll = false
 var statesPath: String?
+var host = "127.0.0.1"
+var port: UInt16 = 8090
 
 func parts(_ spec: String) -> (String, [String]) {
     let pieces = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -108,6 +112,8 @@ while let arg = args.popFirst() {
     case "--threshold": threshold = Double(args.popFirst() ?? "") ?? threshold
     case "--states": statesPath = args.popFirst()
     case "--all": printAll = true
+    case "--host": host = args.popFirst() ?? host
+    case "--port": port = UInt16(args.popFirst() ?? "") ?? port
     default: fail(usage)
     }
 }
@@ -511,6 +517,14 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
     stderrPrint("\(passed)/\(lines.count) lines · median \(fmt(median(milliseconds), 1)) ms per decision · \(id)")
 }
 
+// MARK: - serve (a /v1/systemone endpoint over the loaded model)
+
+@MainActor func runServe() async throws {
+    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    stderrPrint("loaded \(id) (\(await decider.modelName)); one request at a time, questions share the state's prefill")
+    try await SystemOneServer(host: host, port: port, modelID: id, decider: decider).run()
+}
+
 do {
     switch command {
     case "ask": try await runAsk()
@@ -518,6 +532,7 @@ do {
     case "oracle": try await runOracle()
     case "parity": try await runParity()
     case "filter": try await runFilter()
+    case "serve": try await runServe()
     default: fail(usage)
     }
 } catch {

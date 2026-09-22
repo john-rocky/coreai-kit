@@ -76,6 +76,27 @@ If it stops at build, download or load, start with the
 For a reproducible bug, [open an issue](https://github.com/john-rocky/coreai-kit/issues/new)
 with package version, model ID/revision, OS/SDK build and the error text.
 
+## System One, on device
+
+A typed decision — a text, a question with fixed answers, each answer's probability, nothing
+generated — is what the hosted System One APIs sell by the call. The same call runs on the
+device with a catalog model: `CoreAI.decide` in Swift, or `decide-cli serve` for everything
+else. It answers `POST /v1/systemone` in the hosted request and answer forms, so a client
+written for the hosted endpoint is switched by its base URL and nothing else changes:
+
+```bash
+cd Examples/Decide && swift run -c release decide-cli serve          # http://127.0.0.1:8090/v1/systemone
+export SYSTEM_ONE_BASE_URL=http://127.0.0.1:8090                     # your client's base-URL setting
+```
+
+MiniCPM5 2B answers a question in about 40–65 ms after the state is read once (M4 Max), and
+its decisions track the published full-precision readout (141/144 argmax on the authored
+fixture). Ten whole uses — a form that fills from a copied email, a contract checklist, a
+folder sorter, a car the model drives, a CSV with the columns you ask for, a command guard
+for a coding agent, context compression, as-you-type reading — are in
+[`Examples/Decide`](Examples/Decide), with the question shapes that read correctly on a 2B
+model and the ones that did not. [docs/SYSTEM_ONE.md](docs/SYSTEM_ONE.md) is the one-page map.
+
 ## Use your model with FoundationModels
 
 `KitLanguageModel` adapts **chat bundles** to Apple's `LanguageModelSession`. The
@@ -294,7 +315,7 @@ Text & chat
 
 Typed decisions — the System One shape, on device
 
-- `Examples/Decide` — a text and a typed question in, the answer with its probability out, nothing generated. Ten whole uses from the same sources on iPhone and Mac: copy an email and a checkout form fills at once, a contract read as a checklist, a folder sorted by what needs you, a car the model drives lane by lane, a CSV with the columns you ask for, a command guard for a coding agent (also a Claude Code hook), tool results dropped from an agent's context by relevance, tone / intent / emoji as you type (`swift run decide-cli` is the headless door)
+- `Examples/Decide` — a text and a typed question in, the answer with its probability out, nothing generated. Ten whole uses from the same sources on iPhone and Mac: copy an email and a checkout form fills at once, a contract read as a checklist, a folder sorted by what needs you, a car the model drives lane by lane, a CSV with the columns you ask for, a command guard for a coding agent (also a Claude Code hook), tool results dropped from an agent's context by relevance, tone / intent / emoji as you type (`swift run decide-cli` is the headless door; `decide-cli serve` is a `/v1/systemone` endpoint for a client written for the hosted API)
 
 Vision
 

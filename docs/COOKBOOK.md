@@ -161,6 +161,22 @@ once, a contract read once and answered as a checklist, a folder sorted with wha
 first, a passage reranker, a speech gate — on a Mac and on an iPhone from the same sources,
 with two Shortcuts actions on the side.
 
+**Your existing System One client, on this machine.** `decide-cli serve` (in `Examples/Decide`)
+answers `POST /v1/systemone` in the hosted API's request and answer forms over a catalog
+model; point the client's base URL at `http://127.0.0.1:8090` and nothing else changes. The
+codec is `SystemOne.request(from:)` / `SystemOne.response(model:answers:)` in `CoreAIKit`,
+for an app that wants to take the same JSON straight from a client or a file:
+
+```swift
+let request = try SystemOne.request(from: body)                     // state, questions in request order
+let prefilled = try await decider.prefill(request.state)
+var answers: [(id: String, question: Decision.Question, answer: Decision.Answer)] = []
+for (id, question) in request.questions {
+    answers.append((id, question, try await prefilled.decide(question)))
+}
+let json = SystemOne.response(model: "minicpm5-2b", answers: answers).dumps()
+```
+
 **A model trained for this.** `decider-0.8b` (catalog kind `decision`) is not a chat model:
 it was fine-tuned to answer exactly these typed questions at an answer slot, and the kit
 renders it in the plain form it was trained on (`Decision.Format.decider`, chosen from the
