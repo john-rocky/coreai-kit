@@ -357,6 +357,20 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
                 ],
                 engine: "pipelined"),
+            // ── OpenThai-SystemOne: a slot-head decision model (Thai + English) — the LM head
+            //    replaced by a 256-way head read at a control token, so a choice may list 255
+            //    options and every answer carries an abstain probability. The bundle's own
+            //    metadata declares the head; `format` names the readout for the catalog's sake.
+            //    Ships to both platforms like decider-0.8b (1.0 GB int8; the phone number is
+            //    still to be taken). ──
+            CatalogEntry(
+                id: "openthai-systemone", name: "OpenThai-SystemOne 0.8B",
+                repo: "mlboydaisuke/OpenThai-SystemOne-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
+                    "ios": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
+                ],
+                engine: "pipelined", format: "slot"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

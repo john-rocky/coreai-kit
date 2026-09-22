@@ -103,7 +103,8 @@ final class ModelCatalogTests: XCTestCase {
         let unpinned = shipped.models.map { entry in
             CatalogEntry(
                 id: entry.id, name: entry.name, repo: entry.repo, kind: entry.kind,
-                variants: entry.variants, thinking: entry.thinking, engine: entry.engine)
+                variants: entry.variants, thinking: entry.thinking, engine: entry.engine,
+                format: entry.format)
         }
         XCTAssertEqual(unpinned.map(\.id), ModelCatalog.builtinLiteral.models.map(\.id))
         for (shippedEntry, builtinEntry) in zip(unpinned, ModelCatalog.builtinLiteral.models) {

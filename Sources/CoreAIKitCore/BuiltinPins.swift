@@ -42,6 +42,7 @@ enum BuiltinPins {
         "nemotron-3-nano-4b": "0f9e01aa8d3f569be4b067a67ff7681591c235c4",
         "nemotron-3.5-asr-streaming-0.6b": "3900f995653d7541e196f320c148775fe1662f9e",
         "north-micro-vision": "d6e48e3c2eb26dd3ad29c9b58642a405d66f0d54",
+        "openthai-systemone": "e48583dab6c527fb87f47e074a5724a701c05600",
         "parakeet-tdt-0.6b-v3": "9532c145c12e82e10c2e486e7dada1d7722c5764",
         "qwen2.5-omni-3b-audio": "e9d17c408557574fe6076c426faa65cf6e295d6e",
         "qwen3-0.6b": "943eb6a4f967de53d7e1458d75deac0b68ac3d85",

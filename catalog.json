@@ -247,6 +247,25 @@
       "engine": "pipelined"
     },
     {
+      "id": "openthai-systemone",
+      "name": "OpenThai-SystemOne 0.8B",
+      "repo": "mlboydaisuke/OpenThai-SystemOne-CoreAI",
+      "revision": "e48583dab6c527fb87f47e074a5724a701c05600",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/openthai_systemone_decode_int8lin",
+          "sizeMB": 1019
+        },
+        "ios": {
+          "path": "gpu-pipelined/openthai_systemone_decode_int8lin",
+          "sizeMB": 1019
+        }
+      },
+      "engine": "pipelined",
+      "format": "slot"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",
