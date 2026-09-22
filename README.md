@@ -87,7 +87,7 @@ written for the hosted endpoint is switched by its base URL and nothing else cha
 ```bash
 brew install john-rocky/tap/systemone && systemone serve     # http://127.0.0.1:8090/v1/systemone
 brew services start systemone                                 # the same, kept running by launchd
-export SYSTEM_ONE_BASE_URL=http://127.0.0.1:8090              # your client's base-URL setting
+export TYPESAFE_BASE_URL=http://127.0.0.1:8090               # the official SDKs read this; other clients have their own base-URL setting
 ```
 
 `systemone` is one signed, notarized 21 MB binary with no Swift toolchain behind it. The first

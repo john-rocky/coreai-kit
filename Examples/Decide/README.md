@@ -52,7 +52,8 @@ endpoint is pointed at this one by its base URL and nothing else changes:
 swift run -c release decide-cli serve --model minicpm5-2b          # http://127.0.0.1:8090/v1/systemone
 clients/systemone.sh                                               # one request with curl
 python3 clients/systemone.py                                       # the same from Python, standard library only
-SYSTEM_ONE_BASE_URL=http://127.0.0.1:8090 python3 your_client.py   # a client library that takes a base URL
+TYPESAFE_BASE_URL=http://127.0.0.1:8090 TYPESAFE_API_KEY=local python3 your_client.py   # the official SDKs; other clients have a base-URL setting
+python3 conformance/check.py http://127.0.0.1:8090                 # 20 requests in the hosted forms, every answer's shape checked
 ```
 
 ```json
@@ -74,15 +75,24 @@ The state is prefilled once per request and every question rewinds to it; that r
 A third-party client library written for the hosted endpoint (`system-one` 0.1.0 on PyPI,
 `HTTPConfig(base_url=…)`) got its typed answers back from this server unchanged, 179 ms round
 trip for three questions.
+So did the official TypeSafe Python SDK (`typesafe-sdk` 0.7.1) with only `TYPESAFE_BASE_URL`
+set and any string as the key: 158–201 ms for three questions, `models.list()` included
+(2026-09-23); the JavaScript SDK reads the same variable.
 A structured `state` or `instructions` (an object or an array) is serialized the way Python's
 `json.dumps(…, ensure_ascii=False)` writes it, key order kept, so the model reads the bytes a
 Python client would have sent (`JSONValue` in the kit). `confidence` is 1 − normalised entropy
 of the distribution for a choice or a score and max(p, 1 − p) for a noul; probabilities are
 rounded to four decimals. One declared difference from the hosted API: a choice lists at most
 16 options here (the answer slots are single letters), so a longer list comes back as a 422
-that says so. `GET /v1/models` names the loaded model, `GET /health` answers `ok`, CORS is open
-so a page or a browser extension can call it, and `--host 0.0.0.0` serves the local network
-(a phone on the same Wi-Fi, another machine). The codec is public API (`SystemOne.request(from:)`,
+that says so. `GET /v1/models` lists the loaded model in the hosted form (`models`, each
+`name` / `description` / `release_date`, the pinned `revision` beside them; the OpenAI-style
+`data` list follows), `GET /health` answers `ok`, CORS is open so a page or a browser extension
+can call it, and `--host 0.0.0.0` serves the local network (a phone on the same Wi-Fi, another
+machine). `conformance/check.py <base_url>` is the same contract as a test: 20 requests —
+every shape above, the 16- and 17-option edges, structured state and instructions, a
+three-message chat as the state, four malformed requests — and the keys and types each
+answer must come back with; `cases.json` is the list, and any other `/v1/systemone` server
+can be run against it. The codec is public API (`SystemOne.request(from:)`,
 `SystemOne.response(model:answers:)`) for an app that wants to accept or emit the form itself.
 
 **The same decision as a hook.** `hooks/claude-code-guard.sh` is a Claude Code `PreToolUse`
@@ -246,11 +256,22 @@ the hands-off run — positive, sharing news, 😀; three decisions in 279 ms at
 Agreement with the published bf16 readout of the same models on the same 144 authored rows
 (SemIf's `authored144` fixture, its `direct` rendering byte for byte, its `evaluate.py` metric):
 
-| Model | Prompt tokens identical | Argmax agreement | max / mean \|Δp\| | Mean family balanced accuracy (kit) | Published bf16 |
-|---|---:|---:|---:|---:|---:|
-| MiniCPM5 2B int8 | 144/144 | 141/144 | 0.183 / 0.020 | 0.681 | 0.686 |
-| MiniCPM5 1B int8 | — | — | — | 0.513 | — |
-| Qwen3 0.6B 4-bit | 144/144 | 59/144 | 1.000 / 0.580 | 0.333 | 0.440 |
+| Model | Prompt tokens identical | Argmax agreement | max / mean \|Δp\| | Mean family balanced accuracy (kit) | Published bf16 | Accuracy | Brier | ECE (10 bins) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| MiniCPM5 2B int8 | 144/144 | 141/144 | 0.183 / 0.020 | 0.681 | 0.686 | 0.701 | 0.455 | 0.167 |
+| MiniCPM5 1B int8 | — | — | — | 0.513 | — | — | — | — |
+| Qwen3 0.6B 4-bit | 144/144 | 59/144 | 1.000 / 0.580 | 0.333 | 0.440 | — | — | — |
+| decider 0.8B int8, card temperature 1.03 | — (its own prompt form) | — | — | 0.753 | — | 0.771 | 0.296 | 0.061 |
+
+Brier is the multi-class score (sum over options of (p − 1[correct])², SemIf's definition),
+ECE the top-label expected calibration error over 10 equal-width bins, both from
+`decide-cli oracle` output through `conformance/calibration.py` (2026-09-23, the same Mac).
+Fitting one temperature on these 144 rows: `minicpm5-2b` 2.34 (ECE 0.167 → 0.078, Brier
+0.455 → 0.407, NLL 0.886 → 0.696; the argmax, so the accuracy, does not move);
+`decider-0.8b` ×0.84 on its card's 1.03 (ECE 0.061 → 0.032). Neither is applied: the chat
+model's readout stays raw and the decision model keeps its author's temperature, because a
+value fitted on one 144-row fixture is a measurement of that fixture. `TypedDecisions.Configuration.temperature`
+takes a temperature for an app that has fitted its own.
 
 So `minicpm5-2b` is the default: its int8 decisions track the fp32 model. The official 4-bit
 Qwen3 0.6B bundle does **not** — it answers the last option far too often — so use it for its

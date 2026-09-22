@@ -7,6 +7,19 @@ policy.
 
 ## [Unreleased]
 
+### Added
+
+- `Examples/Decide/conformance/` — `check.py <base_url>`: 20 requests in the hosted System One
+  forms and the shape each answer must come back in (types and keys), for this server or any
+  other that speaks the route; `calibration.py`: accuracy, NLL, Brier, top-label ECE and a
+  fitted temperature from `decide-cli oracle` output on SemIf's `authored144`.
+
+### Docs
+
+- `docs/SYSTEM_ONE.md`, `Examples/Decide/README.md`, README: the official TypeSafe SDKs
+  measured against the local server by base URL alone; other servers that speak the form;
+  the calibration table for `minicpm5-2b` and `decider-0.8b`.
+
 ## [0.6.0] — 2026-09-23
 
 The System One server as one signed, notarized binary: `brew install john-rocky/tap/systemone
