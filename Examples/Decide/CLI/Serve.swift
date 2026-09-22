@@ -9,7 +9,8 @@
 //
 // Routes: POST /v1/systemone (the decisions), GET /v1/models (what is loaded), GET /health.
 // One connection per request (Connection: close), CORS open so a page or a browser extension
-// can call it. The model answers one request at a time; the HTTP side accepts concurrently.
+// can call it. The model answers one request at a time (`DecisionQueue`); the HTTP side
+// accepts concurrently.
 // HTTP/1.1 over Network.framework, no dependency added to the kit.
 
 import CoreAIOps
@@ -73,6 +74,25 @@ enum ServeError: Error {
     case badRequest(String)
 }
 
+/// One decision at a time. `TypedDecisions` is an actor, but its calls await the engine
+/// twice (the rewind, then the scoring pass) and the actor lets another caller in at each
+/// await, so two concurrent requests would drive the engine at once (six concurrent calls on
+/// one instance come back with no logits, or crash inside the engine). Requests queue here
+/// and run in arrival order; the HTTP side still accepts them concurrently.
+actor DecisionQueue {
+    private var tail: Task<Void, Never> = Task {}
+
+    func run<T: Sendable>(_ operation: @Sendable @escaping () async throws -> T) async throws -> T {
+        let previous = tail
+        let task = Task { () throws -> T in
+            await previous.value
+            return try await operation()
+        }
+        tail = Task { _ = try? await task.value }
+        return try await task.value
+    }
+}
+
 /// NWConnection is not Sendable; the box lets the receive loop hand it to a task.
 final class ConnectionBox: @unchecked Sendable {
     let connection: NWConnection
@@ -84,6 +104,7 @@ final class SystemOneServer: @unchecked Sendable {
     let port: UInt16
     let modelID: String
     let decider: TypedDecisions
+    private let decisions = DecisionQueue()
     private let queue = DispatchQueue(label: "decide-cli.serve")
     private var listener: NWListener?
 
@@ -195,14 +216,16 @@ final class SystemOneServer: @unchecked Sendable {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: "\(error)"))
         }
         do {
-            let prefilled = try await decider.prefill(parsed.state)
-            var answers: [(id: String, question: Decision.Question, answer: Decision.Answer)] = []
-            for (id, question) in parsed.questions {
-                answers.append((id, question, try await prefilled.decide(question)))
+            let (response, tokens, milliseconds) = try await decisions.run { [decider, modelID] in
+                let prefilled = try await decider.prefill(parsed.state)
+                var answers: [(id: String, question: Decision.Question, answer: Decision.Answer)] = []
+                for (id, question) in parsed.questions {
+                    answers.append((id, question, try await prefilled.decide(question)))
+                }
+                let milliseconds = answers.map(\.answer.timing.milliseconds).reduce(0, +) + prefilled.timing.milliseconds
+                return (SystemOne.response(model: modelID, answers: answers), prefilled.tokens, milliseconds)
             }
-            let response = SystemOne.response(model: modelID, answers: answers)
-            let milliseconds = answers.map(\.answer.timing.milliseconds).reduce(0, +) + prefilled.timing.milliseconds
-            stderrPrint("POST \(SystemOne.path)  \(parsed.questions.count) question(s), state \(prefilled.tokens) tokens, \(fmt(milliseconds, 0)) ms")
+            stderrPrint("POST \(SystemOne.path)  \(parsed.questions.count) question(s), state \(tokens) tokens, \(fmt(milliseconds, 0)) ms")
             return .json(200, response)
         } catch let error as DecisionError {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.localizedDescription))
