@@ -86,18 +86,22 @@ jobs:
           (cd dist && zip -X -q "../$ASSET" systemone)
           xcrun notarytool submit "$ASSET" --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
             --wait --timeout 30m | tee notary.log
-          rm -f "$KEY"
           grep -q "status: Accepted" notary.log
-          # A bare executable takes no staple; Gatekeeper fetches the ticket. Assess it the
-          # way a user's Mac will, allowing the ticket a minute to become visible.
-          for i in 1 2 3 4 5 6; do
-            if spctl --assess --type execute --verbose=2 dist/systemone 2>&1 | tee spctl.log | grep -q "source=Notarized Developer ID"; then
-              break
-            fi
-            [ "$i" -lt 6 ] || { cat spctl.log; echo "::error::not assessed as Notarized Developer ID"; exit 1; }
-            sleep 10
-          done
-          cat spctl.log
+          # A bare executable takes no staple, and `spctl --assess --type execute` never passes
+          # one ("the code is valid but does not seem to be an app"), notarized or not. The
+          # proof is Apple's own record: the submission log says Accepted with no issues and
+          # its ticket names this binary's cdhash.
+          ID=$(sed -n 's/^ *id: //p' notary.log | head -1)
+          xcrun notarytool log "$ID" --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" > notary-log.json
+          rm -f "$KEY"
+          CDHASH=$(codesign -dvvv dist/systemone 2>&1 | sed -n 's/^CDHash=//p' | head -1)
+          python3 - "$CDHASH" <<'PY'
+          import json, sys
+          log = json.load(open("notary-log.json")); cd = sys.argv[1]
+          ticket = [t["cdhash"] for t in log.get("ticketContents") or []]
+          print("notary:", log["status"], "| issues:", log["issues"], "| ticket:", ticket, "| binary:", cd)
+          sys.exit(0 if log["status"] == "Accepted" and not log["issues"] and cd in ticket else 1)
+          PY
           shasum -a 256 "$ASSET" | tee "$ASSET.sha256"
 
       - name: Formula stanza
