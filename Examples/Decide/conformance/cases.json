@@ -1,0 +1,458 @@
+{
+ "about": "20 requests in the hosted System One forms and the answer shape each must come back in (types and keys, not values). Run: python3 check.py http://127.0.0.1:8090. $MODEL is replaced by --model or by the first model the server lists.",
+ "cases": [
+  {
+   "name": "noul_plain",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "is_urgent": {
+      "type": "noul",
+      "instructions": "Does this convey urgency?"
+     }
+    }
+   }
+  },
+  {
+   "name": "noul_with_criteria",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "is_urgent": {
+      "type": "noul",
+      "instructions": "Does this convey urgency?",
+      "criteria": {
+       "true": "explicitly time-sensitive",
+       "false": "no urgency expressed"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "choice_dict_3",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which queue should handle this?",
+      "criteria": {
+       "billing": "invoices, payments, refunds",
+       "technical": "bugs, outages",
+       "other": "everything else"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "choice_list_criteria",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which queue should handle this?",
+      "criteria": [
+       "billing",
+       "technical",
+       "other"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "choice_null_descriptions",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which queue should handle this?",
+      "criteria": {
+       "billing": null,
+       "technical": null,
+       "other": null
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "choice_two_options",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "kind": {
+      "type": "choice",
+      "instructions": "Is this a complaint or a question?",
+      "criteria": {
+       "complaint": "something went wrong",
+       "question": "asks how to do something"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "choice_sixteen_options",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "team": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": {
+       "team_01": "Team 01 handles queue 1",
+       "team_02": "Team 02 handles queue 2",
+       "team_03": "Team 03 handles queue 3",
+       "team_04": "Team 04 handles queue 4",
+       "team_05": "Team 05 handles queue 5",
+       "team_06": "Team 06 handles queue 6",
+       "team_07": "Team 07 handles queue 7",
+       "team_08": "Team 08 handles queue 8",
+       "team_09": "Team 09 handles queue 9",
+       "team_10": "Team 10 handles queue 10",
+       "team_11": "Team 11 handles queue 11",
+       "team_12": "Team 12 handles queue 12",
+       "team_13": "Team 13 handles queue 13",
+       "team_14": "Team 14 handles queue 14",
+       "team_15": "Team 15 handles queue 15",
+       "team_16": "Team 16 handles queue 16"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "score_two_levels",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "tone": {
+      "type": "score",
+      "instructions": "How calm is the writer?",
+      "criteria": [
+       "upset",
+       "calm"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "score_ten_levels",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "frustration": {
+      "type": "score",
+      "instructions": "How frustrated is the customer?",
+      "criteria": [
+       "0 none",
+       "1 minimal",
+       "2 slight",
+       "3 mild",
+       "4 moderate",
+       "5 notable",
+       "6 strong",
+       "7 severe",
+       "8 extreme",
+       "9 total"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "score_structured_levels",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "priority": {
+      "type": "score",
+      "instructions": "How should this be prioritised?",
+      "criteria": [
+       {
+        "level": "low",
+        "meaning": "answer within a week"
+       },
+       {
+        "level": "normal",
+        "meaning": "answer within a day"
+       },
+       {
+        "level": "high",
+        "meaning": "answer now"
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "three_questions_one_state",
+   "expect": 200,
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "is_urgent": {
+      "type": "noul",
+      "instructions": "Does this convey urgency?"
+     },
+     "queue": {
+      "type": "choice",
+      "instructions": "Which queue should handle this?",
+      "criteria": {
+       "billing": "invoices, payments, refunds",
+       "technical": "bugs, outages",
+       "other": "everything else"
+      }
+     },
+     "frustration": {
+      "type": "score",
+      "instructions": "How frustrated is the customer?",
+      "criteria": [
+       "calm",
+       "frustrated",
+       "very angry"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "structured_object_state",
+   "expect": 200,
+   "request": {
+    "model": "$MODEL",
+    "state": {
+     "ticket": 48213,
+     "plan": "Growth",
+     "subject": "payouts failing",
+     "body": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+     "opened": "2026-09-21T09:14:00Z"
+    },
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which queue should handle `body`?",
+      "criteria": {
+       "billing": "payments",
+       "technical": "bugs",
+       "other": "everything else"
+      }
+     },
+     "is_urgent": {
+      "type": "noul",
+      "instructions": "Does `body` convey urgency?"
+     }
+    }
+   }
+  },
+  {
+   "name": "chat_messages_array_state",
+   "expect": 200,
+   "request": {
+    "model": "$MODEL",
+    "state": [
+     {
+      "role": "user",
+      "content": "Can you refund my March invoice? It was charged twice."
+     },
+     {
+      "role": "assistant",
+      "content": "I can look into that. Which account?"
+     },
+     {
+      "role": "user",
+      "content": "The business one, ending 4471."
+     }
+    ],
+    "questions": {
+     "wants_refund": {
+      "type": "noul",
+      "instructions": "Does the user ask for a refund?"
+     },
+     "resolved": {
+      "type": "noul",
+      "instructions": "Has the request been resolved in this conversation?"
+     }
+    }
+   }
+  },
+  {
+   "name": "structured_instructions",
+   "expect": 200,
+   "request": {
+    "state": "Resume: John Smith, Oakland, California; last employer Google; 6 years in payments infrastructure.",
+    "model": "$MODEL",
+    "questions": {
+     "same_person": {
+      "type": "noul",
+      "instructions": {
+       "potential_duplicate": {
+        "name": "John Smith",
+        "location": "Oakland, California",
+        "last_employer": "Google"
+       },
+       "question": "Is the resume for the same person as `potential_duplicate`?"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "unicode_state_and_option_keys",
+   "expect": 200,
+   "request": {
+    "state": "先週の請求が二重に引き落とされています。今日中に返金してください。",
+    "model": "$MODEL",
+    "questions": {
+     "担当": {
+      "type": "choice",
+      "instructions": "どの窓口が対応するべきか?",
+      "criteria": {
+       "請求 と 返金": "支払い・返金",
+       "技術 サポート": "不具合",
+       "その他": "それ以外"
+      }
+     },
+     "緊急": {
+      "type": "noul",
+      "instructions": "急いでいるか?"
+     }
+    }
+   }
+  },
+  {
+   "name": "long_state",
+   "expect": 200,
+   "request": {
+    "state": "Ticket #48213, opened Monday 09:14 by a customer on the Growth plan. Subject: payouts failing since Friday. Body: Every payout we scheduled since Friday evening shows as failed in the dashboard with the message 'bank rejected transfer'. Nothing changed on our side; the bank account is the same one we have used for two years and the bank confirms there is no block. We have 41 sellers waiting for their money and three of them have already emailed us asking whether the marketplace is shutting down. We need this fixed today or we will have to move payouts to another provider. First reply, Monday 10:02, support agent: Thanks for the report, I can see the failed transfers on our side and have escalated to the payments team; I will update you within two hours. Second reply, Monday 12:40, support agent: The payments team found that a routing table update on Friday dropped your bank's identifier; the fix is being deployed and retried transfers should settle by end of day. Customer, Monday 13:05: Thank you. Please confirm once the retries have gone through, and let us know whether the sellers will see the original date or today's date on their statements. Also, are we going to be charged the transfer fee twice? Third reply, Monday 17:48, support agent: All 41 transfers were retried and accepted by the bank at 17:20; statements will show today's date; no second fee was charged and we have credited a goodwill amount to your account. Customer, Tuesday 08:30: Confirmed, the money arrived. The sellers are relieved. We would still like a written explanation of what happened for our own records, and a heads-up in advance next time a routing change is planned.",
+    "model": "$MODEL",
+    "questions": {
+     "resolved": {
+      "type": "noul",
+      "instructions": "Was the customer's problem resolved by the end of the thread?"
+     },
+     "root_cause": {
+      "type": "choice",
+      "instructions": "What caused the failures?",
+      "criteria": {
+       "customer_bank": "the customer's bank blocked transfers",
+       "provider_change": "a change on the provider's side",
+       "unknown": "the thread does not say"
+      }
+     },
+     "sentiment_end": {
+      "type": "score",
+      "instructions": "How does the customer feel in the last message?",
+      "criteria": [
+       "angry",
+       "neutral",
+       "relieved"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "choice_17_options_limit",
+   "expect": "4xx|200",
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "team": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": {
+       "team_01": "Team 01 handles queue 1",
+       "team_02": "Team 02 handles queue 2",
+       "team_03": "Team 03 handles queue 3",
+       "team_04": "Team 04 handles queue 4",
+       "team_05": "Team 05 handles queue 5",
+       "team_06": "Team 06 handles queue 6",
+       "team_07": "Team 07 handles queue 7",
+       "team_08": "Team 08 handles queue 8",
+       "team_09": "Team 09 handles queue 9",
+       "team_10": "Team 10 handles queue 10",
+       "team_11": "Team 11 handles queue 11",
+       "team_12": "Team 12 handles queue 12",
+       "team_13": "Team 13 handles queue 13",
+       "team_14": "Team 14 handles queue 14",
+       "team_15": "Team 15 handles queue 15",
+       "team_16": "Team 16 handles queue 16",
+       "team_17": "Team 17 handles queue 17"
+      }
+     }
+    }
+   },
+   "note": "A letter readout lists 16 options and answers 422 above that; a slot-head model (up to 255) answers 200. Either is conformant; the checker reports which."
+  },
+  {
+   "name": "error_unknown_question_type",
+   "expect": "4xx",
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {
+     "q": {
+      "type": "rank",
+      "instructions": "Rank these",
+      "criteria": [
+       "a",
+       "b"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "error_empty_questions",
+   "expect": "4xx",
+   "request": {
+    "state": "Help! My payouts have been failing for 3 days and nobody has answered my two emails.",
+    "model": "$MODEL",
+    "questions": {}
+   }
+  },
+  {
+   "name": "error_missing_state",
+   "expect": "4xx",
+   "request": {
+    "model": "$MODEL",
+    "questions": {
+     "is_urgent": {
+      "type": "noul",
+      "instructions": "Does this convey urgency?"
+     }
+    }
+   }
+  }
+ ]
+}

@@ -41,11 +41,19 @@ answers `/health` 0.7–4.6 s later (M4 Max, depending on how much of the model 
 file cache). From a checkout the same
 server is `swift run -c release systemone serve`,
 or `decide-cli serve` in `Examples/Decide`.
-A client library written for the hosted endpoint is pointed at this one by its base URL
-(`system-one` on PyPI: `HTTPConfig(base_url="http://127.0.0.1:8090", model="minicpm5-2b")`;
-clients that read `TYPESAFE_BASE_URL` or `SYSTEM_ONE_BASE_URL`: set it) and nothing else
-changes. The request and answer forms, and the one declared difference (16 options per
-choice, not 255), are in [`Examples/Decide/README.md`](../Examples/Decide/README.md#the-same-endpoint-your-client-already-speaks).
+A client written for the hosted endpoint is pointed at this one by its base URL and nothing
+else changes. Measured 2026-09-23 against this server: the official TypeSafe Python SDK
+(`typesafe-sdk` 0.7.1) with `TYPESAFE_BASE_URL=http://127.0.0.1:8090` and any string as
+`TYPESAFE_API_KEY` (or `TypeSafeClient(base_url:)`) got its typed answers back unchanged,
+158–201 ms for three questions; the JavaScript SDK takes the same variable or `baseURL`; the
+`system-one` SDK on PyPI takes `HTTPConfig(base_url=…)`, 179 ms for three. `GET /v1/models`
+answers in the hosted list form (`models`, each `name` / `description` / `release_date`), so
+a client's model listing works too. The request and answer forms, and the one declared
+difference (16 options per choice, not 255), are in
+[`Examples/Decide/README.md`](../Examples/Decide/README.md#the-same-endpoint-your-client-already-speaks);
+[`Examples/Decide/conformance/check.py`](../Examples/Decide/conformance/check.py)` <base_url>`
+sends 20 requests in those forms and checks every answer's shape, against this server or any
+other that speaks the route.
 
 ## From a coding agent
 
@@ -101,6 +109,14 @@ letters A–P under its chat template, is token-identical to its author's compil
 40 choice and yes/no fixture rows (max |Δp| 0.0055) and scores 0.906 on the same 144 rows, at
 about 2 s per decision on the Mac.
 
+What the probabilities are worth, on the same 144 rows (`conformance/calibration.py`, top-label
+ECE over 10 equal-width bins, multi-class Brier): `minicpm5-2b` as reported is over-confident,
+ECE 0.167 and Brier 0.455 at accuracy 0.701; one temperature fitted on those rows (2.34) takes
+the ECE to 0.078. `decider-0.8b` at its card's temperature: accuracy 0.771, balanced 0.753,
+ECE 0.061, Brier 0.296. The kit applies no fitted temperature of its own
+(`TypedDecisions.Configuration.temperature` takes one); the table is in
+[`Examples/Decide/README.md`](../Examples/Decide/README.md#measured).
+
 The shape of the question decides more than the model. On MiniCPM5 2B, measured on the
 screens' samples:
 
@@ -153,3 +169,7 @@ Clips of each on the Mac and on the iPhone are in
 - `Examples/Decide/CLI` — `decide-cli ask | bench | oracle | parity | filter | serve | mcp`.
 - Android: the same request and answer forms over LiteRT decision encoders are in
   [hfmodels-android](https://github.com/john-rocky/hfmodels-android) (typed-decisions branch).
+- Other servers that speak the same route, for a client that switches between them by base
+  URL: [jev-rs](https://github.com/yijunyu/jev-rs) (Rust, over `llama-server`),
+  [System One Lite](https://github.com/snellingio/system-one) (MLX); the vendor-neutral
+  [system-one](https://github.com/asynq-io/system-one) SDK reaches any of them.
