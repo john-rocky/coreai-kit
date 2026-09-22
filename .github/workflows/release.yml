@@ -51,7 +51,7 @@ jobs:
           fi
           printf 'let systemoneVersion = "%s"\n' "$VERSION" > Sources/systemone/Version.swift
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "zip=systemone-$VERSION-macos-arm64.zip" >> "$GITHUB_OUTPUT"
+          echo "asset=systemone-$VERSION-macos-arm64.zip" >> "$GITHUB_OUTPUT"
 
       - name: Build
         # Serialized on the machine-wide GPU lock like every other job here: the runner is
@@ -72,7 +72,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          ZIP: ${{ steps.version.outputs.zip }}
+          ASSET: ${{ steps.version.outputs.asset }}
         run: |
           set -o pipefail
           if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ]; then
@@ -81,8 +81,10 @@ jobs:
           fi
           KEY=$(mktemp -t asc-key)
           printf '%s\n' "$ASC_KEY_P8" > "$KEY"
-          (cd dist && zip -X -q "../$ZIP" systemone)
-          xcrun notarytool submit "$ZIP" --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
+          # Not ZIP: Info-ZIP's zip reads an environment variable of that name as options and
+          # the archive lands somewhere else (the first rehearsal, 2026-09-23).
+          (cd dist && zip -X -q "../$ASSET" systemone)
+          xcrun notarytool submit "$ASSET" --key "$KEY" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
             --wait --timeout 30m | tee notary.log
           rm -f "$KEY"
           grep -q "status: Accepted" notary.log
@@ -96,21 +98,21 @@ jobs:
             sleep 10
           done
           cat spctl.log
-          shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
+          shasum -a 256 "$ASSET" | tee "$ASSET.sha256"
 
       - name: Formula stanza
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          ZIP: ${{ steps.version.outputs.zip }}
+          ASSET: ${{ steps.version.outputs.asset }}
         run: |
-          SHA=$(cut -d' ' -f1 "$ZIP.sha256")
+          SHA=$(cut -d' ' -f1 "$ASSET.sha256")
           {
             echo "## systemone $VERSION"
             echo
-            echo "Binary $(stat -f %z dist/systemone) bytes, zip $(stat -f %z "$ZIP") bytes."
+            echo "Binary $(stat -f %z dist/systemone) bytes, zip $(stat -f %z "$ASSET") bytes."
             echo
             echo '```ruby'
-            echo "  url \"https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/$ZIP\""
+            echo "  url \"https://github.com/${GITHUB_REPOSITORY}/releases/download/$VERSION/$ASSET\""
             echo "  sha256 \"$SHA\""
             echo "  version \"$VERSION\""
             echo '```'
@@ -118,10 +120,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.version.outputs.zip }}
+          name: ${{ steps.version.outputs.asset }}
           path: |
-            ${{ steps.version.outputs.zip }}
-            ${{ steps.version.outputs.zip }}.sha256
+            ${{ steps.version.outputs.asset }}
+            ${{ steps.version.outputs.asset }}.sha256
           if-no-files-found: error
 
       - name: Attach to the tag's GitHub Release
@@ -129,7 +131,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
-          ZIP: ${{ steps.version.outputs.zip }}
+          ASSET: ${{ steps.version.outputs.asset }}
         # The release notes are written by a person (the release PR carries them); when the
         # tag arrives before the release exists, a release is created with generated notes
         # so the asset has a home, and the notes are edited afterwards.
@@ -137,4 +139,4 @@ jobs:
           if ! gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --title "$VERSION" --generate-notes --verify-tag
           fi
-          gh release upload "$VERSION" "$ZIP" "$ZIP.sha256" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$VERSION" "$ASSET" "$ASSET.sha256" --repo "$GITHUB_REPOSITORY" --clobber
