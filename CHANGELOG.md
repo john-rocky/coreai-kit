@@ -33,15 +33,15 @@ policy.
   probabilities are checked by `decide-cli parity`: on the 43 rows the kit can list (the
   255-option row is beyond its 16), token ids, answer slots and argmax all 43/43, max |Δp|
   0.0088 / mean 0.0009 against the author's fp32 readout (int8 bundle, M4 Max, 2026-09-22).
-- `Examples/Decide` grows three screens that run the same `TypedDecisions` on a Mac as on an
-  iPhone: **Checklist** (one document prefilled once, a list of typed questions answered
-  against it — `noul:` / `choice:` / `score:` lines), **Sorter** (a folder of files read once
-  each and asked which named folder they belong in and what they need from you; Apply moves
-  them), a **Watch** mode on the clipboard screen that decides every new copy as it lands
-  (on the Mac the verdict sits in the menu bar), and **Form** (copy anywhere and the matching
-  field of a checkout form fills itself; a secret is refused). `decide-cli` gains `filter` (one decision per
-  stdin line — a semantic grep) and `parity`; the app takes `-autoplay <screen>` for a
-  hands-off run.
+- `Examples/Decide` becomes five whole uses that run the same `TypedDecisions` on a Mac as on
+  an iPhone: **Autofill** (copy an email and every field of a checkout form fills at once —
+  the text prefilled once, one choice-among-lines question per field), **Checklist** (a
+  contract read once, a list of verdicts to `noul:` / `choice:` / `score:` lines), **Sorter**
+  (a folder read once per file: what needs you, then everything filed; Move files does it),
+  plus the passage reranker and the speech gate. The clipboard screen folds into Autofill;
+  the two Shortcuts actions stay. `decide-cli` gains `filter` (one decision per stdin line — a
+  semantic grep) and `parity`; the app takes `-autoplay <screen>` (`-trigger`, `-log`, `-feed`)
+  for hands-off runs and recordings.
 
 ### Changed
 

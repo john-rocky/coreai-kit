@@ -32,6 +32,15 @@ final class ChecklistModel {
     var documentName = "sample lease"
 
     var totalMilliseconds: Double { items.map(\.answer.timing.milliseconds).reduce(0, +) }
+
+    /// The level's own words for a score answer, so the list reads "60 days or more", not "level 2".
+    func levelName(for score: Decision.Score) -> String? {
+        for item in items {
+            if case .score(let levels) = item.question.kind, levels.count == score.probabilities.count,
+                item.answer.score == score.value { return levels[score.level] }
+        }
+        return nil
+    }
     var medianMilliseconds: Double { median(items.map(\.answer.timing.milliseconds)) }
 
     /// One question per line: `noul: question`, `choice: question | option | option…`,
@@ -183,7 +192,7 @@ final class ChecklistModel {
         noul: Is the security deposit refundable?
         noul: Can the landlord raise the rent during the term?
         noul: Is renter's insurance required?
-        noul: Is smoking allowed inside the apartment?
+        choice: What does the lease say about smoking inside the apartment? | it is allowed | it is not allowed | it is not mentioned
         choice: Who pays to repair the dishwasher? | tenant | landlord | shared
         choice: How is rent paid? | bank transfer | cash | check | not stated
         choice: How long is the lease term? | month to month | 6 months | 12 months | 24 months or longer

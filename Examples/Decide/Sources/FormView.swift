@@ -6,74 +6,67 @@ struct FormView: View {
     @Environment(DecideRuntime.self) private var runtime
     @Environment(Autoplay.self) private var autoplay
     @State private var model = FormModel()
+    @State private var showSample = false
 
     var body: some View {
         VStack(spacing: 10) {
             ScreenHeader(
-                title: "Form",
-                subtitle: "Copy anywhere — the matching field of the form fills itself; a secret is refused")
-            HStack {
-                Toggle("Watch", isOn: Binding(
+                title: "Checkout autofill",
+                subtitle: "Copy an email or a message — every field fills at once, on device")
+            HStack(spacing: 10) {
+                Toggle("Watch the clipboard", isOn: Binding(
                     get: { model.watching },
                     set: { model.setWatching($0, runtime: runtime) }))
                     .toggleStyle(.switch)
                     .disabled(!runtime.isReady)
-                Button("Clear form") { model.reset() }
+                Button("Paste") { model.paste(runtime) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!runtime.isReady || model.working)
+                Button("Sample email") { model.useSample(runtime) }
+                    .disabled(!runtime.isReady || model.working)
+                Button("Clear") { model.clear() }
                 Spacer()
-                Text("\(model.filledCount) of \(FormModel.fields.count) fields")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Copy from here (or from any app)").font(.caption).foregroundStyle(.secondary)
-                    ScrollView {
-                        Text(highlighted(model.source, model.highlight))
-                            .font(.callout)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                    }
-                    .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.4)))
+                if model.decisions > 0 {
+                    Text("\(model.filledCount) of \(FormModel.fields.count) fields · \(model.decisions) decisions · \(ms(model.milliseconds))")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                .frame(width: 320)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("The form").font(.caption).foregroundStyle(.secondary)
-                    FormWebView(values: model.values, version: model.fillVersion)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .frame(maxWidth: .infinity)
             }
-            .frame(minHeight: 440)
+            FormWebView(values: model.values, version: model.fillVersion)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(minHeight: 430)
             Text(model.status).font(.callout).foregroundStyle(.secondary)
-            List(model.events) { event in
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: event.refused ? "hand.raised.fill" : (event.field != nil ? "arrow.right.circle.fill" : "minus.circle"))
-                        .foregroundStyle(event.refused ? .red : (event.field != nil ? .green : .secondary))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(event.line).font(.callout.bold())
-                        Text(event.text.replacingOccurrences(of: "\n", with: " ")).font(.caption).lineLimit(1)
-                        Text("\(ms(event.milliseconds)) · \(event.confidence.formatted(.number.precision(.fractionLength(2))))")
-                            .font(.caption).foregroundStyle(.secondary)
+            if !model.fills.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(model.fills) { fill in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(fill.label).font(.caption.bold()).frame(width: 110, alignment: .leading)
+                            Text("← \(fill.sourceLine)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Spacer()
+                            Text(fill.confidence.formatted(.number.precision(.fractionLength(2))))
+                                .font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                        }
                     }
                 }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.3)))
             }
-            .frame(minHeight: 90)
+            DisclosureGroup("The sample email (what “Sample email” copies)", isExpanded: $showSample) {
+                Text(FormModel.sampleEmail).font(.caption).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(6)
+            }
+            .font(.caption)
         }
         .padding()
         .task {
-            await autoplay.run(.form, runtime: runtime) {
-                model.reset()
-                model.setWatching(true, runtime: runtime)
+            await autoplay.run(.form, runtime: runtime, status: { model.status }) {
+                model.clear()
+                if autoplay.feed {
+                    await model.fill(from: FormModel.sampleEmail, runtime: runtime)
+                } else {
+                    model.setWatching(true, runtime: runtime)
+                }
             }
         }
-    }
-
-    private func highlighted(_ source: String, _ range: Range<String.Index>?) -> AttributedString {
-        var text = AttributedString(source)
-        if let range, let lower = AttributedString.Index(range.lowerBound, within: text),
-            let upper = AttributedString.Index(range.upperBound, within: text) {
-            text[lower..<upper].backgroundColor = .yellow.opacity(0.45)
-        }
-        return text
     }
 }
 

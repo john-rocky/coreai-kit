@@ -35,7 +35,7 @@ struct SpeechGateView: View {
                         Text(utterance.text)
                     }
                     ProbabilityBar(value: utterance.passProbability, tint: utterance.passes ? .green : .gray)
-                    Text("P(for the assistant) \(utterance.passProbability.formatted(.number.precision(.fractionLength(2)))) · \(utterance.answer.timingLine)")
+                    Text("P(for the assistant) \(utterance.passProbability.formatted(.number.precision(.fractionLength(2)))) · \(ms(utterance.answer.timing.milliseconds))")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 2)
@@ -43,7 +43,7 @@ struct SpeechGateView: View {
         }
         .padding()
         .task {
-            await autoplay.run(.speech, runtime: runtime) { model.runSample(runtime) }
+            await autoplay.run(.speech, runtime: runtime, status: { model.status }) { model.runSample(runtime) }
         }
     }
 }
