@@ -7,6 +7,15 @@ policy.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-23
+
+The System One server as one signed, notarized binary: `brew install john-rocky/tap/systemone
+&& systemone serve`, and `brew services start systemone` to keep it running. `SystemOneServer`
+and `DecisionQueue` become public API, and `GET /v1/models` answers in the hosted list form
+(the official TypeSafe SDK's `models.list()` reads it). A minor: API added, one example file
+removed; `exact: "0.5.0"` resolvers move to `0.6.0`. Built and gated on macOS 27.0 (26A428)
+and Xcode 27 (27A266a); the `coreai-models` runtime pin stays 0.2.4-zoo.
+
 ### Added
 
 - **`systemone` — the System One server without a Swift toolchain.** A root executable

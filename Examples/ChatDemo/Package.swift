@@ -8,7 +8,7 @@ let package = Package(
     name: "ChatDemo",
     platforms: [.macOS("27.0")],
     dependencies: [
-        .package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.5.0")
+        .package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.6.0")
     ],
     targets: [
         .executableTarget(
