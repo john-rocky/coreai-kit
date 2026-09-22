@@ -156,10 +156,10 @@ as fast at lower accuracy. Decisions need the logits at the answer slot, so the 
 on the sequential engine (or the static-shape engine for a Neural Engine bundle) rather
 than the pipelined one; recurrent hybrids (Qwen3.5, LFM2.5, Granite 4) cannot rewind, so on
 them every decision re-prefills its whole prompt — correct, and `timing.reusedTokens` says 0.
-`Examples/Decide` runs the three shapes as a speech gate, a clipboard check with Shortcuts
-actions (and a watch mode that decides every new copy), a passage reranker, a checklist over
-one document, a folder sorter, and a form that fills its own fields from whatever you copy,
-each with its measured milliseconds — on a Mac and on an iPhone from the same sources.
+`Examples/Decide` runs the shapes as whole uses — copy an email and a checkout form fills at
+once, a contract read once and answered as a checklist, a folder sorted with what needs you
+first, a passage reranker, a speech gate — on a Mac and on an iPhone from the same sources,
+with two Shortcuts actions on the side.
 
 **A model trained for this.** `decider-0.8b` (catalog kind `decision`) is not a chat model:
 it was fine-tuned to answer exactly these typed questions at an answer slot, and the kit

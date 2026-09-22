@@ -1,87 +1,113 @@
 import CoreAIOps
 import SwiftUI
 
+/// A folder sorted by meaning: what needs you first, then everything filed by folder.
+/// Folder names and the "what it needs" question sit behind a disclosure.
 struct SorterView: View {
     @Environment(DecideRuntime.self) private var runtime
     @Environment(Autoplay.self) private var autoplay
     @State private var model = SorterModel()
     @State private var importing = false
+    @State private var editing = false
+
+    private var needsYou: [SorterModel.Entry] { model.entries.filter(\.needsYou) }
+    private var filed: [(folder: String, files: [SorterModel.Entry])] {
+        let groups = Dictionary(grouping: model.entries.filter { $0.bin != nil && !$0.needsYou }) { $0.chosen ?? "" }
+        return model.bins.compactMap { bin in
+            guard let files = groups[bin.name], !files.isEmpty else { return nil }
+            return (bin.name, files)
+        }
+    }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             ScreenHeader(
-                title: "Sorter",
-                subtitle: "Every file read once, two decisions each: which folder, and does it need you")
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Folders (one per line: name: what goes in it)").font(.caption).foregroundStyle(.secondary)
-                TextEditor(text: $model.binsText)
-                    .font(.callout.monospaced())
-                    .frame(minHeight: 60, maxHeight: 76)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("What it needs from you (question | nothing | ask | ask…)").font(.caption).foregroundStyle(.secondary)
-                TextField("Need question", text: $model.needText, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.callout)
-            }
-            HStack {
+                title: "Sort a folder",
+                subtitle: "Every file read once — which folder it belongs in, and whether it needs you")
+            HStack(spacing: 10) {
                 Button("Open folder…") { importing = true }
                 Button("Sample folder") { model.makeSampleFolder() }
+                Button(editing ? "Hide folders" : "Folders…") { editing.toggle() }
                 Spacer()
                 Button("Sort") { model.sort(runtime) }
                     .buttonStyle(.borderedProminent)
                     .disabled(model.working || model.entries.isEmpty)
-                Button("Apply") { model.apply() }
+                Button("Move files") { model.apply() }
                     .disabled(model.working || model.sorted == 0 || model.applied)
             }
             .disabled(model.working)
             .fileImporter(isPresented: $importing, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result { model.open(url) }
             }
-            if let folder = model.folder {
-                Text(folder.path(percentEncoded: false)).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+            if editing {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Folders (one per line: name: what goes in it)").font(.caption).foregroundStyle(.secondary)
+                    TextEditor(text: $model.binsText).font(.callout.monospaced())
+                        .frame(height: 76)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+                    Text("What it needs from you (question | nothing | ask | ask…)").font(.caption).foregroundStyle(.secondary)
+                    TextField("Need question", text: $model.needText, axis: .vertical)
+                        .textFieldStyle(.roundedBorder).font(.callout)
+                }
             }
-            Text(model.status).font(.callout).foregroundStyle(.secondary)
-            List(model.entries) { entry in
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: entry.needsYou ? "exclamationmark.circle.fill" : "doc.text")
-                        .foregroundStyle(entry.needsYou ? .orange : .secondary)
-                        .frame(width: 18)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack {
-                            Text(entry.name).font(.callout.bold())
-                            Spacer()
-                            if let chosen = entry.chosen, let bin = entry.bin {
-                                Text(chosen)
-                                    .font(.caption.bold())
+            HStack {
+                if let folder = model.folder {
+                    Text(folder.lastPathComponent).font(.caption.bold())
+                }
+                Text(model.status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                if model.sorted > 0 {
+                    Text("\(model.entries.count) files · \(model.entries.count * 2) decisions · \(ms(model.totalMilliseconds))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            List {
+                if !needsYou.isEmpty {
+                    Section("Needs you (\(needsYou.count))") {
+                        ForEach(needsYou) { entry in
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+                                Text(entry.name).font(.body)
+                                Spacer()
+                                Text(entry.needLabel ?? "").font(.caption).foregroundStyle(.orange)
+                                Text(entry.chosen ?? "").font(.caption.bold())
                                     .padding(.horizontal, 8).padding(.vertical, 2)
                                     .background(Capsule().fill(.blue.opacity(0.15)))
-                                Text(bin.confidence.formatted(.number.precision(.fractionLength(2))))
-                                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                            }
-                        }
-                        Text(entry.excerpt.replacingOccurrences(of: "\n", with: " "))
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                        if let need = entry.need, let label = entry.needLabel {
-                            HStack {
-                                Text(entry.needsYou ? "needs you: \(label)" : "nothing to do")
-                                    .font(.caption).foregroundStyle(entry.needsYou ? .orange : .secondary)
-                                    .lineLimit(1)
-                                ProbabilityBar(value: need.confidence, tint: entry.needsYou ? .orange : .gray)
-                                    .frame(width: 60)
-                                Text("\(ms(entry.milliseconds)) for 2 · \(need.timing.reusedTokens) tokens reused")
-                                    .font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
-                .padding(.vertical, 2)
+                ForEach(filed, id: \.folder) { group in
+                    Section("\(group.folder) (\(group.files.count))") {
+                        ForEach(group.files) { entry in
+                            HStack(spacing: 8) {
+                                Image(systemName: "doc.text").foregroundStyle(.secondary)
+                                Text(entry.name).font(.body)
+                                Spacer()
+                                Text(entry.excerpt.replacingOccurrences(of: "\n", with: " "))
+                                    .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                                    .frame(maxWidth: 360, alignment: .trailing)
+                            }
+                        }
+                    }
+                }
+                if model.sorted == 0 {
+                    ForEach(model.entries) { entry in
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc").foregroundStyle(.secondary)
+                            Text(entry.name)
+                            Spacer()
+                            Text(entry.excerpt.replacingOccurrences(of: "\n", with: " "))
+                                .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                                .frame(maxWidth: 360, alignment: .trailing)
+                        }
+                    }
+                }
             }
         }
         .padding()
         .task {
-            await autoplay.run(.sorter, runtime: runtime) {
+            await autoplay.run(.sorter, runtime: runtime, status: { model.status }) {
                 model.makeSampleFolder()
                 try? await Task.sleep(for: .seconds(autoplay.delay))
                 model.sort(runtime)
