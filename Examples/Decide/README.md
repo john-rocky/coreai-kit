@@ -279,6 +279,32 @@ graph reads about 15 ms per token on the Mac and reuses nothing between question
 two-question workflow request took 2,069 and 1,540 ms for its 134- and 107-token rows, a
 SemIf row 1.96 s median. Mac only until an iPhone number exists (the bundle is 5.8 GB).
 
+**A calibrated decision model in plain text.** `qwen3.5-2b-decision` (catalog kind `decision`,
+`Decision.Format.decisionFunction`; chaoliangUNSW's Jev-Style-Qwen3.5-2B-Decision, a
+Qwen3.5-2B-Base fine-tune, English, Apache-2.0) keeps its LM head and answers at the letters
+` A`, ` B`, … (a leading space) after a plain-text prompt with no chat template: a fixed header,
+`[State]`, `[Question]`, `[Options]` as `A. …` lines, `Answer:`. Its calibration temperature is
+folded into the published weights, so the readout is a softmax at T = 1; its author reports ECE
+0.017 on 1,500 held-out examples and 82.3 % on five decision tasks (the author's numbers, not
+re-measured here). A yes/no is a choice over `yes` / `no`, a score a choice over its levels, up
+to 26 options. On the author's 58-row fixture (`decide-cli parity`, 2026-09-23; 34 choice rows
+with 2–16 options, 12 yes/no, 12 score with 2–10 levels) the kit's rows are token- and
+slot-identical to the author's and argmax-identical to the converted fp32 reference on 58/58,
+for both the int8 bundle (max |Δp| 0.0079, mean 0.0017) and the fp16 reference (0.0058 / 0.0008).
+On SemIf's 144 English rows, each rendered in the author's form, the same evaluator as the table
+above: mean family balanced accuracy 0.798 (int8), 872 ms median per decision. The author's own
+card example, a chipmaker news sentence over four sections, comes back Business 0.684 /
+Science/Technology 0.309 / World 0.005 / Sports 0.002 through the kit; the card quotes 0.70 /
+0.29 / 0.005 / 0.002 from MLX bf16. Speed on the Mac: a three-question request on that sentence
+(a choice, a yes/no, a five-level score) 817, 633 and 766 ms for its 82-, 73- and 88-token
+rows, 0 tokens reused; over the fixture 986 ms median per question, the two 1,500–2,000-token
+rows up to 13.6 s — a recurrent hybrid on a decode-only graph, about 10 ms per token, nothing
+shared between questions. The published MLX checkpoint is not in the Hugging Face layout (18
+convolution kernels transposed, 61 RMSNorm scales stored without their +1); the zoo's converter
+puts them back, proved against the author's MLX bf16 readout (58/58, max |Δp| 0.012), and the
+bundle is that converted checkpoint. 2.9 GB int8, the size of `qwen3.5-2b`, so it ships to
+iPhone too; no iPhone number yet.
+
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
 a short text leans *yes*: "is this what the purpose needs?" says yes to a phone number, a

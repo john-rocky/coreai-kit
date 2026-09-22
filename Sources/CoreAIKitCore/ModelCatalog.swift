@@ -383,6 +383,20 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-pipelined-b2/apus_openjev_v1_4b_decode_int8hu_block32_sym", sizeMB: 5504),
                 ],
                 engine: "pipelined", format: "sharedState"),
+            // ── Qwen3.5-2B-Decision: a calibrated plain-text decision model (English) read at
+            //    the space-prefixed letters after `Answer:` (`format: decisionFunction`); its
+            //    temperature is folded into the weights. Ships to both platforms like qwen3.5-2b
+            //    (the same 2.9 GB int8hu graph); no iPhone number yet. ──
+            CatalogEntry(
+                id: "qwen3.5-2b-decision", name: "Qwen3.5 2B Decision",
+                repo: "mlboydaisuke/Qwen3.5-2B-Decision-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 2905),
+                    "ios": .init(
+                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 2905),
+                ],
+                engine: "pipelined", format: "decisionFunction"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

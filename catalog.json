@@ -281,6 +281,25 @@
       "format": "sharedState"
     },
     {
+      "id": "qwen3.5-2b-decision",
+      "name": "Qwen3.5 2B Decision",
+      "repo": "mlboydaisuke/Qwen3.5-2B-Decision-CoreAI",
+      "revision": "3b79912057db40be51697dfdaa433d6cb436b409",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym",
+          "sizeMB": 2905
+        },
+        "ios": {
+          "path": "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym",
+          "sizeMB": 2905
+        }
+      },
+      "engine": "pipelined",
+      "format": "decisionFunction"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

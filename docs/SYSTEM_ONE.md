@@ -72,6 +72,10 @@ fixture rows (int8 max |Δp| 0.023) and scores 0.725 on SemIf's 144 English rows
 letters A–P under its chat template, is token-identical to its author's compiled prompts on the
 40 choice and yes/no fixture rows (max |Δp| 0.0055) and scores 0.906 on the same 144 rows, at
 about 2 s per decision on the Mac.
+`qwen3.5-2b-decision`, a Qwen3.5-2B decision model with its calibration folded into the weights and
+read at space-prefixed letters after a plain-text prompt, is token-identical to its author's rows and
+argmax-identical to its fp32 reference on all 58 fixture rows (int8 max |Δp| 0.0079) and scores 0.798
+on the same 144 rows, at about 1 s per decision on the Mac.
 
 The shape of the question decides more than the model. On MiniCPM5 2B, measured on the
 screens' samples:

@@ -324,7 +324,7 @@ Text & chat
 
 Typed decisions — the System One shape, on device
 
-- `Examples/Decide` — a text and a typed question in, the answer with its probability out, nothing generated; a chat model zero-shot (`minicpm5-2b`) or a model trained for decisions (`decider-0.8b`; `openthai-systemone` — Thai + English, up to 255 options, an abstain probability; `apus-openjev-v1-4b` — browser actions and workflow steps, English + Chinese, Mac). Ten whole uses from the same sources on iPhone and Mac: copy an email and a checkout form fills at once, a contract read as a checklist, a folder sorted by what needs you, a car the model drives lane by lane, a CSV with the columns you ask for, a command guard for a coding agent (also a Claude Code hook), tool results dropped from an agent's context by relevance, tone / intent / emoji as you type (`swift run decide-cli` is the headless door; `decide-cli serve` is a `/v1/systemone` endpoint for a client written for the hosted API)
+- `Examples/Decide` — a text and a typed question in, the answer with its probability out, nothing generated; a chat model zero-shot (`minicpm5-2b`) or a model trained for decisions (`decider-0.8b`; `openthai-systemone` — Thai + English, up to 255 options, an abstain probability; `apus-openjev-v1-4b` — browser actions and workflow steps, English + Chinese, Mac; `qwen3.5-2b-decision` — a calibrated 2B, English, plain-text prompt, iPhone-sized). Ten whole uses from the same sources on iPhone and Mac: copy an email and a checkout form fills at once, a contract read as a checklist, a folder sorted by what needs you, a car the model drives lane by lane, a CSV with the columns you ask for, a command guard for a coding agent (also a Claude Code hook), tool results dropped from an agent's context by relevance, tone / intent / emoji as you type (`swift run decide-cli` is the headless door; `decide-cli serve` is a `/v1/systemone` endpoint for a client written for the hosted API)
 
 Vision
 
@@ -369,7 +369,7 @@ See `docs/GETTING_STARTED.md`.
 ## How the catalog is verified — and how you re-check it yourself
 
 The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 64 catalog entries:
+this is *what was checked, by whom, and can you check it again.* All 65 catalog entries:
 
 - **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
   that were gated — never "whatever is on `main` today." CI re-checks every pin
