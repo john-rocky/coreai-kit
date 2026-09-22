@@ -251,11 +251,11 @@ the author's 50-row fixture (`decide-cli parity`, 2026-09-23, Thai, English and 
 rows of 2–16, 40 and 255 options): tokens, slots and argmax identical on 50/50 for both the
 int8 bundle (max |Δp| 0.0226 on one two-option row, mean 0.0009) and the fp16 reference
 (0.0051 / 0.0003). On SemIf's 144 English authored rows, its own form, the same evaluator as
-the table above: mean family balanced accuracy 0.725 (int8). Speed on the Mac: a 137-token
-Thai ticket's first question 170 ms, the two that share its prefix 40 and 65 ms; over the
-fixture's 50 rows, two to three questions per state, 354 ms median per question (the graph
-prefills one token at a time, and a question on a new state pays for the whole state), the
-255-option row 7.2 s. Two things to know: its author's API lays several questions in one
+the table above: mean family balanced accuracy 0.725 (int8). Speed on the Mac: a
+three-question Thai ticket 351, 316 and 429 ms for its 57-, 63- and 83-token rows; over the
+fixture's 50 rows 354 ms median per question; the 255-option row 7.2 s. Like `decider-0.8b`
+it is a decode-only graph on a recurrent hybrid, so every row is prefilled from its first
+token, one token at a time — nothing is reused between questions on the same state. Two things to know: its author's API lays several questions in one
 sequence and answers them in one pass, and those answers can differ from the one-question
 rows the kit sends (up to 0.375 on the fixture's requests) — the kit's rows equal the
 author's single-question API exactly; and Thai is cut the way the reference tokenizer cuts it

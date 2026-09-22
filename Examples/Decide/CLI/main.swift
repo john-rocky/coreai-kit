@@ -155,7 +155,15 @@ let id = modelID
 @MainActor func runAsk() async throws {
     guard let state, !questions.isEmpty else { fail(usage) }
     let asked = Dictionary(uniqueKeysWithValues: questions)
-    let answers = try await decide(state: state, questions: asked, model: id, downloadProgress: progress)
+    // `--bundle` must reach every command: the QuickStart snippet only knows catalog ids.
+    let answers: [String: Decision.Answer]
+    if bundlePath != nil {
+        let decider = try await loadDecider()
+        stderrPrint("model: \(id) (\(await decider.modelName))   format: \(decider.format.rawValue)")
+        answers = try await decider.decide(state, asked)
+    } else {
+        answers = try await decide(state: state, questions: asked, model: id, downloadProgress: progress)
+    }
     for (key, _) in questions {
         print("\(key): \(describe(answers[key]!))")
     }
