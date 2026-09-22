@@ -15,8 +15,11 @@ a["topic"]?.choice    // "delivery"
 a["urgent"]?.score    // expected level, 0…2
 ```
 
-Five screens, one loaded model, each one a whole use: one action, the complete result. The
-same sources build for the Mac and for the iPhone:
+Ten screens, one loaded model, each one a whole use: one action, the complete result. The
+same sources build for the Mac and for the iPhone. The last five are the shapes the
+most-viewed System One posts of September 2026 use — a game driven by the model, bulk
+classification of rows, a natural-language permission gate for a coding agent, context
+compression by relevance, as-you-type reading — with the model on the device:
 
 | Screen | What you do → what you get | Shape |
 |---|---|---|
@@ -25,9 +28,21 @@ same sources build for the Mac and for the iPhone:
 | **Sorter** | Open a folder → what needs you first (a payment, a reply by a date), then everything filed by folder; **Move files** does it. Every file read once, two decisions each. | choice + choice |
 | **Search** | Query × passages: one decision per passage, ranked by its probability — a reranker made of a chat model, no index. | noul or score |
 | **Speech gate** | Record, split into utterances, transcribe each on device (Apple's recognizer, no download), and ask one question per utterance: is this a request for the assistant, or a remark? Only the ones that pass would go to a language model. | choice |
+| **Drive** | Press Drive → the model drives a car down a three-lane road. Every tick it reads the lanes it can reach — "left lane: rock 1 ahead", "middle lane: clear" — and picks one; the road advances; rocks come. The tick rate is the decision rate. | choice, one per tick |
+| **Columns** | Open a CSV (or paste one text per line), write the columns as questions → every row is answered: read once, one decision per column; sort by any column, save the CSV with the new columns. | choice / score / noul per column |
+| **Command guard** | Paste the commands an agent wants to run, with a policy in plain words → each one comes back run / ask the user first / refuse, the refused ones on top. `hooks/claude-code-guard.sh` runs the same decision as a Claude Code PreToolUse hook. | choice, one per command |
+| **Context** | An agent transcript's tool results, scored against the question being answered → the unrelated ones drop out of the context; the header says how many tokens went. | score, one per tool result |
+| **Typing** | Type → at every pause three chips read the text so far: its tone, what you are doing, the emoji that fits (tap to insert). | score + choice + choice per pause |
 
 The two Shortcuts actions (“Ask yes/no”, “Classify text”) run the same decisions on any text
 without opening the app.
+
+**The same decision as a hook.** `hooks/claude-code-guard.sh` is a Claude Code `PreToolUse`
+hook: every Bash command the agent is about to run goes through `decide-cli` under the policy
+at the top of the script, and "ask the user first" / "refuse" become the hook's
+`permissionDecision`. Build `decide-cli` once, point the hook at it in `settings.json`
+(the script's header shows the entry), and the gate runs on your machine — each call loads the
+model (a few seconds with the weights cached) and decides in about 70 ms.
 
 ## Run
 
@@ -98,6 +113,46 @@ at 0.01–0.17.
 **Search, sample** (2026-09-22): six passages in 487 ms, median 65 ms each; the returns
 passage ranks first at P(yes) 1.00.
 
+**Drive** (2026-09-23): the recorded run, 17 seconds hands-off, 52 ticks, 52 decisions,
+median 33 ms each, 22 rocks passed, no crash; the screen paces itself at 0.3 s per tick so
+the Mac stays watchable. The shape is what makes it work: asked "which move?" with stay /
+move left / move right, the same model stayed in its lane into a rock four times in twelve
+states; asked "which lane?" with each reachable lane described by what lies ahead in it, it
+never picks a rock lane when a clear one is offered (12/12) and keeps its lane while it is
+clear. What it cannot do is compare two bad lanes — offered "rock 1 ahead" against "rock 2
+ahead" it took the nearer rock and crashed at row 30 of an earlier take — so the road never
+puts rocks in different lanes on consecutive rows: at most one reachable lane is ever blocked
+within the two rows the descriptions cover, and a clear option always exists.
+
+**Columns** (2026-09-23): the sample CSV, twenty support tickets, three columns — topic
+(six-way choice), what the customer wants (six-way choice), mood (a three-level score) —
+sixty decisions in 3,930 ms, about 200 ms per row including its prefill. Topic and wants
+read as intended on 18–19 of 20 rows (a discount-code complaint lands in "none of these"
+rather than billing; "cancel my subscription" reads as wanting a refund); the mood scale
+puts the two thank-you notes at happy and the complaints at upset. There is no urgency
+column: asked how soon a short ticket needs an answer, in any shape tried, the model says
+"today" for nearly every row.
+
+**Command guard** (2026-09-23): the sample log, fourteen commands, in 1,166 ms — six run
+(status, test, cat, an in-project sed, a new branch, an install), six ask first (a force
+push, a delete outside the project, a production `DROP TABLE`, a production namespace
+delete, `rm -rf node_modules`, `sudo rm -rf /`), two refused (a download piped into a
+shell, a private key posted to a paste site). Nothing the policy refuses or holds got
+through; the two conservative verdicts are the `node_modules` delete (ask, not run) and the
+disk wipe (ask, not refuse). With the three options named alone the same model asked about
+nine of the fourteen; naming each option with the policy's own words for it is what gives
+the split above.
+
+**Context** (2026-09-23): the sample transcript, thirteen tool results, 1,832 tokens by the
+model's tokenizer → seven kept, 958 tokens, thirteen decisions in 847 ms. The four results
+the question depends on (the session code, the failing test, the grep, the changelog line)
+score 0.97–1.23 on the none / some / most scale; the weather, the pull-request list, the
+README, the release script and the pagination code score 0.00–0.71 and drop; the file
+listing, the git log and the API doc sit at 0.85–1.04 and stay. The line is 0.8.
+
+**Typing** (2026-09-23): "just got the job offer!! dinner tonight to celebrate?", typed by
+the hands-off run — positive, sharing news, 😀; three decisions in 279 ms at the last pause.
+
 **Per decision, shared vs from scratch** (2026-09-21; a 150-token state and eight questions of
 40–60 tokens each; median of 3 runs):
 
@@ -163,8 +218,10 @@ runs; the first-run figures were read back over `devicectl` from the app's `-log
   and `filter` (the numbers above).
 - `Sources/DecideRuntime.swift` — the one loaded `TypedDecisions` the screens share.
 - `Sources/Form*.swift` (Autofill; `FormPage.html` is the checkout page it fills through one
-  JavaScript call), `Checklist*.swift`, `Sorter*.swift`, `Search*.swift`, `SpeechGate*.swift`
-  — the five screens; `Intents.swift` — the Shortcuts actions;
+  JavaScript call), `Checklist*.swift`, `Sorter*.swift`, `Search*.swift`, `SpeechGate*.swift`,
+  `Drive*.swift`, `Columns*.swift`, `Guard*.swift`, `Context*.swift`, `Typing*.swift` — the
+  ten screens; `Intents.swift` — the Shortcuts actions; `hooks/claude-code-guard.sh` — the
+  guard as a Claude Code hook;
   `DocumentText.swift` — a file as text (plain, Markdown, PDF, image via Vision);
   `Autoplay.swift` — the hands-off runner.
 

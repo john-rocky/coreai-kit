@@ -292,6 +292,10 @@ Text & chat
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
 - `Examples/InfoExtract` — schema-driven extraction / PII redaction with GLiNER2 (iPhone + Mac)
 
+Typed decisions — the System One shape, on device
+
+- `Examples/Decide` — a text and a typed question in, the answer with its probability out, nothing generated. Ten whole uses from the same sources on iPhone and Mac: copy an email and a checkout form fills at once, a contract read as a checklist, a folder sorted by what needs you, a car the model drives lane by lane, a CSV with the columns you ask for, a command guard for a coding agent (also a Claude Code hook), tool results dropped from an agent's context by relevance, tone / intent / emoji as you type (`swift run decide-cli` is the headless door)
+
 Vision
 
 - `Examples/VLChat` — local **VLM** image chat (Qwen3-VL) via the `KitVisionModel` vision executor (iPhone + Mac)
