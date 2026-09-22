@@ -11,6 +11,7 @@ enum BuiltinPins {
         "adcsr-x4": "60a65ad223ea89385b0b4c880a306616112d55ce",
         "clip-vit-b32": "01a6965ddfa33a11d7a4bd299077c2672c0a72cc",
         "colmodernvbert": "8b1e802cabc8f3980be5fb58d179139c5118a72a",
+        "decider-0.8b": "ff60ccf563556efbf83442e891e57d68a1840728",
         "depth-anything-3-small": "719d8a1ea61644863fcf07690e93fc4ebcc49811",
         "embeddinggemma-300m": "d9a60a18d384484a8dab809b3070b82fb41458ce",
         "gemma-3-12b-it": "67978d30fd7fc199cda0759b3371e4b93c3a0613",

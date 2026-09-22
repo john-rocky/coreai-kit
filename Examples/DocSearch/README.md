@@ -36,7 +36,7 @@ The retriever needs two fp16 bundles. Launch the app once (so its data container
 unlocked), then sideload — `ModelStore` finds them locally and skips the network entirely:
 
 ```bash
-SRC=/Users/majimadaisuke/code/ColModernVBERT-CoreAI/kit
+SRC=/path/to/ColModernVBERT-CoreAI/kit
 DST="Library/Application Support/CoreAIKit/Models/mlboydaisuke/ColModernVBERT-CoreAI/main"
 UDID=$(xcrun devicectl list devices | awk '/iPhone/{print $NF; exit}')   # or paste your UDID
 

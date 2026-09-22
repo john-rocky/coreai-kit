@@ -17,6 +17,21 @@ import Foundation
 
 /// Namespace for the typed-decision value types.
 public enum Decision {
+    /// How a state and a question become the prompt that is scored.
+    public enum Format: String, Sendable, Codable {
+        /// One JSON request in a user turn under the model's chat template, the assistant
+        /// turn opened with its thinking closed; the answer is the letter at the next token.
+        /// The rendering an instruction-tuned chat model answers zero-shot, and the one the
+        /// published fixture numbers use.
+        case chat
+        /// The plain-text form a decision model (`decider-0.8b`) is trained on — `Context:`,
+        /// the state, `Question:`, `Options:` as `(A) …` lines, `Answer: (` — with no chat
+        /// template and no special tokens. A score question is judged one level per row, each
+        /// level alone as a yes/no, and the levels' P(yes) normalised into the distribution;
+        /// that is the form the model's own API uses, and its temperature is 1.03.
+        case decider
+    }
+
     /// One listed answer for a `choice` question. `id` is what the answer reports;
     /// `description` is what the model reads (the id when no description is given).
     public struct Option: Sendable, Hashable, Codable {
@@ -128,6 +143,11 @@ public enum Decision {
         public let certainty: Double
         /// Probability per level, lowest level first.
         public let probabilities: [Double]
+        /// P(this level fits) per level, before normalisation, when every level was judged
+        /// alone (`Format.decider`); nil when the levels were scored together in one row.
+        /// Their sum is near 1 when exactly one level fits, low when none does, high when
+        /// several do.
+        public let fit: [Double]?
     }
 
     /// Where the tokens of one decision went.

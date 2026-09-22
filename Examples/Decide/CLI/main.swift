@@ -7,6 +7,8 @@
 //   swift run -c release decide-cli bench --model minicpm5-2b --repeat 3
 //   swift run -c release decide-cli oracle --model qwen3-0.6b --fixture authored144.jsonl \
 //       --prompts prompts.jsonl --reference predictions.jsonl --limit 48 --out predictions.out.jsonl
+//   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
+//   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
 //   swift run -c release decide-cli --list-models
 
 import CoreAIOps
@@ -18,6 +20,9 @@ let usage = """
            decide-cli bench [--model <catalog-id>] [--state-file <path>] [--repeat <n>]
            decide-cli oracle --fixture <rows.jsonl> [--prompts <rows.jsonl>] [--reference <rows.jsonl>]
                             [--model <catalog-id>] [--limit <n>] [--out <predictions.jsonl>]
+           decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
+           decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
+                            (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli --list-models
     """
 
@@ -51,8 +56,8 @@ var args = CommandLine.arguments.dropFirst()
 guard let command = args.popFirst() else { fail(usage) }
 
 if command == "--list-models" {
-    for entry in ModelCatalog.builtin.available(.chat) {
-        print("\(entry.id)  —  \(entry.name)")
+    for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision) {
+        print("\(entry.id)  —  \(entry.name)  [\(entry.kind.rawValue)]")
     }
     exit(0)
 }
@@ -68,6 +73,9 @@ var referencePath: String?
 var limit = Int.max
 var outPath: String?
 var verbose = false
+var threshold = 0.5
+var printAll = false
+var statesPath: String?
 
 func parts(_ spec: String) -> (String, [String]) {
     let pieces = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -97,6 +105,9 @@ while let arg = args.popFirst() {
     case "--limit": limit = Int(args.popFirst() ?? "") ?? limit
     case "--out": outPath = args.popFirst()
     case "--verbose": verbose = true
+    case "--threshold": threshold = Double(args.popFirst() ?? "") ?? threshold
+    case "--states": statesPath = args.popFirst()
+    case "--all": printAll = true
     default: fail(usage)
     }
 }
@@ -262,7 +273,7 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
         }
         if let prompt = promptByID[row.id] {
             tokensChecked += 1
-            let rendered = try decider.promptTokens(row.state, question)
+            let rendered = try decider.promptRows(row.state, question)[0]
             if rendered.tokens == prompt.ids, rendered.slots == prompt.answer_token_ids {
                 tokensExact += 1
             } else if verbose {
@@ -302,11 +313,211 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     print("ms per decision: median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
 }
 
+// MARK: - parity (a decision model's own fixture: every row's token ids, slot and probabilities)
+
+/// The fixture a decision-model port ships (`coreai-decider-fixtures/1`): requests in the
+/// model's wire shape, and the rows they were planned into with the author's fp32 readout.
+struct DeciderFixture: Decodable {
+    struct Request: Decodable {
+        let id: String
+        /// The state as text; nil when the fixture carries it as a JSON value (the model's
+        /// API serialises those itself — `--states` supplies that rendering).
+        let state: String?
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            state = try? c.decode(String.self, forKey: .state)
+        }
+
+        enum CodingKeys: String, CodingKey { case id, state }
+    }
+    struct Row: Decodable {
+        let id: String
+        let request_id: String
+        let question_id: String
+        let kind: String  // "list" (one row) or "iso" (one row per score level)
+        let type: String  // choice / score / noul
+        let level_index: Int?
+        let question: String
+        let options: [String]
+        let ids: [Int32]
+        let slot: Int
+        let nopts: Int
+        let label_ids: [Int32]
+        let p_oracle: [Double]
+    }
+    let schema: String
+    let temperature: Double
+    let requests: [Request]
+    let rows: [Row]
+}
+
+/// Rebuilds the typed question a group of fixture rows was planned from, so the kit's own
+/// rendering (`Decision.Question` → rows → tokens) is what gets compared, not the fixture's
+/// pre-rendered strings.
+func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
+    guard let first = rows.first else { return nil }
+    switch first.type {
+    case "choice":
+        let options = first.options.map { text -> Decision.Option in
+            if let range = text.range(of: ": ") {
+                return .init(id: String(text[..<range.lowerBound]), description: String(text[range.upperBound...]))
+            }
+            return .init(text)
+        }
+        return .choice(first.question, options: options)
+    case "noul":
+        func tail(_ text: String, _ head: String) -> String? {
+            text.hasPrefix(head + ": ") ? String(text.dropFirst(head.count + 2)) : nil
+        }
+        return .noul(first.question, yes: tail(first.options[1], "yes"), no: tail(first.options[0], "no"))
+    case "score":
+        let marker = "\nProposed answer: "
+        guard let head = first.question.range(of: marker) else { return nil }
+        let instructions = String(first.question[..<head.lowerBound])
+        let levels = rows.sorted { ($0.level_index ?? 0) < ($1.level_index ?? 0) }.compactMap { row -> String? in
+            guard let start = row.question.range(of: marker),
+                let end = row.question.range(of: "\nDoes the proposed answer fit?")
+            else { return nil }
+            return String(row.question[start.upperBound..<end.lowerBound])
+        }
+        return levels.count == rows.count ? .score(instructions, levels: levels) : nil
+    default:
+        return nil
+    }
+}
+
+@MainActor func runParity() async throws {
+    guard let fixture else { fail(usage) }
+    let data = try Data(contentsOf: URL(fileURLWithPath: fixture))
+    let fx = try JSONDecoder().decode(DeciderFixture.self, from: data)
+    var stateByRequest: [String: String] = [:]
+    for request in fx.requests { if let state = request.state { stateByRequest[request.id] = state } }
+    if let statesPath {
+        let rendered = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: URL(fileURLWithPath: statesPath)))
+        for (id, state) in rendered where stateByRequest[id] == nil { stateByRequest[id] = state }
+    }
+    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let name = await decider.modelName
+    let format = decider.format
+    let temperature = decider.temperature
+    print("model: \(id) (\(name))   format: \(format.rawValue)   temperature: \(temperature) (fixture \(fx.temperature))")
+
+    // Group rows by (request, question), keeping request order.
+    var groups: [(key: String, rows: [DeciderFixture.Row])] = []
+    var index: [String: Int] = [:]
+    for row in fx.rows {
+        let key = row.request_id + "/" + row.question_id
+        if let i = index[key] {
+            groups[i].rows.append(row)
+        } else {
+            index[key] = groups.count
+            groups.append((key, [row]))
+        }
+    }
+
+    var checked = 0, tokensExact = 0, slotExact = 0, argmaxAgree = 0, skipped: [String] = []
+    var deltas: [Double] = []
+    var milliseconds: [Double] = []
+    var lines: [String] = []
+    for group in groups {
+        let rows = group.rows.sorted { ($0.level_index ?? 0) < ($1.level_index ?? 0) }
+        guard let state = stateByRequest[rows[0].request_id] else {
+            skipped.append("\(group.key) (JSON state; pass --states)")
+            continue
+        }
+        guard let question = fixtureQuestion(rows) else {
+            skipped.append("\(group.key) (could not rebuild the question)")
+            continue
+        }
+        if rows[0].nopts > 16 {  // the kit's choice ceiling (DecisionPrompt.maxOptions)
+            skipped.append("\(group.key) (\(rows[0].nopts) options; the kit lists at most 16)")
+            continue
+        }
+        let rendered = try decider.promptRows(state, question)
+        guard rendered.count == rows.count else {
+            skipped.append("\(group.key) (kit planned \(rendered.count) rows, fixture has \(rows.count))")
+            continue
+        }
+        let answer = try await decider.decide(state, question)
+        milliseconds.append(answer.timing.milliseconds)
+        // Per-row probabilities the kit produced, in the fixture's row order.
+        let kitRows: [[Double]]
+        if case .score(let score) = answer.value, let fit = score.fit {
+            kitRows = fit.map { [1 - $0, $0] }
+        } else {
+            kitRows = [answer.probabilities]
+        }
+        for (i, row) in rows.enumerated() {
+            checked += 1
+            let r = rendered[i]
+            let tokensOK = r.tokens == row.ids
+            let slotsOK = Array(r.slots.prefix(row.nopts)) == Array(row.label_ids.prefix(row.nopts)) && r.tokens.count - 1 == row.slot
+            if tokensOK { tokensExact += 1 }
+            if slotsOK { slotExact += 1 }
+            let p = kitRows[i]
+            let best = p.indices.max { p[$0] < p[$1] } ?? 0
+            let refBest = row.p_oracle.indices.max { row.p_oracle[$0] < row.p_oracle[$1] } ?? 0
+            if best == refBest { argmaxAgree += 1 }
+            let delta = zip(p, row.p_oracle).map { abs($0 - $1) }.max() ?? 0
+            deltas.append(delta)
+            let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
+            lines.append("| \(row.id) | \(row.type) | \(row.nopts) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
+            if verbose || flag == "DIFF" {
+                let firstDiff = zip(r.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+                stderrPrint("  \(row.id): tokens kit \(r.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(row.p_oracle.map { fmt($0) })")
+            }
+        }
+    }
+    print("| row | type | options | tokens | slot | argmax | max \\|Δp\\| | |")
+    print("|---|---|---:|:-:|:-:|:-:|---:|---|")
+    lines.forEach { print($0) }
+    print("rows checked: \(checked)   tokens identical: \(tokensExact)/\(checked)   slot + labels identical: \(slotExact)/\(checked)")
+    print("argmax agreement with the fp32 readout: \(argmaxAgree)/\(checked)")
+    print("|Δp| vs the fp32 readout: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(max(1, deltas.count)), 4))")
+    print("ms per question (all rows of a score question summed): median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
+    if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
+}
+
+// MARK: - filter (a semantic `grep`: one decision per stdin line)
+
+@MainActor func runFilter() async throws {
+    guard questions.count == 1, let (_, question) = questions.first else { fail(usage) }
+    var lines: [String] = []
+    while let line = readLine() {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { lines.append(trimmed) }
+    }
+    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    var passed = 0
+    var milliseconds: [Double] = []
+    for line in lines {
+        let answer = try await decider.decide(line, question)
+        milliseconds.append(answer.timing.milliseconds)
+        switch answer.value {
+        case .noul(let p):
+            let pass = p >= threshold
+            if pass { passed += 1 }
+            if pass || printAll { print("\(fmt(p, 2))\t\(line)") }
+        case .choice(let c):
+            passed += 1
+            print("\(c.id)\t\(fmt(c.confidence, 2))\t\(line)")
+        case .score(let s):
+            passed += 1
+            print("\(fmt(s.value, 2))\t\(line)")
+        }
+    }
+    stderrPrint("\(passed)/\(lines.count) lines · median \(fmt(median(milliseconds), 1)) ms per decision · \(id)")
+}
+
 do {
     switch command {
     case "ask": try await runAsk()
     case "bench": try await runBench()
     case "oracle": try await runOracle()
+    case "parity": try await runParity()
+    case "filter": try await runFilter()
     default: fail(usage)
     }
 } catch {

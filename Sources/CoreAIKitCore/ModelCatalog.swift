@@ -38,6 +38,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case forecasting
         /// Music source separation (Mel-Band RoFormer): song → vocals + instrumental stems.
         case separation
+        /// Typed decisions (decider): state + question → probabilities over listed options,
+        /// read from the answer-slot logits; the model never generates and cannot chat.
+        case decision
         /// Policy-conditioned safety classification (Shieldstral): the caller writes the policy
         /// in plain language and the model returns P(violation) from ONE forward — a static
         /// graph with no decode loop, so nothing here resembles chat.
@@ -332,6 +335,20 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "int8", sizeMB: 2685),
                 ],
                 thinking: true, engine: "pipelined"),
+            // ── decision: a model trained to answer typed questions at an answer slot
+            //    (Qwen3.5-0.8B-Base fine-tune, S=1 decode graph, int8 + head). Not a chat
+            //    model: `TypedDecisions` renders its own prompt form and reads the letter
+            //    logits; `ChatSession` has no business loading it. ──
+            CatalogEntry(
+                id: "decider-0.8b", name: "decider 0.8B",
+                repo: "mlboydaisuke/decider-0.8b-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                    "ios": .init(
+                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                ],
+                engine: "pipelined"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

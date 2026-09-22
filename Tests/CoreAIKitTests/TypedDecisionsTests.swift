@@ -156,3 +156,48 @@ struct DecisionReadoutTests {
         #expect(!CoreAI.Op.decide.summary.isEmpty)
     }
 }
+
+/// The decider form: row planning and the narrow text, checkable without a tokenizer.
+struct DeciderPromptTests {
+    @Test func choiceAndNoulAreOneRowEach() {
+        let choice = Decision.Question.choice(
+            "Which team should handle the request?",
+            options: [
+                .init(id: "repair", description: "Replace damaged parts"),
+                .init(id: "billing", description: "Handle payments"),
+                .init("delivery"),
+            ])
+        let rows = DeciderPrompt.rows(for: choice)
+        #expect(rows.count == 1)
+        #expect(rows[0].question == "Which team should handle the request?")
+        #expect(rows[0].options == ["repair: Replace damaged parts", "billing: Handle payments", "delivery"])
+
+        let noul = Decision.Question.noul(
+            "Does the sender request a refund?",
+            yes: "Money back is requested", no: "No money back is requested")
+        #expect(
+            DeciderPrompt.rows(for: noul)
+                == [.init(question: "Does the sender request a refund?",
+                          options: ["no: No money back is requested", "yes: Money back is requested"])])
+        #expect(DeciderPrompt.rows(for: .noul("Urgent?"))[0].options == ["no", "yes"])
+    }
+
+    @Test func scoreIsOneYesNoRowPerLevel() {
+        let score = Decision.Question.score("How full is the tank?", levels: ["empty", "one quarter full", "full"])
+        let rows = DeciderPrompt.rows(for: score)
+        #expect(rows.count == 3)
+        #expect(rows[1].question == "How full is the tank?\nProposed answer: one quarter full\nDoes the proposed answer fit?")
+        #expect(rows.allSatisfy { $0.options == ["no", "yes"] })
+    }
+
+    @Test func narrowTextIsTheTrainedForm() {
+        let row = DeciderPrompt.Row(question: "Which?", options: ["a", "b", "c"])
+        #expect(DeciderPrompt.narrowText(row) == "\n\nQuestion: Which?\nOptions:\n(A) a\n(B) b\n(C) c\nAnswer: (")
+    }
+
+    @Test func combineNormalisesFitAndSurvivesZeroMass() {
+        let p = DeciderPrompt.combine(fit: [0.2, 0.6, 0.2])
+        #expect(abs(p[1] - 0.6) < 1e-12 && abs(p.reduce(0, +) - 1) < 1e-12)
+        #expect(DeciderPrompt.combine(fit: [0, 0]) == [0, 0])
+    }
+}

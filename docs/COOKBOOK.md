@@ -157,7 +157,25 @@ on the sequential engine (or the static-shape engine for a Neural Engine bundle)
 than the pipelined one; recurrent hybrids (Qwen3.5, LFM2.5, Granite 4) cannot rewind, so on
 them every decision re-prefills its whole prompt — correct, and `timing.reusedTokens` says 0.
 `Examples/Decide` runs the three shapes as a speech gate, a clipboard check with Shortcuts
-actions, and a passage reranker, each with its measured milliseconds.
+actions (and a watch mode that decides every new copy), a passage reranker, a checklist over
+one document, a folder sorter, and a form that fills its own fields from whatever you copy,
+each with its measured milliseconds — on a Mac and on an iPhone from the same sources.
+
+**A model trained for this.** `decider-0.8b` (catalog kind `decision`) is not a chat model:
+it was fine-tuned to answer exactly these typed questions at an answer slot, and the kit
+renders it in the plain form it was trained on (`Decision.Format.decider`, chosen from the
+catalog kind) at its card's temperature. Its probabilities follow the model's own fp32
+readout on the model's fixture (`decide-cli parity`: 43/43 rows token-identical and
+argmax-identical, max |Δp| 0.0088). It ships as a decode-only
+graph on a recurrent hybrid, so every row re-prefills its whole prompt one token at a time —
+correct, and slower per decision than `minicpm5-2b`'s shared prefix; pick it when the
+probability has to mean something and the chat model's zero-shot answer does not.
+
+```swift
+let trained = try await TypedDecisions(catalog: "decider-0.8b")   // Format.decider, T = 1.03
+let a = try await trained.decide(ticket, .score("How upset is the customer?", levels: ["calm", "annoyed", "furious"]))
+a.score            // expected level; a["…"] for the op form
+```
 
 ## Chat, tools, and guided JSON
 
