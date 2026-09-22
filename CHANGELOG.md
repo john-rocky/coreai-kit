@@ -38,6 +38,16 @@ policy.
   rows are token-, slot- and argmax-identical to the author's fp32 readout on 50/50, int8 max
   |Δp| 0.0226 (`decide-cli parity`); 0.725 mean family balanced accuracy on SemIf's 144
   English rows through the kit.
+- **`apus-openjev-v1-4b`** — APUS AI Lab's APUS-OpenJev-v1-4B (Qwen3.5-4B, English + Chinese,
+  Apache-2.0), a decision model for browser actions and workflow steps, as a catalog `decision`
+  model with its readout: `Decision.Format.sharedState`, one `Shared state:` + JSON task user
+  turn under the chat template read at the letters A–P, no calibration (the author's own
+  statement). A catalog entry may now name a decision model's readout (`CatalogEntry.format`),
+  read after the bundle's own declaration and before the kind's default. On the author's
+  48-row fixture the kit's prompts are token-identical to the author's compiled ones on all 40
+  choice and yes/no rows, argmax 40/40, max |Δp| 0.0055 (`decide-cli parity`, which also reads
+  the letter fixture form, `coreai-letter-fixtures/1`); 0.906 mean family balanced accuracy on
+  SemIf's 144 English rows through the kit. Mac only (5.8 GB).
 - `decide-cli --bundle <dir>` — any command on an unpublished bundle directory; `parity` reads
   the slot fixture form (`coreai-slot-fixtures/1`) and renders JSON states itself.
 

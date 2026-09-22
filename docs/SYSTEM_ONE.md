@@ -68,6 +68,10 @@ author's readout on the 43 fixture rows the kit can list. `openthai-systemone`, 
 English decision model with a 256-way answer head of its own (up to 255 options, an abstain
 probability), is token-identical and argmax-identical to its author's readout on all 50 of its
 fixture rows (int8 max |Δp| 0.023) and scores 0.725 on SemIf's 144 English rows through the kit.
+`apus-openjev-v1-4b`, a Qwen3.5-4B decision model for browser and workflow steps read at the
+letters A–P under its chat template, is token-identical to its author's compiled prompts on the
+40 choice and yes/no fixture rows (max |Δp| 0.0055) and scores 0.906 on the same 144 rows, at
+about 2 s per decision on the Mac.
 
 The shape of the question decides more than the model. On MiniCPM5 2B, measured on the
 screens' samples:

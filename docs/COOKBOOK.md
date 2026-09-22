@@ -211,6 +211,23 @@ team.choice        // "billing"
 team.abstain       // P(none of these), reported beside the option probabilities
 ```
 
+**A decision model for agent steps.** `apus-openjev-v1-4b` (English + Chinese, kind `decision`)
+keeps its LM head and is read at the letters A–P after a `Shared state:` + JSON task turn under
+its chat template (`Decision.Format.sharedState`, named by the catalog entry's `format`). Its
+choices take 2–16 described criteria and its yes/no a proposition; a score becomes a choice over
+its levels. Token-identical to the author's compiled prompts on the fixture's 40 choice and
+yes/no rows (max |Δp| 0.0055); a 4B, so about 2 s per decision on the Mac and no iPhone
+number yet.
+
+```swift
+let agent = try await TypedDecisions(catalog: "apus-openjev-v1-4b")   // Format.sharedState, T = 1
+let next = try await agent.decide(pageState,
+    .choice("Choose the next browser action that advances the goal.",
+            options: [.init(id: "submit", description: "Submit the completed form."),
+                      .init(id: "back", description: "Return to the previous page.")]))
+next.choice        // "submit"
+```
+
 ## Chat, tools, and guided JSON
 
 Streaming chat with history, live stats, and a stop button — `ChatSession`:

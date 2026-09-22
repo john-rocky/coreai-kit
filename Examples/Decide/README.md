@@ -262,6 +262,23 @@ author's single-question API exactly; and Thai is cut the way the reference toke
 (at every combining mark), which the Swift tokenizer alone does not do — `SlotPrompt.Encoder`
 does the cutting, and 23 of the 50 rows differed before it did.
 
+**A decision model for browser actions and workflow steps.** `apus-openjev-v1-4b` (catalog
+kind `decision`, `Decision.Format.sharedState`; APUS AI Lab's APUS-OpenJev-v1-4B, a Qwen3.5-4B
+fine-tune, English + Chinese, Apache-2.0) keeps its LM head and answers at the letters A–P
+after one user turn under its chat template: `Shared state:`, the state, a JSON task whose
+criteria carry the letters, `Answer:`. Its own primitives are a choice among 2–16 described
+criteria and a yes/no on a proposition; the kit renders a score as a choice over its levels,
+and its author applies no calibration. On the author's 48-row fixture (`decide-cli parity`,
+2026-09-23, int8 bundle) the kit's prompts are token-identical to the author's compiled ones on
+all 40 choice and yes/no rows, argmax 40/40, max |Δp| 0.0055, mean 0.0002; the 8 rows of the
+author's third primitive (`score_level`, a yes/no on one proposition under another name) are
+outside the kit's kinds. On SemIf's 144 English rows, each rendered as a choice, the same
+evaluator as the table above: mean family balanced accuracy 0.906 (MiniCPM5 2B 0.681 and
+Qwen3.5-4B zero-shot 0.821 on the same rows). The price is the prompt: a 4B on a decode-only
+graph reads about 15 ms per token on the Mac and reuses nothing between questions — a
+two-question workflow request took 2,069 and 1,540 ms for its 134- and 107-token rows, a
+SemIf row 1.96 s median. Mac only until an iPhone number exists (the bundle is 5.8 GB).
+
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
 a short text leans *yes*: "is this what the purpose needs?" says yes to a phone number, a
