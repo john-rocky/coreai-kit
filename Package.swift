@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 import PackageDescription
 
 let package = Package(
@@ -22,6 +22,11 @@ let package = Package(
         // An executable, so linking the libraries never drags it in.
         .executable(name: "coreai-doctor", targets: ["coreai-doctor"]),
     ],
+    traits: [
+        // Off by default. Enable it to download large files over Xet; swift-xet and its
+        // dependencies are compiled only then. Forwards to swift-huggingface's trait.
+        .trait(name: "Xet", description: "Enable Xet transport for model downloads.")
+    ],
     dependencies: [
         // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.4-zoo is
         // upstream main through #207 (2026-08-28) plus the zoo patches to the pipelined
@@ -39,10 +44,21 @@ let package = Package(
         // zoo-0.4 matches this tag.
         .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.4-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
+        .package(
+            url: "https://github.com/huggingface/swift-huggingface.git",
+            from: "0.11.0",
+            traits: [
+                .defaults,
+                .trait(name: "Xet", condition: .when(traits: ["Xet"])),
+            ]
+        ),
     ],
     targets: [
-        // Shared base: model identity + Hugging Face download/cache. Foundation only.
-        .target(name: "CoreAIKitCore"),
+        // Shared base: model identity + Hugging Face download/cache. No inference runtime.
+        .target(
+            name: "CoreAIKitCore",
+            dependencies: [.product(name: "HuggingFace", package: "swift-huggingface")]
+        ),
         .target(
             name: "CoreAIKit",
             dependencies: [
@@ -92,7 +108,8 @@ let package = Package(
         ),
         .testTarget(
             name: "CoreAIKitTests",
-            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings", "CoreAIOps"]
+            dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings", "CoreAIOps"],
+            swiftSettings: [.define("COREAIKIT_XET", .when(traits: ["Xet"]))]
         ),
     ]
 )

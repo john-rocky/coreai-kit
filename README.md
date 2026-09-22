@@ -180,6 +180,40 @@ or zoo app — that runs the same model. (Media lives in
 
 <p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/coder-ornith.gif" alt="Agentic coding on Mac" width="720"><br>Agentic coding — Ornith-1.0-9B on M4 Max · <a href="https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChatMac">zoo <code>CoreAIChatMac</code></a></p>
 
+## Model downloads and storage
+
+ModelStore uses [swift-huggingface](https://github.com/huggingface/swift-huggingface)
+for Hub requests and file downloads.
+Files download over HTTP by default.
+The `Xet` package trait is off by default;
+enable it to download large files over Xet, with HTTP fallback:
+
+```swift
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "<version>", traits: ["Xet"])
+```
+
+The trait forwards to swift-huggingface, so swift-xet is compiled only when an app
+opts in.
+The package manifest requires Swift 6.1 or later to declare the trait.
+For private or gated repositories on `https://huggingface.co`, the client reads
+credentials from the standard Hugging Face environment variables and token files,
+including `HF_TOKEN` and the token saved by `hf auth login`.
+The account must have access to the repository.
+`ModelStore(hubBaseURL:)` selects a mirror; it does not receive those credentials.
+
+Complete bundles stay in
+`Application Support/CoreAIKit/Models/<org>/<name>/<revision>/<variant>/`,
+independent of the endpoint.
+ModelStore does not read or write the shared Hugging Face file cache,
+so each file is stored once.
+Each download stages all files before it installs the bundle with one rename.
+Installed bundles are excluded from iCloud backup.
+A transport failure can use a complete cached copy of the same variant under
+another revision.
+Concurrent callers share one download; only the first caller receives progress.
+HTTP downloads, and Xet downloads when the trait is on, report byte progress during
+the transfer.
+
 ## Works with Apple's FoundationModels API
 
 `KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession` —
