@@ -22,6 +22,7 @@
 import CoreAIKitVision
 import Foundation
 
+/// Low level: the stable API is `TypedDecisions`, which answers through this.
 public actor EncoderDecider {
     /// The raw outputs of one question row.
     public struct Row: Sendable, Equatable {

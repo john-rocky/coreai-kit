@@ -36,6 +36,7 @@
 import Foundation
 import Tokenizers
 
+/// Low level: the stable API is `TypedDecisions`, which builds its rows with this.
 public struct EncoderPrompt: Sendable {
     /// Options a choice may list: the publisher's multilingual contract was checked up to 20.
     public static let maxOptions = 20

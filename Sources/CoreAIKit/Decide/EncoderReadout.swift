@@ -22,6 +22,7 @@
 
 import Foundation
 
+/// Low level: the stable API is `TypedDecisions`, which reads its answers with this.
 public enum EncoderReadout {
     /// The question types in the model's order: the index of its type embedding (the graph's
     /// `qtype_onehot`) and of its per-type temperatures.
