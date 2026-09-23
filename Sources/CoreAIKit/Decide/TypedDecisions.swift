@@ -33,10 +33,10 @@
 // 9 on the Qwen tokenizers — so `maxOptions` is 255 there and 26 elsewhere. A slot-head model
 // (OpenThai-SystemOne) reads its control-token layout and is read at a 256-way head
 // (`Decision.Format.slot`, `SlotPrompt.swift`); a model trained on the `Shared state:` + JSON
-// task turn (APUS-OpenJev-v1) is read at the letters under its chat template
+// task turn (APUS's decision model, apus-decision-v1-4b) is read at the letters under its chat template
 // (`Decision.Format.sharedState`, `SharedStatePrompt.swift`); a scalar-head model (the
 // System One scorer) is one row per option, read by its head at each row's last token
-// (`Decision.Format.scalar`, `ScalarPrompt.swift`); OpenJev's lettered option list under
+// (`Decision.Format.scalar`, `ScalarPrompt.swift`); the lettered option list under
 // the chat template is read at the bare letters A–Z a–z at its helper's temperature
 // (`Decision.Format.letterList`, `LetterListPrompt.swift`). A slot-head, scalar-head or
 // letter-list bundle declares itself in its metadata.json (`decision.head` / `readout`,
@@ -246,7 +246,7 @@ public actor TypedDecisions {
                             ? .letterList
                             : name.contains("decider")
                                 ? .decider
-                                : name.contains("openjev") ? .sharedState : name.contains("decision") ? .decisionFunction : .chat),
+                                : name.contains("apus") ? .sharedState : name.contains("decision") ? .decisionFunction : .chat),
             layout: layout, scalar: scalar, letters: letters, calibration: nil)
     }
 

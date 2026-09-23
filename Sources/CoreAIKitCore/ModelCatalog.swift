@@ -413,16 +413,17 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
                 ],
                 engine: "pipelined", format: "slot"),
-            // ── APUS-OpenJev-v1-4B: a letter-readout decision model for browser actions and
-            //    workflow steps — one `Shared state:` + JSON task turn under its chat template,
-            //    read at A–P (`format: sharedState`). macOS only on purpose: 5.5 GB int8hu and
-            //    no device measurement. Add "ios" when one has been taken. ──
+            // ── APUS Decision v1 4B (APUS AI Lab's Qwen3.5-4B decision model): a letter-readout
+            //    model for browser actions and workflow steps — one `Shared state:` + JSON task
+            //    turn under its chat template, read at A–P (`format: sharedState`). macOS only
+            //    on purpose: 5.5 GB int8hu and no device measurement. Add "ios" when one has
+            //    been taken. ──
             CatalogEntry(
-                id: "apus-openjev-v1-4b", name: "APUS-OpenJev-v1 4B",
-                repo: "mlboydaisuke/APUS-OpenJev-v1-4B-CoreAI", kind: .decision,
+                id: "apus-decision-v1-4b", name: "APUS Decision v1 4B",
+                repo: "mlboydaisuke/APUS-Decision-v1-4B-CoreAI", kind: .decision,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined-b2/apus_openjev_v1_4b_decode_int8hu_block32_sym", sizeMB: 5504),
+                        path: "gpu-pipelined-b2/apus_decision_v1_4b_decode_int8hu_block32_sym", sizeMB: 5504),
                 ],
                 engine: "pipelined", format: "sharedState"),
             // ── Qwen3.5-2B-Decision: a calibrated plain-text decision model (English) read at
@@ -451,18 +452,6 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin", sizeMB: 4859),
                 ],
                 engine: "pipelined", format: "scalar", license: "CC-BY-NC-4.0"),
-            // ── OpenJev 27B: the open decision model behind the OpenJev helper (a Qwen3.8-27B
-            //    fine-tune) — its lettered option list under the chat template, read at the bare
-            //    letters at the helper's temperature (`format: letterList`; the bundle declares
-            //    it). CC BY-NC 4.0, and `license` says so. macOS only: a 28 GB int8hu bundle,
-            //    about 28 GB resident on the sequential engine, no device measurement. ──
-            CatalogEntry(
-                id: "openjev-27b", name: "OpenJev 27B",
-                repo: "mlboydaisuke/OpenJev-CoreAI", kind: .decision,
-                variants: [
-                    "macos": .init(path: "gpu-pipelined/openjev_27b_decode_int8hu_block32_sym", sizeMB: 28423),
-                ],
-                engine: "pipelined", format: "letterList", license: "CC-BY-NC-4.0"),
             // ── laya multilingual: an encoder-type decision model (mmBERT-base with a typed
             //    decision head, Apache-2.0) — one forward pass per question, each option read at
             //    its mask marker (`format: encoder`; the bundle's metadata declares it, with its

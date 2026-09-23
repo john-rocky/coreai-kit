@@ -772,7 +772,7 @@ func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
     }
 }
 
-/// A letter-readout fixture (`coreai-letter-fixtures/1`, APUS-OpenJev-v1): one row per
+/// A letter-readout fixture (`coreai-letter-fixtures/1`, apus-decision-v1-4b): one row per
 /// request in the author's own request shape, the compiled token sequence (chat template
 /// included), the letter token per criterion and the fp32 probabilities in label order.
 struct LetterFixture: Decodable {

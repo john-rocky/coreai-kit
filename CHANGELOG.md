@@ -7,6 +7,17 @@ policy.
 
 ## [Unreleased]
 
+### Removed
+
+- **`openjev-27b`** — withdrawn from the catalog (its Hub repo is now private) pending the source
+  model's training-data provenance.
+
+### Changed
+
+- **`apus-openjev-v1-4b` → `apus-decision-v1-4b`** — the catalog id, display name and Hub repo
+  (`mlboydaisuke/APUS-Decision-v1-4B-CoreAI`; the old URL redirects) no longer carry the source
+  model's product name. The source attribution stays on the card and in `base_model`.
+
 ### Added
 
 - **`CoreAI.systemOne`** — the hosted System One call as one op: a request in the `/v1/systemone`

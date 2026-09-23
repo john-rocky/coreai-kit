@@ -1,5 +1,5 @@
 // LetterListPrompt.swift — the lettered option list under the chat template
-// (`Decision.Format.letterList`): OpenJev, and models served through its helper.
+// (`Decision.Format.letterList`): models served through a lettered-list helper.
 //
 // The model keeps the ordinary LM head; what its helper sends is one user turn under the chat
 // template (thinking closed), read at the BARE letters A–Z then a–z as the next token:
@@ -16,13 +16,13 @@
 //
 // An option without a description is written `key: ` (the helper's own rendering). The
 // letters' logits are divided by the temperature the bundle declares (`decision.temperature`,
-// 0.85 for OpenJev, fitted by its author) and softmaxed over the listed letters. A score
+// 0.85 in the source bundle, fitted by its author) and softmaxed over the listed letters. A score
 // appends " Rate along the ordered levels below (lowest first)." to the question and lists
 // the levels as `[A] 0: level`; its answer is the expected index. A yes/no lists
 // `[A] yes: <what yes means>` and `[B] no: <what no means>` — the helper's defaults "The
 // statement is true." / "The statement is false." when the question gives none — and its
 // P(yes) is calibrated as the helper does: sigmoid(logit(p_yes) / t + bias) with the bundle's
-// `decision.noul` (t 1.829074, bias 0 for OpenJev). Up to 52 options, one letter each.
+// `decision.noul` (t 1.829074, bias 0 in the source bundle). Up to 52 options, one letter each.
 //
 // Static and tokenizer-in, like the other renderings; `decide-cli parity` checks the token
 // rows against the author's fixture.
