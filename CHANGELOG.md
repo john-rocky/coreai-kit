@@ -9,16 +9,39 @@ policy.
 
 ### Added
 
-- `Examples/Decide/conformance/` — `check.py <base_url>`: 20 requests in the hosted System One
+- **A choice lists up to 255 options**, the hosted API's width, where the model can read that
+  many. `minicpm5-2b` reads A–Z and, past 26 options, the numbers "1"…"255" under a system line
+  that asks for the number; `decider-0.8b` reads its author's labels A–Z, AA, AB, … (its 44-row
+  fixture now passes whole, the 255-option row included); `system-one-scorer-4b` scores 255 rows
+  (was 64). `TypedDecisions.maxOptions` is each model's own count: 26 on `qwen3-0.6b`, whose
+  tokenizer has no single-token numbers past 9, and 16 on `apus-openjev-v1-4b`. A question of
+  16 options or fewer renders token for token as before. Why numbers: on 61 synthetic rows of
+  17–255 options, `minicpm5-2b` picked the named option on 58 read at numbers and on 43 read at
+  two-letter labels, where it answers one letter of the label. A 255-option prompt is 1,965
+  tokens on the decider's fixture row and 3,100–4,200 in the chat form, over the iPhone's
+  1,024, so it is a Mac call.
+- `decide-cli oracle --dump-prompts <path>` writes each row's token ids and answer-slot ids in
+  the `--prompts` shape. A row whose prompt outgrows the model's context is skipped and listed
+  instead of ending the run.
+- `Examples/Decide/conformance/` — `check.py <base_url>`: 22 requests in the hosted System One
   forms and the shape each answer must come back in (types and keys), for this server or any
   other that speaks the route; `calibration.py`: accuracy, NLL, Brier, top-label ECE and a
   fitted temperature from `decide-cli oracle` output on SemIf's `authored144`.
+
+### Changed
+
+- `SystemOne.maxOptions` is the hosted API's 255 (was 16). `SystemOne.request(from:maxOptions:)`
+  takes the loaded model's count, and `SystemOneServer` passes it, so a list the model cannot
+  read is a 422 that names the count ("this engine lists at most 26 options, got 27"). The wire
+  never takes more than 255. The MCP `decide` tool describes 2–255 options.
 
 ### Docs
 
 - `docs/SYSTEM_ONE.md`, `Examples/Decide/README.md`, README: the official TypeSafe SDKs
   measured against the local server by base URL alone; other servers that speak the form;
   the calibration table for `minicpm5-2b` and `decider-0.8b`.
+- `docs/SYSTEM_ONE.md` "How many options a choice lists": the count per model, the measured
+  wide-choice table for `minicpm5-2b`, and the iPhone rule (a prompt under 1,024 tokens).
 
 ## [0.6.0] — 2026-09-23
 

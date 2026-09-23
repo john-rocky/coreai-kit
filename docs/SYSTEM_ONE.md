@@ -48,11 +48,12 @@ else changes. Measured 2026-09-23 against this server: the official TypeSafe Pyt
 158–201 ms for three questions; the JavaScript SDK takes the same variable or `baseURL`; the
 `system-one` SDK on PyPI takes `HTTPConfig(base_url=…)`, 179 ms for three. `GET /v1/models`
 answers in the hosted list form (`models`, each `name` / `description` / `release_date`), so
-a client's model listing works too. The request and answer forms, and the one declared
-difference (16 options per choice, not 255), are in
-[`Examples/Decide/README.md`](../Examples/Decide/README.md#the-same-endpoint-your-client-already-speaks);
+a client's model listing works too. The request and answer forms are in
+[`Examples/Decide/README.md`](../Examples/Decide/README.md#the-same-endpoint-your-client-already-speaks).
+A choice lists up to the hosted API's 255 options where the model reads that many
+([below](#how-many-options-a-choice-lists)).
 [`Examples/Decide/conformance/check.py`](../Examples/Decide/conformance/check.py)` <base_url>`
-sends 20 requests in those forms and checks every answer's shape, against this server or any
+sends 22 requests in those forms and checks every answer's shape, against this server or any
 other that speaks the route.
 
 ## From a coding agent
@@ -100,7 +101,8 @@ number is and what else was running.
 141/144 argmax agreement on SemIf's authored fixture, mean |Δp| 0.02, family-balanced accuracy
 0.681 against 0.686 published. The 4-bit `qwen3-0.6b` does not (59/144) and is documented as
 speed-only. `decider-0.8b`, a model trained for these questions, is token-identical to its
-author's readout on the 43 fixture rows the kit can list. `openthai-systemone`, a Thai +
+author's readout on all 44 of its fixture rows, the 255-option row included.
+`openthai-systemone`, a Thai +
 English decision model with a 256-way answer head of its own (up to 255 options, an abstain
 probability), is token-identical and argmax-identical to its author's readout on all 50 of its
 fixture rows (int8 max |Δp| 0.023) and scores 0.725 on SemIf's 144 English rows through the kit.
@@ -141,6 +143,42 @@ screens' samples:
 - "Which move?" (stay / left / right) drives a car into rocks; "which lane?" with each lane
   described by what lies ahead never picks a rock lane when a clear one is offered. It cannot
   rank two bad lanes, so the road keeps one clear.
+
+## How many options a choice lists
+
+As many as the model reads, up to the hosted API's 255. `TypedDecisions.maxOptions` gives the
+count, and the server answers a longer list with a 422 that names it.
+
+| Model | Options are read at | Options |
+|---|---|---:|
+| `minicpm5-2b` | A–Z; past 26, the numbers 1–255 | 255 |
+| `decider-0.8b` | its author's labels A–Z, AA, AB, … | 255 |
+| `openthai-systemone` | its 256-way head | 255 |
+| `system-one-scorer-4b` | one row per option | 255 |
+| `qwen3-0.6b` | A–Z | 26 |
+| `qwen3.5-2b-decision` | ` A`–` Z` after its plain-text prompt | 26 |
+| `apus-openjev-v1-4b` | A–P | 16 |
+| a letter-list bundle (`Format.letterList`) | A–Z, a–z | 52 |
+
+A chat model is read at numbers past 26 because it answers a two-letter label with one of its
+letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
+MiniCPM5's does. Qwen's stops at 9, so a Qwen chat model lists 26. On 61 synthetic rows of
+17–255 options, each state naming the answer, `minicpm5-2b` picked the named option on:
+
+| Options | 17–27 | 40 | 52 | 64 | 100 | 128 | 200 | 255 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| numbers past 26 (what the kit does) | 21/21 | 6/6 | 6/6 | 6/6 | 4/5 | 6/6 | 4/5 | 5/6 |
+| two-letter labels past 26 | 21/21 | 5/6 | 4/6 | 4/6 | 4/5 | 3/6 | 1/5 | 1/6 |
+
+Measured through the kit on this branch's build (int8, M4 Max, 2026-09-23); the fp32 model picks
+the same option on every row. `decider-0.8b` picked it on all 60 rows that fit its 4,096-token
+context. A question past 26 options reads its own system line, so it prefills the state again
+instead of reusing it.
+
+On an iPhone a prompt must stay under 1,024 tokens, and a 255-option choice does not: its prompt
+is 1,965 tokens on `decider-0.8b`'s fixture row and 3,100–4,200 in the chat form with short
+options. A choice that wide is a Mac call. On a phone the ceiling is what fits in 1,024 tokens
+beside the state, about 60 short options in the chat form.
 
 ## What runs
 
