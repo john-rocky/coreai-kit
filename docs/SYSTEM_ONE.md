@@ -158,7 +158,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `qwen3-0.6b` | A–Z | 26 |
 | `qwen3.5-2b-decision` | ` A`–` Z` after its plain-text prompt | 26 |
 | `apus-openjev-v1-4b` | A–P | 16 |
-| a letter-list bundle (`Format.letterList`) | A–Z, a–z | 52 |
+| `openjev-27b` | A–Z, a–z | 52 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its
 letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
