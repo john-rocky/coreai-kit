@@ -42,6 +42,10 @@ policy.
 
 ### Changed
 
+- `SystemOne.maxOptions` is the hosted API's 255 (was 16). `SystemOne.request(from:maxOptions:)`
+  takes the loaded model's count, and `SystemOneServer` passes it, so a list the model cannot
+  read is a 422 that names the count ("this engine lists at most 26 options, got 27"). The wire
+  never takes more than 255. The MCP `decide` tool describes 2–255 options.
 - `TypedDecisions` — and so `CoreAI.decide`, `systemone` and `SystemOneServer` — reads a catalog
   model at its entry's `calibration` when it has one. The order is `Configuration.temperature`,
   the catalog, the bundle's declaration, the prompt form's default. `minicpm5-2b` (2.93),
@@ -49,13 +53,6 @@ policy.
   `perturbations108`: their probabilities change, their answers do not. `minicpm5-2b` on
   `authored144`: ECE 0.167 → 0.071, Brier 0.455 → 0.411, accuracy 0.701 either way. A local
   bundle (`init(bundleAt:)`) has no catalog entry and reads as before.
-
-### Changed
-
-- `SystemOne.maxOptions` is the hosted API's 255 (was 16). `SystemOne.request(from:maxOptions:)`
-  takes the loaded model's count, and `SystemOneServer` passes it, so a list the model cannot
-  read is a 422 that names the count ("this engine lists at most 26 options, got 27"). The wire
-  never takes more than 255. The MCP `decide` tool describes 2–255 options.
 
 ### Docs
 

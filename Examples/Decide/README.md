@@ -65,12 +65,13 @@ python3 conformance/check.py http://127.0.0.1:8090                 # 22 requests
 ```
 ```json
 {"model": "minicpm5-2b",
- "answers": {"is_urgent": {"type": "noul", "noul": 0.9274, "confidence": 0.9274},
-             "queue": {"type": "choice", "choice": "billing", "probabilities": {"billing": 0.5886, "technical": 0.4109, "other": 0.0004}, "confidence": 0.3804}},
+ "answers": {"is_urgent": {"type": "noul", "noul": 0.7046, "confidence": 0.7046},
+             "queue": {"type": "choice", "choice": "billing", "probabilities": {"billing": 0.5078, "technical": 0.4492, "other": 0.0430}, "confidence": 0.2364}},
  "usage": {"input_tokens": 239, "output_tokens": 2}, "timing_ms": 103.5733}
 ```
 
-The state is prefilled once per request and every question rewinds to it; that request took
+The probabilities are read at the catalog temperature (2.93 for `minicpm5-2b`; raw, the same
+request answers `noul` 0.9274 and `billing` 0.5886). The state is prefilled once per request and every question rewinds to it; that request took
 204 ms end to end on the Mac (M4 Max, 2026-09-23), four questions on a 69-token state 436 ms.
 A third-party client library written for the hosted endpoint (`system-one` 0.1.0 on PyPI,
 `HTTPConfig(base_url=…)`) got its typed answers back from this server unchanged, 179 ms round
