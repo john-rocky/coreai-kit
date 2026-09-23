@@ -149,6 +149,9 @@ public actor TypedDecisions {
     public let maxContextLength: Int
     /// Exact token sequence the engine's KV cache holds (the last scored prompt).
     private var kvTokens: [Int32] = []
+    /// The state prefix the engine's checkpoint holds (`InferenceEngine.checkpoint()`, taken
+    /// after a prefix pass on an engine that cannot rewind into a state); empty when none.
+    private var checkpointed: [Int32] = []
     /// Timing of the last decision or prefill.
     public private(set) var lastTiming: Decision.Timing?
 
@@ -416,8 +419,30 @@ public actor TypedDecisions {
     /// One question on one state. Under `.decider` a score question is several rows (one
     /// per level) and under `.scalar` every question is one row per option; the answer's
     /// timing is their sum.
+    ///
+    /// On an engine that cannot rewind into a state (a recurrent hybrid on the sequential
+    /// engine), the first question on a state runs the state's shared prefix on its own and
+    /// checkpoints after it, so the next question on that state returns there instead of
+    /// replaying from the start. At one token per step that is the same number of steps. The
+    /// question's timing includes the prefix pass, and its reused tokens are what the pass
+    /// itself reused.
     public func decide(_ state: String, _ question: Decision.Question) async throws -> Decision.Answer {
         try DecisionPrompt.validate(question, maxOptions: maxOptions)
+        guard let prefix = try await checkpointState(state) else {
+            return try await answerQuestion(state, question)
+        }
+        let answer = try await answerQuestion(state, question)
+        let processed = prefix.processedTokens + answer.timing.processedTokens
+        let timing = Decision.Timing(
+            promptTokens: answer.timing.promptTokens,
+            reusedTokens: max(0, answer.timing.promptTokens - processed),
+            seconds: prefix.seconds + answer.timing.seconds)
+        lastTiming = timing
+        return Decision.Answer(value: answer.value, timing: timing, abstain: answer.abstain)
+    }
+
+    /// Answers one validated question on one state.
+    private func answerQuestion(_ state: String, _ question: Decision.Question) async throws -> Decision.Answer {
         switch format {
         case .chat:
             let rendered = try DecisionPrompt.render(
@@ -537,28 +562,66 @@ public actor TypedDecisions {
     /// Runs the part of the prompt every question on `state` shares, so the first decision
     /// pays only for its question. Returns a handle whose `decide` calls score against it.
     public func prefill(_ state: String) async throws -> PrefilledState {
-        let prefix: [Int32]
-        switch format {
-        case .chat: prefix = try DecisionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
-        case .decider: prefix = DeciderPrompt.contextTokens(state: state, tokenizer: runtime.tokenizer)
-        case .slot:
-            guard let encoder = slotEncoder else { throw DecisionError.noLogits }
-            prefix = try SlotPrompt.contextTokens(state: state, encoder: encoder)
-        case .sharedState: prefix = try SharedStatePrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
-        case .decisionFunction: prefix = DecisionFunctionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
-        case .scalar:
-            guard let layout = scalarLayout else { throw DecisionError.noLogits }
-            prefix = ScalarPrompt.statePrefix(state: state, layout: layout, tokenizer: runtime.tokenizer)
-        case .letterList: prefix = try LetterListPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
-        case .encoder:
+        if format == .encoder {
             // An encoder shares only the state's tokens between questions: tokenized once here.
             guard case .encoder(let encoder) = backend else { throw DecisionError.noLogits }
             let (tokens, timing) = await encoder.prefill(state, sharePrefix: configuration.sharePrefix)
             lastTiming = timing
             return PrefilledState(state: state, tokens: tokens, timing: timing, decider: self)
         }
-        let (_, timing) = try await score(prefix, includeLogits: false)
+        let prefix = try statePrefix(state)
+        let timing = try await scorePrefix(prefix)
         return PrefilledState(state: state, tokens: prefix.count, timing: timing, decider: self)
+    }
+
+    /// The part of the prompt every question on `state` shares, in a language format.
+    private func statePrefix(_ state: String) throws -> [Int32] {
+        switch format {
+        case .chat: return try DecisionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .decider: return DeciderPrompt.contextTokens(state: state, tokenizer: runtime.tokenizer)
+        case .slot:
+            guard let encoder = slotEncoder else { throw DecisionError.noLogits }
+            return try SlotPrompt.contextTokens(state: state, encoder: encoder)
+        case .sharedState: return try SharedStatePrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .decisionFunction: return DecisionFunctionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .scalar:
+            guard let layout = scalarLayout else { throw DecisionError.noLogits }
+            return ScalarPrompt.statePrefix(state: state, layout: layout, tokenizer: runtime.tokenizer)
+        case .letterList: return try LetterListPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .encoder: throw DecisionError.noLogits  // an encoder bundle has no language prompt
+        }
+    }
+
+    /// Runs a state prefix and, on an engine that cannot rewind into it
+    /// (`InferenceEngine.supportsCheckpoint`), checkpoints the engine after it; the timing
+    /// covers both. A prefix the checkpoint already holds costs nothing.
+    private func scorePrefix(_ prefix: [Int32]) async throws -> Decision.Timing {
+        let engine = runtime.engine
+        let checkpoints = configuration.sharePrefix && engine.supportsCheckpoint
+        if checkpoints, !prefix.isEmpty, prefix == checkpointed {
+            let timing = Decision.Timing(promptTokens: prefix.count, reusedTokens: prefix.count, seconds: 0)
+            lastTiming = timing
+            return timing
+        }
+        let (_, timing) = try await score(prefix, includeLogits: false)
+        guard checkpoints else { return timing }
+        let start = SuspendingClock.now
+        try await engine.checkpoint()
+        checkpointed = prefix
+        let total = Decision.Timing(
+            promptTokens: timing.promptTokens, reusedTokens: timing.reusedTokens,
+            seconds: timing.seconds + ProcessStats.seconds(from: start, to: .now))
+        lastTiming = total
+        return total
+    }
+
+    /// Before the first question on a new state, on an engine that checkpoints: runs the
+    /// state's prefix and checkpoints after it. Returns that pass's timing; nil when nothing ran.
+    private func checkpointState(_ state: String) async throws -> Decision.Timing? {
+        guard format != .encoder, configuration.sharePrefix, runtime.engine.supportsCheckpoint else { return nil }
+        let prefix = try statePrefix(state)
+        guard !prefix.isEmpty, prefix != checkpointed else { return nil }
+        return try await scorePrefix(prefix)
     }
 
     /// The exact token sequences a question on a state is scored as — one per row, with the
@@ -607,6 +670,7 @@ public actor TypedDecisions {
     /// Drops the cached prompt: the next decision prefills from scratch.
     public func reset() async throws {
         kvTokens = []
+        checkpointed = []
         switch backend {
         case .language(let runtime): try await runtime.engine.reset()
         case .encoder(let encoder): await encoder.reset()
@@ -634,6 +698,8 @@ public actor TypedDecisions {
             : 0
         // A mirror in an unknown state must not be trusted: clear it until the call lands.
         kvTokens = []
+        let held = checkpointed
+        checkpointed = []
         let kept = try await engine.rewind(to: wanted)
         let stream = try await engine.generate(
             with: tokens,
@@ -651,6 +717,9 @@ public actor TypedDecisions {
         }
         // The engine consumed exactly the prompt: the one sampled token was never fed back.
         kvTokens = tokens
+        // A rewind that kept the checkpointed prefix kept the checkpoint; one below it, or a
+        // full reset, discarded it.
+        if kept >= held.count { checkpointed = held }
         let timing = Decision.Timing(
             promptTokens: tokens.count, reusedTokens: kept,
             seconds: ProcessStats.seconds(from: start, to: .now))
