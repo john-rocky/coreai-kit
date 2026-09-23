@@ -9,7 +9,7 @@ enum BuiltinPins {
     /// Catalog id -> Hugging Face commit hash, mirrored from catalog.json.
     static let byID: [String: String] = [
         "adcsr-x4": "60a65ad223ea89385b0b4c880a306616112d55ce",
-        "apus-openjev-v1-4b": "3ad2cc7403304d86022b63fa426a5b80eea3cfbb",
+        "apus-decision-v1-4b": "3e946e1c4fafd9c909492bb81e8f400439560aee",
         "clip-vit-b32": "01a6965ddfa33a11d7a4bd299077c2672c0a72cc",
         "colmodernvbert": "8b1e802cabc8f3980be5fb58d179139c5118a72a",
         "decider-0.8b": "ff60ccf563556efbf83442e891e57d68a1840728",
@@ -44,7 +44,6 @@ enum BuiltinPins {
         "nemotron-3-nano-4b": "0f9e01aa8d3f569be4b067a67ff7681591c235c4",
         "nemotron-3.5-asr-streaming-0.6b": "3900f995653d7541e196f320c148775fe1662f9e",
         "north-micro-vision": "d6e48e3c2eb26dd3ad29c9b58642a405d66f0d54",
-        "openjev-27b": "5a66d1d0d2985ee05239520ef33a80d697257767",
         "openthai-systemone": "e48583dab6c527fb87f47e074a5724a701c05600",
         "parakeet-tdt-0.6b-v3": "9532c145c12e82e10c2e486e7dada1d7722c5764",
         "qwen2.5-omni-3b-audio": "e9d17c408557574fe6076c426faa65cf6e295d6e",

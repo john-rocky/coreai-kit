@@ -37,7 +37,7 @@ public enum Decision {
         /// metadata.json) together with a temperature per question type; a score is one row
         /// over its levels. `SlotPrompt.swift`.
         case slot
-        /// The `Shared state:` + JSON task form (APUS-OpenJev-v1): one user turn under the chat
+        /// The `Shared state:` + JSON task form (APUS's decision model, apus-decision-v1-4b): one user turn under the chat
         /// template holding the state, then a JSON object whose criteria carry the letters
         /// A–P, then `Answer:`; the answer is the letter at the next token, read from the
         /// ordinary LM head with no temperature. The model's own primitives are `choice` and a
@@ -58,7 +58,7 @@ public enum Decision {
         /// in its metadata.json). No chat template. A yes/no is the rows `yes` / `no`, a score
         /// one row per level. `ScalarPrompt.swift`.
         case scalar
-        /// The lettered option list under the chat template (OpenJev): one user turn —
+        /// The lettered option list under the chat template (the lettered-list helper form): one user turn —
         /// `State:`, the state, `Question:`, `Options:` as `[A] key: description` lines,
         /// "Answer with the letter of the best option only." — read at the bare letters A–Z
         /// then a–z (up to 52) from the LM head at the temperature the bundle declares

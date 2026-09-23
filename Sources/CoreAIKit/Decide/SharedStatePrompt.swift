@@ -1,4 +1,4 @@
-// SharedStatePrompt.swift — the prompt form of APUS-OpenJev-v1 (`Decision.Format.sharedState`),
+// SharedStatePrompt.swift — the prompt form of APUS's decision model (apus-decision-v1-4b) (`Decision.Format.sharedState`),
 // the author's `jev.dynamic.prompt.v2`.
 //
 // The model keeps the ordinary LM head; what it was trained on is one user turn under the chat

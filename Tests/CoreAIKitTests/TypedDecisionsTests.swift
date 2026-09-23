@@ -279,7 +279,7 @@ struct DeciderPromptTests {
     }
 }
 
-/// The `Shared state:` + JSON task form (APUS-OpenJev-v1): the user turn byte for byte the
+/// The `Shared state:` + JSON task form (apus-decision-v1-4b): the user turn byte for byte the
 /// author's `render_prompt`, the fixed yes/no criteria, and the readout order.
 struct SharedStatePromptTests {
     @Test func userTurnIsTheAuthorsRenderPrompt() {
@@ -348,7 +348,7 @@ struct DecisionFunctionPromptTests {
     }
 }
 
-/// The lettered option list (OpenJev): the helper's text, the score and yes/no rows, the
+/// The lettered option list (the lettered-list helper form): the helper's text, the score and yes/no rows, the
 /// calibration arithmetic and the bundle declaration, checkable without a tokenizer or weights.
 struct LetterListPromptTests {
     @Test func userTurnIsTheHelpersPrompt() {
@@ -382,7 +382,7 @@ struct LetterListPromptTests {
     @Test func aYesNoIsCalibratedTheHelpersWay() throws {
         let layout = try LetterListPrompt.Layout(
             block: ["head": "lm", "readout": "letters", "temperature": 0.85, "noul": ["t": 1.829074, "bias": 0]],
-            bundle: "openjev")
+            bundle: "letter-list")
         #expect(layout.temperature == 0.85 && layout.noulSlope == 1.829074 && layout.noulBias == 0)
         // The helper's fixture: raw P(yes) 0.999816468588398 → 0.9910173824195448.
         #expect(abs(layout.calibrate(pYes: 0.999816468588398) - 0.9910173824195448) < 1e-9)

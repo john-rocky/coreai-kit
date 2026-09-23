@@ -119,7 +119,7 @@ fp32 assembly (max 0.016, on a five-level fit mass).
 English decision model with a 256-way answer head of its own (up to 255 options, an abstain
 probability), is token-identical and argmax-identical to its author's readout on all 50 of its
 fixture rows (int8 max |Δp| 0.023) and scores 0.725 on SemIf's 144 English rows through the kit.
-`apus-openjev-v1-4b`, a Qwen3.5-4B decision model for browser and workflow steps read at the
+`apus-decision-v1-4b`, a Qwen3.5-4B decision model for browser and workflow steps read at the
 letters A–P under its chat template, is token-identical to its author's compiled prompts on the
 40 choice and yes/no fixture rows (max |Δp| 0.0055) and scores 0.906 on the same 144 rows, at
 about 2 s per decision on the Mac.
@@ -131,9 +131,6 @@ on the same 144 rows, at about 1 s per decision on the Mac.
 temperature (CC BY-NC 4.0), is token-identical to its author's 280 fixture rows and argmax-identical
 on all 48 questions (int8 max |Δp| 0.011) and scores 0.844 on the same 144 rows, at about 2 s per
 three-option decision on the Mac.
-`openjev-27b`, the 27B model behind the OpenJev decision API read exactly as its helper reads it
-(CC BY-NC 4.0), is token-identical to its helper's rows and argmax-identical on all 61 fixture rows
-(int8 max |Δp| 0.0003) and scores 0.907 on the same 144 rows, at about 8 s per decision on the Mac.
 `laya-multilingual`, an encoder-type decision model (convaiinnovations' laya, the multilingual
 checkpoint: an mmBERT-base encoder with a typed decision head, Apache-2.0), reads the whole question
 in one forward pass and answers at a mask marker in front of each option; nothing is generated or
@@ -194,8 +191,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `system-one-scorer-4b` | one row per option | 255 |
 | `qwen3-0.6b` | A–Z | 26 |
 | `qwen3.5-2b-decision` | ` A`–` Z` after its plain-text prompt | 26 |
-| `apus-openjev-v1-4b` | A–P | 16 |
-| `openjev-27b` | A–Z, a–z | 52 |
+| `apus-decision-v1-4b` | A–P | 16 |
 | `laya-multilingual` | a mask marker before each option, in one forward pass | 20 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its

@@ -237,7 +237,7 @@ team.choice        // "billing"
 team.abstain       // P(none of these), reported beside the option probabilities
 ```
 
-**A decision model for agent steps.** `apus-openjev-v1-4b` (English + Chinese, kind `decision`)
+**A decision model for agent steps.** `apus-decision-v1-4b` (English + Chinese, kind `decision`)
 keeps its LM head and is read at the letters A–P after a `Shared state:` + JSON task turn under
 its chat template (`Decision.Format.sharedState`, named by the catalog entry's `format`). Its
 choices take 2–16 described criteria and its yes/no a proposition; a score becomes a choice over
@@ -246,7 +246,7 @@ yes/no rows (max |Δp| 0.0055); a 4B, so about 2 s per decision on the Mac and n
 number yet.
 
 ```swift
-let agent = try await TypedDecisions(catalog: "apus-openjev-v1-4b")   // Format.sharedState, T = 1
+let agent = try await TypedDecisions(catalog: "apus-decision-v1-4b")   // Format.sharedState, T = 1
 let next = try await agent.decide(pageState,
     .choice("Choose the next browser action that advances the goal.",
             options: [.init(id: "submit", description: "Submit the completed form."),
@@ -285,23 +285,6 @@ let team = try await scorer.decide(ticket,
     .choice("Which team should handle this?", ["billing", "shipping", "technical"]))
 team.choice          // "billing"
 team.probabilities   // one per option: the rows' scores, softmaxed at the author's temperature
-```
-
-**The OpenJev model itself, non-commercial.** `openjev-27b` (English, German, French, Hindi,
-Chinese, Japanese; kind `decision`; CC BY-NC 4.0 — `CatalogEntry.license` carries it) is the open
-27B behind the OpenJev helper, read exactly as the helper reads it (`Decision.Format.letterList`,
-declared by the bundle's metadata with the helper's temperature 0.85 and yes/no calibration). Up to
-52 options; a score lists its levels, a yes/no lists what each side means. Token-identical to the
-helper's rows on the fixture's 61 (int8 max |Δp| 0.0003); about 8 s per decision on an M4 Max,
-28 GB, Mac only.
-
-```swift
-let openjev = try await TypedDecisions(catalog: "openjev-27b")   // Format.letterList, T = 0.85 from the bundle
-let route = try await openjev.decide(customerMessage,
-    .choice("Which team should handle this?", ["billing", "shipping", "technical"]))
-route.choice          // "billing"
-let angry = try await openjev.decide(customerMessage, .noul("Is the customer angry?"))
-angry.noul            // P(yes), calibrated the helper's way
 ```
 
 ## Chat, tools, and guided JSON

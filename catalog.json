@@ -344,14 +344,14 @@
       "format": "slot"
     },
     {
-      "id": "apus-openjev-v1-4b",
-      "name": "APUS-OpenJev-v1 4B",
-      "repo": "mlboydaisuke/APUS-OpenJev-v1-4B-CoreAI",
-      "revision": "3ad2cc7403304d86022b63fa426a5b80eea3cfbb",
+      "id": "apus-decision-v1-4b",
+      "name": "APUS Decision v1 4B",
+      "repo": "mlboydaisuke/APUS-Decision-v1-4B-CoreAI",
+      "revision": "3e946e1c4fafd9c909492bb81e8f400439560aee",
       "kind": "decision",
       "variants": {
         "macos": {
-          "path": "gpu-pipelined-b2/apus_openjev_v1_4b_decode_int8hu_block32_sym",
+          "path": "gpu-pipelined-b2/apus_decision_v1_4b_decode_int8hu_block32_sym",
           "sizeMB": 5504
         }
       },
@@ -391,22 +391,6 @@
       },
       "engine": "pipelined",
       "format": "scalar",
-      "license": "CC-BY-NC-4.0"
-    },
-    {
-      "id": "openjev-27b",
-      "name": "OpenJev 27B",
-      "repo": "mlboydaisuke/OpenJev-CoreAI",
-      "revision": "5a66d1d0d2985ee05239520ef33a80d697257767",
-      "kind": "decision",
-      "variants": {
-        "macos": {
-          "path": "gpu-pipelined/openjev_27b_decode_int8hu_block32_sym",
-          "sizeMB": 28423
-        }
-      },
-      "engine": "pipelined",
-      "format": "letterList",
       "license": "CC-BY-NC-4.0"
     },
     {
