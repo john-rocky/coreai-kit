@@ -26,6 +26,7 @@ enum BuiltinPins {
         "granite-4.0-h-1b": "e0c884d19ecb9f90407904adcf629732fc8e6e38",
         "holo2-4b": "0352dffb183be16da16a1a1a3fb957a4c2da5c6f",
         "kokoro-82m": "556dda7f7c041bac3f64acb3a320847f4bc34fb3",
+        "laya-multilingual": "1175a4e6231fdfe8946e6566276f8d71eb8f02ef",
         "lfm2.5-1.2b": "8dc37422e5ace08e7c6ae56048c129813e4e0a56",
         "lfm2.5-2.6b": "79704a10ac98e49dabf7051543f151d6f5da3a83",
         "lfm2.5-8b-a1b": "1e494ef6dd5c499e18d5c1730ddf4bda76b9e039",

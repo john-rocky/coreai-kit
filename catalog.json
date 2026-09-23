@@ -410,6 +410,24 @@
       "license": "CC-BY-NC-4.0"
     },
     {
+      "id": "laya-multilingual",
+      "name": "laya multilingual",
+      "repo": "mlboydaisuke/Laya-Multilingual-CoreAI",
+      "revision": "1175a4e6231fdfe8946e6566276f8d71eb8f02ef",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "macos/wfp16-s256",
+          "sizeMB": 681
+        },
+        "ios": {
+          "path": "ios/wfp16-s256",
+          "sizeMB": 680
+        }
+      },
+      "format": "encoder"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",
