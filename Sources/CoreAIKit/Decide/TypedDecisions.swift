@@ -54,7 +54,8 @@
 // KV cache of a dynamic bundle once it reaches 2048 positions (the same guard the pipelined
 // engine enforces). A choice of 255 options does not fit that — 1,965 tokens for the decider's
 // fixture row, 3,100–4,200 for a chat model's JSON of short options — so it is a Mac call; on
-// a phone the ceiling is what fits in 1024 tokens (about 60 short options in the chat form).
+// a phone the ceiling is what fits in 1024 tokens (about 60 short options in the chat form,
+// estimated from the Mac prompt sizes, not measured on a phone).
 
 import CoreAILanguageModels
 import Foundation

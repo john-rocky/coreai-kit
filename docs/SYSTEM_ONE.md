@@ -178,7 +178,8 @@ instead of reusing it.
 On an iPhone a prompt must stay under 1,024 tokens, and a 255-option choice does not: its prompt
 is 1,965 tokens on `decider-0.8b`'s fixture row and 3,100–4,200 in the chat form with short
 options. A choice that wide is a Mac call. On a phone the ceiling is what fits in 1,024 tokens
-beside the state, about 60 short options in the chat form.
+beside the state: about 60 short options in the chat form, estimated from the prompt sizes above
+(not measured on a phone).
 
 ## What runs
 
