@@ -182,16 +182,13 @@ func describe(_ answer: Decision.Answer) -> String {
     }
     guard let text, !text.isEmpty, !questions.isEmpty else { fail(usage, status: 2) }
     let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
-    let prefilled = try await decider.prefill(text)
-    var answers: [(id: String, question: Decision.Question, answer: Decision.Answer)] = []
-    for (key, question) in questions {
-        answers.append((key, question, try await prefilled.decide(question)))
-    }
+    let response = try await decider.systemOne(
+        SystemOne.Request(state: text, questions: questions.map { (id: $0.0, question: $0.1) }))
     if json {
-        print(SystemOne.response(model: id, answers: answers).dumps())
+        print(response.dumps())
     } else {
-        for (key, _, answer) in answers {
-            print("\(key): \(describe(answer))")
+        for answer in response.answers {
+            print("\(answer.id): \(describe(answer.answer))")
         }
     }
 }

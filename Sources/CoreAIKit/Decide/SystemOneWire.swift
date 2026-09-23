@@ -23,6 +23,40 @@ public enum SystemOne {
         public let questions: [(id: String, question: Decision.Question)]
         /// True when `state` was structured data serialized the reference way.
         public let structuredState: Bool
+
+        /// A request built in Swift rather than parsed: the state as text, the questions in the
+        /// order their answers should come back, `model` a catalog id or nil for the caller's
+        /// default.
+        public init(state: String, model: String? = nil, questions: [(id: String, question: Decision.Question)]) {
+            self.init(state: state, model: model, questions: questions, structuredState: false)
+        }
+
+        /// The same with the questions as a literal, in the order written:
+        /// `["reply": .noul("…"), "topic": .choice("…", ["billing", "delivery"])]`.
+        public init(state: String, model: String? = nil, questions: KeyValuePairs<String, Decision.Question>) {
+            self.init(state: state, model: model, questions: questions.map { (id: $0.key, question: $0.value) })
+        }
+
+        /// A structured state — an object or an array — serialized the way the hosted API's
+        /// Python clients serialize it (`JSONValue.dumps()`), so the model reads the same bytes.
+        /// A string is the plain state; null is refused.
+        public init(state: JSONValue, model: String? = nil, questions: [(id: String, question: Decision.Question)]) throws {
+            switch state {
+            case .string(let text):
+                self.init(state: text, model: model, questions: questions, structuredState: false)
+            case .null:
+                throw WireError("'state' must be a string, an object or an array")
+            default:
+                self.init(state: state.dumps(), model: model, questions: questions, structuredState: true)
+            }
+        }
+
+        init(state: String, model: String?, questions: [(id: String, question: Decision.Question)], structuredState: Bool) {
+            self.state = state
+            self.model = model
+            self.questions = questions
+            self.structuredState = structuredState
+        }
     }
 
     /// A request the endpoint rejects — HTTP 422 with the message.
@@ -78,8 +112,18 @@ public enum SystemOne {
         for member in questionMembers {
             questions.append((member.key, try question(from: member.value, id: member.key, maxOptions: maxOptions)))
         }
+        try validateIDs(questions.map(\.id))
         _ = members
         return Request(state: state, model: model, questions: questions, structuredState: structured)
+    }
+
+    /// Every question id once: the answers are keyed by them, and a second answer under the same
+    /// key would overwrite the first in the response object.
+    static func validateIDs(_ ids: [String]) throws {
+        var seen: Set<String> = []
+        for id in ids where !seen.insert(id).inserted {
+            throw WireError("duplicate question id '\(id)'")
+        }
     }
 
     /// One question from its wire object: `{"type": "choice" | "score" | "noul", "instructions": …, "criteria": …}`.

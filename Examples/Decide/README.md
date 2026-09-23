@@ -95,7 +95,9 @@ every shape above, the 16-, 17-, 255- and 256-option edges, structured state and
 three-message chat as the state, four malformed requests — and the keys and types each
 answer must come back with; `cases.json` is the list, and any other `/v1/systemone` server
 can be run against it. The codec is public API (`SystemOne.request(from:)`,
-`SystemOne.response(model:answers:)`) for an app that wants to accept or emit the form itself.
+`SystemOne.response(model:answers:)`) for an app that wants to accept or emit the form itself,
+and `CoreAI.systemOne(json:)` answers a whole request in-process — the same reply this server
+writes, with the typed answers beside it.
 
 **The same decision as a hook.** `hooks/claude-code-guard.sh` is a Claude Code `PreToolUse`
 hook: every Bash command the agent is about to run goes through `decide-cli` under the policy

@@ -25,6 +25,7 @@ from `Op.allCases`.
 | [redact PII](#work-with-text) | `CoreAI.redact(text)` | Text → text with PII replaced by labels |
 | [find names/emails/anything in text](#work-with-text) | `CoreAI.extractEntities(from:labels:)` | Text → entities by zero-shot label |
 | [decide something about text, with a probability](#decide-without-generating) | `CoreAI.decide(state, questions)` | State + typed questions → answers with probabilities |
+| [answer a `/v1/systemone` request in-process](#decide-without-generating) | `CoreAI.systemOne(json:)` | The hosted request form → the hosted response, typed answers beside it |
 | [give Claude Code / Codex / Cursor a decision tool](#decide-without-generating) | `systemone mcp` | An MCP server on stdio: tools `decide`, `models` |
 | [chat with a local LLM, streaming](#chat-tools-and-guided-json) | `ChatSession` | Prompt ⇄ streamed conversation |
 | [let the model call my functions](#chat-tools-and-guided-json) | `KitLanguageModel` + FM tools | Prompt → answer via your tools |
@@ -171,19 +172,26 @@ with two Shortcuts actions on the side.
 (`brew install john-rocky/tap/systemone`; from a checkout, `decide-cli serve` in `Examples/Decide`)
 answers `POST /v1/systemone` in the hosted API's request and answer forms over a catalog
 model; point the client's base URL at `http://127.0.0.1:8090` and nothing else changes. The
-server is `SystemOneServer` in `CoreAIKit` for an app that wants to listen itself, and the
-codec is `SystemOne.request(from:)` / `SystemOne.response(model:answers:)` in `CoreAIKit`,
-for an app that wants to take the same JSON straight from a client or a file:
+server is `SystemOneServer` in `CoreAIKit` for an app that wants to listen itself. An app that
+holds the same JSON — from a client, a file, a recorded request — answers it in-process with
+`CoreAI.systemOne`: the hosted request form in, the hosted response out, the typed answers
+beside the wire object, the model from `options`, else the request's own `model`, else
+`CoreAI.decide`'s default:
 
 ```swift
-let request = try SystemOne.request(from: body)                     // state, questions in request order
-let prefilled = try await decider.prefill(request.state)
-var answers: [(id: String, question: Decision.Question, answer: Decision.Answer)] = []
-for (id, question) in request.questions {
-    answers.append((id, question, try await prefilled.decide(question)))
-}
-let json = SystemOne.response(model: "minicpm5-2b", answers: answers).dumps()
+let r = try await CoreAI.systemOne(json: body)        // state, questions in request order, model
+r["queue"]?.choice                                    // typed, by the request's key
+r.usage.inputTokens                                   // as the wire counts it
+let json = r.dumps()                                  // the reply, byte for byte what the server writes
+
+let same = try await CoreAI.systemOne(                // or built in Swift, answers in this order
+    state: ticket,
+    questions: ["reply": .noul("Does the customer expect a response today?"),
+                "queue": .choice("Which queue?", ["billing", "technical", "other"])])
 ```
+
+The model-level form is `decider.systemOne(request)` on a `TypedDecisions` an app keeps warm;
+the codec underneath is `SystemOne.request(from:)` / `SystemOne.response(model:answers:)`.
 
 **From a coding agent.** `systemone mcp` (or `decide-cli mcp` from a checkout) is the same over
 the Model Context Protocol: `claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp`

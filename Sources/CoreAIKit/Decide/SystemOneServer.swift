@@ -270,17 +270,9 @@ public final class SystemOneServer: @unchecked Sendable {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: "\(error)"))
         }
         do {
-            let (response, tokens, milliseconds) = try await decisions.run { [decider, modelID] in
-                let prefilled = try await decider.prefill(parsed.state)
-                var answers: [(id: String, question: Decision.Question, answer: Decision.Answer)] = []
-                for (id, question) in parsed.questions {
-                    answers.append((id, question, try await prefilled.decide(question)))
-                }
-                let milliseconds = answers.map(\.answer.timing.milliseconds).reduce(0, +) + prefilled.timing.milliseconds
-                return (SystemOne.response(model: modelID, answers: answers), prefilled.tokens, milliseconds)
-            }
-            log("POST \(SystemOne.path)  \(parsed.questions.count) question(s), state \(tokens) tokens, \(Int(milliseconds.rounded())) ms")
-            return .json(200, response)
+            let response = try await decisions.run { [decider] in try await decider.systemOne(parsed) }
+            log("POST \(SystemOne.path)  \(parsed.questions.count) question(s), state \(response.stateTokens) tokens, \(Int(response.milliseconds.rounded())) ms")
+            return .json(200, SystemOne.response(model: modelID, answers: response.answers.map { ($0.id, $0.question, $0.answer) }))
         } catch let error as DecisionError {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.localizedDescription))
         } catch {

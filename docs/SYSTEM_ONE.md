@@ -23,6 +23,15 @@ a["topic"]?.choice    // "delivery"
 a["urgent"]?.score    // expected level, 0…2
 ```
 
+The same call in the hosted API's own forms — a request that arrived as JSON, a response to
+hand back as JSON — is `CoreAI.systemOne`, the typed answers beside the wire object:
+
+```swift
+let r = try await CoreAI.systemOne(json: body)   // the bytes a client sent: state, questions, model
+r["topic"]?.choice                               // typed, by the request's own key
+r.dumps()                                        // the reply, byte for byte what `systemone serve` returns
+```
+
 Anything else, over HTTP, in the hosted API's own forms:
 
 ```bash
@@ -102,7 +111,10 @@ number is and what else was running.
 141/144 argmax agreement on SemIf's authored fixture, mean |Δp| 0.02, family-balanced accuracy
 0.681 against 0.686 published. The 4-bit `qwen3-0.6b` does not (59/144) and is documented as
 speed-only. `decider-0.8b`, a model trained for these questions, is token-identical to its
-author's readout on all 44 of its fixture rows, the 255-option row included.
+author's readout on all 44 of its fixture rows, the 255-option row included; through the hosted
+request form (`CoreAI.systemOne`) its 13-request fixture comes back with the author's option on
+all 36 answers and every probability, score, level fit and fit mass within 0.02 of the author's
+fp32 assembly (max 0.016, on a five-level fit mass).
 `openthai-systemone`, a Thai +
 English decision model with a 256-way answer head of its own (up to 255 options, an abstain
 probability), is token-identical and argmax-identical to its author's readout on all 50 of its
@@ -231,9 +243,11 @@ Clips of each on the Mac and on the iPhone are in
 ## Where the pieces are
 
 - `Sources/CoreAIKit/Decide/` — `TypedDecisions` (the model-level API: prefill once, decide
-  N times), `Decision` (the value types), `DecisionPrompt` / `DeciderPrompt` / `SlotPrompt`
+  N times; `systemOne(_:)` answers a whole request in the hosted form), `Decision` (the value
+  types), `DecisionPrompt` / `DeciderPrompt` / `SlotPrompt`
   (the three renderings: a chat model's JSON turn, a decision model's plain text, a slot-head
-  model's control tokens), `SystemOneWire` + `OrderedJSON` (the hosted forms), `SystemOneServer` (the
+  model's control tokens), `SystemOneWire` + `OrderedJSON` (the hosted forms), `SystemOneCall`
+  (`SystemOne.Response`: a whole request's typed answers and its wire object), `SystemOneServer` (the
   endpoint over Network.framework — the same code listens in an app, `host: "0.0.0.0"` for the
   local network), `DecisionQueue` (one decision at a time over a shared model), and
   `SystemOneMCPServer` + `SystemOneMCP` (the same decisions as Model Context Protocol tools
@@ -243,7 +257,9 @@ Clips of each on the Mac and on the iPhone are in
   marker logits, act features, the temperature by question type and option count) and
   `EncoderDecider` (the bundle's `main` and `act` functions; `decideRow` gives the raw numbers).
   `TypedDecisions` is the API over them.
-- `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op.
+- `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op;
+  `CoreAI+SystemOne.swift` — `CoreAI.systemOne`, the same op in the hosted request and
+  response forms (the model from `options`, else the request's `model`, else the default).
 - `Sources/systemone` — the `systemone` binary (`serve | ask | models | mcp`), built, signed and
   notarized per tag by `.github/workflows/release.yml`; the Homebrew formula lives in
   [john-rocky/homebrew-tap](https://github.com/john-rocky/homebrew-tap).
