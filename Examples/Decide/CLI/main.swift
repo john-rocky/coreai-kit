@@ -131,7 +131,10 @@ func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
 }
 
 /// The decider every command loads: the `--bundle` directory when given, else the catalog id.
+/// `--compute` reaches an encoder bundle's graphs; the language formats ignore it.
 @MainActor func loadDecider(configuration: TypedDecisions.Configuration = .init()) async throws -> TypedDecisions {
+    var configuration = configuration
+    configuration.computeUnits = computeUnits
     if let bundlePath {
         return try await TypedDecisions(bundleAt: URL(fileURLWithPath: bundlePath), configuration: configuration)
     }

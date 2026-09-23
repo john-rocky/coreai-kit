@@ -130,6 +130,63 @@ struct EncoderPromptTests {
     }
 }
 
+/// The question cache: a question's part of the row is made once and reused on every state, keyed
+/// by what the tokenizer reads of the question, byte for byte, the least recently asked dropped first.
+struct EncoderQuestionCacheTests {
+    static let layout = EncoderPromptTests.layout(window: 64, head: 32)
+
+    static func part(_ question: Decision.Question) -> EncoderPrompt.QuestionPart {
+        EncoderPrompt.questionPart(question, layout: layout, maskText: "<mask>", encode: EncoderPromptTests.stub)
+    }
+
+    @Test func aHitRendersExactlyWhatAFreshBuildRenders() throws {
+        var cache = EncoderPrompt.QuestionCache(capacity: 16)
+        var made = 0
+        let question = EncoderPromptTests.short
+        let first = cache.part(for: question, maskText: "<mask>") { made += 1; return Self.part(question) }
+        let second = cache.part(for: question, maskText: "<mask>") { made += 1; return Self.part(question) }
+        #expect(!first.hit && second.hit && made == 1 && first.part == second.part)
+        for state in ["st", "", String(repeating: "s", count: 40)] {
+            let cached = try EncoderPrompt.assemble(second.part, stateTokens: EncoderPromptTests.stub(state), layout: Self.layout)
+            let fresh = try EncoderPrompt.build(
+                stateTokens: EncoderPromptTests.stub(state), question: question, layout: Self.layout, maskText: "<mask>",
+                encode: EncoderPromptTests.stub)
+            #expect(cached == fresh)
+        }
+    }
+
+    @Test func theKeyIsTheQuestionsValueByteForByte() {
+        var cache = EncoderPrompt.QuestionCache(capacity: 16)
+        let question = Decision.Question.choice("Q?", options: [.init("a"), .init(id: "b", description: "x")])
+        _ = cache.part(for: question, maskText: "<mask>") { Self.part(question) }
+        // An equal value built again hits, and so does one the wire codec wrote the same way.
+        #expect(cache.part(for: .choice("Q?", options: [.init("a"), .init(id: "b", description: "x")]), maskText: "<mask>") { Self.part(question) }.hit)
+        #expect(cache.part(for: .choice("Q?", options: [.init("a"), .init(id: "b", description: "b: x")]), maskText: "<mask>") { Self.part(question) }.hit)
+        // Another description, another type, another instruction: misses.
+        #expect(!cache.part(for: .choice("Q?", options: [.init("a"), .init(id: "b", description: "y")]), maskText: "<mask>") { Self.part(question) }.hit)
+        #expect(!cache.part(for: .score("Q?", levels: ["a", "b: x"]), maskText: "<mask>") { Self.part(question) }.hit)
+        #expect(!cache.part(for: .choice("Q!", options: [.init("a"), .init(id: "b", description: "x")]), maskText: "<mask>") { Self.part(question) }.hit)
+        // Canonically equivalent is not the same text to this tokenizer: é (U+00E9) and e + U+0301 miss each other.
+        _ = cache.part(for: .noul("caf\u{e9}?"), maskText: "<mask>") { Self.part(.noul("caf\u{e9}?")) }
+        #expect(!cache.part(for: .noul("cafe\u{301}?"), maskText: "<mask>") { Self.part(.noul("cafe\u{301}?")) }.hit)
+        #expect(Decision.Question.noul("caf\u{e9}?") == Decision.Question.noul("cafe\u{301}?"))  // why the key is not `==`
+    }
+
+    @Test func theLeastRecentlyAskedIsDroppedPastSixteen() {
+        var cache = EncoderPrompt.QuestionCache(capacity: 16)
+        let questions = (0..<17).map { Decision.Question.noul("Question \($0)?") }
+        for q in questions.prefix(16) { _ = cache.part(for: q, maskText: "<mask>") { Self.part(q) } }
+        #expect(cache.count == 16)
+        // Asking the oldest again makes it the newest; the 17th question then drops question 1.
+        #expect(cache.part(for: questions[0], maskText: "<mask>") { Self.part(questions[0]) }.hit)
+        _ = cache.part(for: questions[16], maskText: "<mask>") { Self.part(questions[16]) }
+        #expect(cache.count == 16)
+        #expect(cache.part(for: questions[0], maskText: "<mask>") { Self.part(questions[0]) }.hit)
+        #expect(!cache.part(for: questions[1], maskText: "<mask>") { Self.part(questions[1]) }.hit)
+        #expect(EncoderDecider.questionCacheCapacity == 16)
+    }
+}
+
 /// The host decoder against HOST_CONTRACT §E: the publisher's worked rows, whose probabilities
 /// and features the reference computed in float32.
 struct EncoderReadoutTests {

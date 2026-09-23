@@ -230,7 +230,17 @@ public struct EncoderPrompt: Sendable {
 
     /// The row over state tokens already made by `contextTokens(state:)`.
     func render(stateTokens: [Int32], question: Decision.Question) throws -> Rendered {
-        try Self.build(stateTokens: stateTokens, question: question, layout: layout, maskText: maskText, encode: encode)
+        try render(stateTokens: stateTokens, part: questionPart(question))
+    }
+
+    /// The row over state tokens and a question part already made (`questionPart(_:)`).
+    func render(stateTokens: [Int32], part: QuestionPart) throws -> Rendered {
+        try Self.assemble(part, stateTokens: stateTokens, layout: layout)
+    }
+
+    /// The part of every row of `question` that no state changes.
+    func questionPart(_ question: Decision.Question) -> QuestionPart {
+        Self.questionPart(question, layout: layout, maskText: maskText, encode: encode)
     }
 
     /// One piece of text, without special tokens; nothing for an empty piece (see the header).
@@ -247,42 +257,115 @@ public struct EncoderPrompt: Sendable {
         text.replacingOccurrences(of: maskText, with: " ", options: .literal)
     }
 
+    /// The part of a row that depends on the question alone: `[CLS] head [SEP] options [SEP]` after
+    /// the head budget and the squeeze, and where each option's marker sits in it. A state only
+    /// fills the room the window leaves after it, so the part is the same on every state.
+    struct QuestionPart: Sendable, Equatable {
+        let ids: [Int32]
+        let markers: [Int32]
+        let qtype: Int
+    }
+
     /// The row of `question` over `stateTokens`, each text piece encoded by `encode`.
     static func build(
         stateTokens: [Int32], question: Decision.Question, layout: Layout, maskText: String,
         encode: (String) -> [Int32]
     ) throws -> Rendered {
+        try assemble(
+            questionPart(question, layout: layout, maskText: maskText, encode: encode), stateTokens: stateTokens,
+            layout: layout)
+    }
+
+    static func questionPart(
+        _ question: Decision.Question, layout: Layout, maskText: String, encode: (String) -> [Int32]
+    ) -> QuestionPart {
         let qtype = EncoderReadout.qtype(of: question.kind)
-        let options = optionTexts(for: question)
-        var head = encode(EncoderReadout.questionTypes[qtype] + " question: " + unmasked(question.instructions, maskText))
-        var optionRows = options.map { text in
-            [layout.maskTokenID] + encode(" " + unmasked(text, maskText)).prefix(layout.optionTextTokens)
-        }
+        let (head, options) = texts(of: question, maskText: maskText)
+        let headIDs = encode(head)
+        var optionRows = options.map { [layout.maskTokenID] + encode($0).prefix(layout.optionTextTokens) }
         var budget = layout.headMaxLength - optionRows.reduce(0) { $0 + $1.count }
         if budget < 16 {
             let share = max(4, (layout.headMaxLength - 16) / max(1, optionRows.count))
             optionRows = optionRows.map { Array($0.prefix(share)) }
             budget = layout.headMaxLength - optionRows.reduce(0) { $0 + $1.count }
         }
-        head = Array(head.prefix(max(8, budget)))
-        var ids: [Int32] = [layout.clsTokenID] + head + [layout.sepTokenID]
+        var ids: [Int32] = [layout.clsTokenID] + headIDs.prefix(max(8, budget)) + [layout.sepTokenID]
         var markers: [Int32] = []
         for row in optionRows {
             markers.append(Int32(ids.count))
             ids += row
         }
         ids.append(layout.sepTokenID)
-        let room = max(0, layout.window - ids.count - 1)
+        return QuestionPart(ids: ids, markers: markers, qtype: qtype)
+    }
+
+    /// A row: the question's part, as much of the state as the window leaves room for (cut from its
+    /// end), a closing SEP, the whole cut to the window.
+    static func assemble(_ part: QuestionPart, stateTokens: [Int32], layout: Layout) throws -> Rendered {
+        let room = max(0, layout.window - part.ids.count - 1)
         let state = stateTokens.prefix(room)
-        let unstated = ids.count + 1
-        ids += state
-        ids.append(layout.sepTokenID)
-        let kept = markers.filter { $0 < layout.window }
+        let ids = part.ids + state + [layout.sepTokenID]
+        let kept = part.markers.filter { $0 < layout.window }
         // The publisher refuses a question whose options no longer fit (`Agent.system_one`).
-        guard kept.count == options.count else {
-            throw DecisionError.promptTooLong(tokens: unstated, max: layout.window)
+        guard kept.count == part.markers.count else {
+            throw DecisionError.promptTooLong(tokens: part.ids.count + 1, max: layout.window)
         }
-        return Rendered(tokens: Array(ids.prefix(layout.window)), markers: kept, qtype: qtype, stateTokens: state.count)
+        return Rendered(tokens: Array(ids.prefix(layout.window)), markers: kept, qtype: part.qtype, stateTokens: state.count)
+    }
+
+    /// What the tokenizer reads of a question: the head (`<type> question: <instructions>`) and each
+    /// option as " " + its text, mask-token text already turned into spaces.
+    static func texts(of question: Decision.Question, maskText: String) -> (head: String, options: [String]) {
+        let qtype = EncoderReadout.qtype(of: question.kind)
+        return (
+            EncoderReadout.questionTypes[qtype] + " question: " + unmasked(question.instructions, maskText),
+            optionTexts(for: question).map { " " + unmasked($0, maskText) }
+        )
+    }
+
+    /// The question parts of the last `capacity` questions, the least recently asked dropped first:
+    /// a gate asks the same few questions of every new state, and tokenizing the head and every
+    /// option again is most of a row's host time. The key is what the tokenizer reads of the
+    /// question (`texts(of:maskText:)`), byte for byte: `Decision.Question`'s own `==` also matches
+    /// canonically equivalent text, which this tokenizer (no Unicode normalizer) cuts differently.
+    struct QuestionCache: Sendable {
+        let capacity: Int
+        private var entries: [(key: [UInt8], part: QuestionPart)] = []
+
+        init(capacity: Int) {
+            self.capacity = capacity
+        }
+
+        var count: Int { entries.count }
+
+        /// The cached part of `question`, or `make()`'s, remembered.
+        mutating func part(
+            for question: Decision.Question, maskText: String, make: () -> QuestionPart
+        ) -> (part: QuestionPart, hit: Bool) {
+            let key = Self.key(question, maskText: maskText)
+            if let index = entries.firstIndex(where: { $0.key == key }) {
+                let entry = entries.remove(at: index)
+                entries.append(entry)
+                return (entry.part, true)
+            }
+            let part = make()
+            guard capacity > 0 else { return (part, false) }
+            entries.append((key, part))
+            if entries.count > capacity { entries.removeFirst(entries.count - capacity) }
+            return (part, false)
+        }
+
+        /// The head and the option texts, each length-prefixed so no two questions share a key.
+        static func key(_ question: Decision.Question, maskText: String) -> [UInt8] {
+            let (head, options) = EncoderPrompt.texts(of: question, maskText: maskText)
+            var bytes: [UInt8] = []
+            for text in [head] + options {
+                let utf8 = Array(text.utf8)
+                withUnsafeBytes(of: UInt32(utf8.count).littleEndian) { bytes += $0 }
+                bytes += utf8
+            }
+            return bytes
+        }
     }
 
     /// The option texts the model reads, in answer order (`render_options`).

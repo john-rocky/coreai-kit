@@ -87,6 +87,10 @@ public actor EncoderDecider {
     private let act: GraphModel
     /// The last state tokenized with sharing on, and its tokens.
     private var cachedState: (text: String, tokens: [Int32])?
+    /// The recent questions' parts of a row (head and options tokenized, budgeted, marked), with
+    /// sharing on: the same questions come back on every state, and their tokens do not change.
+    private var questionCache: EncoderPrompt.QuestionCache
+    static let questionCacheCapacity = 16
 
     /// The cached tokens when they are `state`'s, byte for byte: String's `==` also matches
     /// canonically equivalent text, which the tokenizer (no Unicode normalizer) cuts differently.
@@ -110,10 +114,12 @@ public actor EncoderDecider {
 
     init(
         bundleAt url: URL, layout: EncoderPrompt.Layout, computeUnits: GraphModel.ComputeUnits,
-        actComputeUnits: GraphModel.ComputeUnits? = nil
+        actComputeUnits: GraphModel.ComputeUnits? = nil, questionCacheCapacity: Int = EncoderDecider.questionCacheCapacity
     ) async throws {
         let graph = try Graph.read(bundleAt: url)
         let prompt = try await EncoderPrompt(tokenizerFolder: url.appendingPathComponent("tokenizer"), layout: layout)
+        // One AIModel per function: loading the asset once for both measured 5% faster and 13 MB
+        // smaller on the Mac GPU (2026-09-23), not worth a second GraphModel entry point.
         let main = try await GraphModel(contentsOf: graph.main, function: graph.mainFunction, computeUnits: computeUnits)
         let act = try await GraphModel(
             contentsOf: graph.act, function: graph.actFunction, computeUnits: actComputeUnits ?? computeUnits)
@@ -136,6 +142,7 @@ public actor EncoderDecider {
         self.graph = graph
         self.main = main
         self.act = act
+        self.questionCache = EncoderPrompt.QuestionCache(capacity: questionCacheCapacity)
     }
 
     // MARK: - One row
@@ -179,14 +186,18 @@ public actor EncoderDecider {
 
     /// One question on one state, read at `temperature`. With `sharePrefix`, a state tokenized
     /// by the previous call or by `prefill` is reused, and the timing counts its tokens as
-    /// reused.
+    /// reused; so is the question's part of the row when the question was asked recently (the
+    /// timing has no count for that: it only saves host time).
     func decide(
         _ state: String, _ question: Decision.Question, temperature: Double, sharePrefix: Bool
     ) async throws -> Decision.Answer {
         let cached = sharePrefix ? cachedTokens(for: state) : nil
         let stateTokens = cached ?? prompt.contextTokens(state: state)
         if sharePrefix { cachedState = (state, stateTokens) }
-        let rendered = try prompt.render(stateTokens: stateTokens, question: question)
+        let part = sharePrefix
+            ? questionCache.part(for: question, maskText: prompt.maskText) { prompt.questionPart(question) }.part
+            : prompt.questionPart(question)
+        let rendered = try prompt.render(stateTokens: stateTokens, part: part)
         let row = try await decideRow(ids: rendered.tokens, markers: rendered.markers, qtype: rendered.qtype)
         let timing = Decision.Timing(
             promptTokens: rendered.tokens.count, reusedTokens: cached == nil ? 0 : rendered.stateTokens,
@@ -210,7 +221,7 @@ public actor EncoderDecider {
         return (tokens.count, timing)
     }
 
-    /// Forgets the tokenized state.
+    /// Forgets the tokenized state. The questions' parts stay: no state is in them.
     func reset() {
         cachedState = nil
     }
