@@ -17,7 +17,11 @@
 // shared prefix and prefills just the tail. `prefill(_:)` runs the prefix on its own so the
 // first question is as cheap as the rest; `Decision.Timing.reusedTokens` reports what was
 // kept. Engines that cannot rewind mid-sequence (recurrent hybrids — Qwen3.5, LFM2.5,
-// Granite 4) fall back to a full re-prefill on every decision, losslessly; the timing says so.
+// Granite 4) checkpoint instead: the prefix pass — `prefill(_:)`, or the first question on a
+// new state — saves the recurrent state after it (`InferenceEngine.checkpoint()`), and each
+// later question on the state returns there and prefills just the tail, bit-identical to a
+// full re-prefill on the three hybrid decision fixtures (Mac, 2026-09-24). A rewind below the
+// checkpoint still falls back to a full re-prefill, losslessly; the timing says so.
 // A chat question past 26 options is read under its own system line (`DecisionPrompt`'s
 // wide rendering), so it keeps only the start of the shared prefix and prefills the state again.
 //
