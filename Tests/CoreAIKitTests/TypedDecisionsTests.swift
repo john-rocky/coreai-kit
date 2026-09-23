@@ -276,6 +276,56 @@ struct DecisionFunctionPromptTests {
     }
 }
 
+/// The lettered option list (OpenJev): the helper's text, the score and yes/no rows, the
+/// calibration arithmetic and the bundle declaration, checkable without a tokenizer or weights.
+struct LetterListPromptTests {
+    @Test func userTurnIsTheHelpersPrompt() {
+        let question = Decision.Question.choice(
+            "Which destination is printed on the sorting slip?",
+            options: [.init("bin_00"), .init(id: "bin_01", description: "bin_01: the overflow bin"),
+                      .init(id: "bin_02", description: "sealed parcels")])
+        let row = LetterListPrompt.row(for: question)
+        #expect(
+            LetterListPrompt.userContent(state: "The sorting slip assigns this parcel to bin_01.", row: row)
+                == "State:\nThe sorting slip assigns this parcel to bin_01.\n\n"
+                + "Question: Which destination is printed on the sorting slip?\nOptions:\n"
+                + "[A] bin_00: \n[B] bin_01: the overflow bin\n[C] bin_02: sealed parcels\n\n"
+                + "Answer with the letter of the best option only.")
+        #expect(LetterListPrompt.maxOptions == 52)
+        #expect(LetterListPrompt.letters[26] == "a" && LetterListPrompt.letters[51] == "z")
+        #expect(Decision.Format(rawValue: "letterList") == .letterList)
+    }
+
+    @Test func scoreListsItsLevelsAndNoulItsMeanings() {
+        let score = LetterListPrompt.row(for: .score("Which ordered level is recorded?", levels: ["level 0", "level 1", "level 2"]))
+        #expect(score.instructions == "Which ordered level is recorded? Rate along the ordered levels below (lowest first).")
+        #expect(score.options.map(\.key) == ["0", "1", "2"] && score.options.map(\.description) == ["level 0", "level 1", "level 2"])
+        let explicit = LetterListPrompt.row(for: .noul("Is the gate open?", yes: "The gate is open.", no: "The gate is closed."))
+        #expect(explicit.options.map(\.key) == ["yes", "no"])
+        #expect(explicit.options.map(\.description) == ["The gate is open.", "The gate is closed."])
+        let plain = LetterListPrompt.row(for: .noul("Is the gate open?"))
+        #expect(plain.options.map(\.description) == ["The statement is true.", "The statement is false."])
+    }
+
+    @Test func aYesNoIsCalibratedTheHelpersWay() throws {
+        let layout = try LetterListPrompt.Layout(
+            block: ["head": "lm", "readout": "letters", "temperature": 0.85, "noul": ["t": 1.829074, "bias": 0]],
+            bundle: "openjev")
+        #expect(layout.temperature == 0.85 && layout.noulSlope == 1.829074 && layout.noulBias == 0)
+        // The helper's fixture: raw P(yes) 0.999816468588398 → 0.9910173824195448.
+        #expect(abs(layout.calibrate(pYes: 0.999816468588398) - 0.9910173824195448) < 1e-9)
+        let kitOrder = LetterListPrompt.probabilities(kitOrder: [0.999816468588398, 0.00018353141160215212], for: .noul("x"), layout: layout)
+        #expect(abs(kitOrder[1] - 0.9910173824195448) < 1e-9 && abs(kitOrder[0] + kitOrder[1] - 1) < 1e-12)
+        // Clamped at the edges, and the identity when the bundle declares no calibration.
+        #expect(layout.calibrate(pYes: 1) < 1)
+        let none = try LetterListPrompt.Layout(block: ["readout": "letters"], bundle: "x")
+        #expect(none.temperature == 1 && abs(none.calibrate(pYes: 0.3) - 0.3) < 1e-12)
+        #expect(throws: DecisionError.self) {
+            try LetterListPrompt.Layout(block: ["readout": "letters", "temperature": 0], bundle: "x")
+        }
+    }
+}
+
 /// The per-option scalar form (the System One scorer): the rows, the author's truncation rule,
 /// the bundle declaration and the readout order, checkable without a tokenizer or weights.
 struct ScalarPromptTests {

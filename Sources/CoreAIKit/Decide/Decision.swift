@@ -58,6 +58,15 @@ public enum Decision {
         /// in its metadata.json). No chat template. A yes/no is the rows `yes` / `no`, a score
         /// one row per level. `ScalarPrompt.swift`.
         case scalar
+        /// The lettered option list under the chat template (OpenJev): one user turn —
+        /// `State:`, the state, `Question:`, `Options:` as `[A] key: description` lines,
+        /// "Answer with the letter of the best option only." — read at the bare letters A–Z
+        /// then a–z (up to 52) from the LM head at the temperature the bundle declares
+        /// (`decision.readout == "letters"` with `temperature` and the yes/no calibration
+        /// `noul` in its metadata.json). A score lists its levels as `0: level` …; a yes/no
+        /// lists `yes` / `no` with what each means and is calibrated the helper's way.
+        /// `LetterListPrompt.swift`.
+        case letterList
     }
 
     /// One listed answer for a `choice` question. `id` is what the answer reports;

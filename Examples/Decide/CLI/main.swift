@@ -452,6 +452,24 @@ struct LetterFixture: Decodable {
         let primitive: String
         let criteria: [Criterion]
     }
+    /// A listed option: a bare string, or the helper's `{key, desc}` pair.
+    struct Listed: Decodable {
+        let key: String
+        let desc: String
+
+        init(from decoder: any Decoder) throws {
+            if let text = try? decoder.singleValueContainer().decode(String.self) {
+                key = text
+                desc = text
+                return
+            }
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            key = try c.decode(String.self, forKey: .key)
+            desc = try c.decodeIfPresent(String.self, forKey: .desc) ?? ""
+        }
+
+        enum CodingKeys: String, CodingKey { case key, desc }
+    }
     struct Row: Decodable {
         let id: String
         /// The author's request object (APUS form), or the flat fields of a plain-text form.
@@ -459,19 +477,22 @@ struct LetterFixture: Decodable {
         let kind: String?
         let state: String?
         let question: String?
-        let options: [String]?
+        let instructions: String?
+        let options: [Listed]?
         let ids: [Int32]
         let slot: Int
         let label_ids: [Int32]
         let p_oracle: [Double]
+        /// The helper's calibrated P(yes) of a yes/no row (the letter list), beside the raw pair.
+        let noul: Double?
         let zoo_only: Bool?
 
         /// The request either way: primitive, state, instructions and the criteria texts.
         var shape: (primitive: String, state: String, instructions: String, criteria: [Criterion])? {
             if let request { return (request.primitive, request.state, request.instructions, request.criteria) }
-            guard let kind, let state, let question, let options else { return nil }
+            guard let kind, let state, let options, let question = instructions ?? question else { return nil }
             let primitive = kind == "bool" ? "noul" : kind
-            return (primitive, state, question, options.map { Criterion(id: $0, description: $0) })
+            return (primitive, state, question, options.map { Criterion(id: $0.key, description: $0.desc.isEmpty ? $0.key : $0.desc) })
         }
     }
     let schema: String
@@ -497,9 +518,14 @@ struct LetterFixture: Decodable {
         case "choice":
             question = .choice(request.instructions, options: request.criteria.map { .init(id: $0.id, description: $0.description) })
         case "noul":
-            question = .noul(request.instructions)
+            // The letter list carries what yes and no mean; the other forms have fixed pairs.
+            if decider.format == .letterList, request.criteria.count == 2 {
+                question = .noul(request.instructions, yes: request.criteria[0].description, no: request.criteria[1].description)
+            } else {
+                question = .noul(request.instructions)
+            }
         case "score":
-            // The plain-text form scores by listing the levels as the options.
+            // The plain-text forms score by listing the levels as the options.
             question = .score(request.instructions, levels: request.criteria.map(\.description))
         default:
             // score_level is the author's yes/no on one proposition; the kit's questions have no such kind.
@@ -518,19 +544,26 @@ struct LetterFixture: Decodable {
         let slotsOK = rendered.slots == row.label_ids && rendered.tokens.count - 1 == row.slot
         if tokensOK { tokensExact += 1 }
         if slotsOK { slotExact += 1 }
-        // The fixture's probabilities are in label order: yes then no for a noul.
+        // The fixture's probabilities are in label order: yes then no for a noul. A letter-list
+        // yes/no is compared calibrated, against the helper's own `noul`.
         let p: [Double]
-        if case .noul(let yes) = answer.value { p = [yes, 1 - yes] } else { p = answer.probabilities }
+        var reference = row.p_oracle
+        if case .noul(let yes) = answer.value {
+            p = [yes, 1 - yes]
+            if decider.format == .letterList, let calibrated = row.noul { reference = [calibrated, 1 - calibrated] }
+        } else {
+            p = answer.probabilities
+        }
         let best = p.indices.max { p[$0] < p[$1] } ?? 0
-        let refBest = row.p_oracle.indices.max { row.p_oracle[$0] < row.p_oracle[$1] } ?? 0
+        let refBest = reference.indices.max { reference[$0] < reference[$1] } ?? 0
         if best == refBest { argmaxAgree += 1 }
-        let delta = zip(p, row.p_oracle).map { abs($0 - $1) }.max() ?? 0
+        let delta = zip(p, reference).map { abs($0 - $1) }.max() ?? 0
         deltas.append(delta)
         let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
         lines.append("| \(row.id) | \(request.primitive) | \(request.criteria.count) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
         if verbose || flag == "DIFF" {
             let firstDiff = zip(rendered.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
-            stderrPrint("  \(row.id): tokens kit \(rendered.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(row.p_oracle.map { fmt($0) })")
+            stderrPrint("  \(row.id): tokens kit \(rendered.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(reference.map { fmt($0) })")
             if verbose, !tokensOK {
                 stderrPrint("  \(row.id): kit tokens \(rendered.tokens.map(String.init).joined(separator: ","))")
             }
