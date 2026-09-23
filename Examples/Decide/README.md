@@ -290,9 +290,13 @@ calibrate --fit <rows> --report <rows> --record <file>` fits one on an app's own
 and writes the record.
 
 The screens above were measured at temperature 1, before the kit read `minicpm5-2b` at 2.93.
-Their choices are the same at either; their probabilities were more extreme, and what depends
-on a probability or an expected level beyond its winner — Autofill's minimum confidence 0.3,
-Context's line at 0.8, Typing's tone colours, Search's order in its score mode — has not been
+Their choices are the same at either temperature; their probabilities were more extreme. What
+depends on a probability beyond its winner was re-read at 2.93 on the screens' own samples
+(2026-09-23, the Mac; the raw answers re-read, which is exact for one softmax): Autofill still
+fills every field of the sample email — the address line, the lowest, at 0.36 against its 0.3
+floor (0.64 raw) — Context keeps the same 7 of 13 tool results at its 0.8 line (the nearest,
+`read docs/api.md`, at 0.84 against 0.85 raw), and Typing's sample line stays positive
+(expected level 1.86 against 2.00 raw). Search's order in its score mode has not been
 re-measured.
 
 So `minicpm5-2b` is the default: its int8 decisions track the fp32 model. The official 4-bit
