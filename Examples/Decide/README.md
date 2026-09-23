@@ -376,6 +376,32 @@ levels — took 1,862, 1,094 and 2,198 ms for its 3, 2 and 4 rows (123, 80 and 1
 all), 0 reused: a 4B on a decode-only graph pays every row from its first token, and a choice
 costs one row per option. Mac only (5.1 GB int8); no iPhone number.
 
+**The model behind the OpenJev decision API, on a Mac.** `openjev-27b` (catalog kind
+`decision`, `Decision.Format.letterList`; the OpenJev project's OpenJev, a Qwen3.8-27B fine-tune,
+English plus German, French, Hindi, Chinese and Japanese, CC BY-NC 4.0 for the weights —
+`CatalogEntry.license` carries it) is the open model whose helper serves `/v1/systemone` with
+the same request shape the kit speaks. Its author reports 84.0 % on 10,000 held-out text
+questions, within 1.4 points of the hosted API, and 2.3 % answer flips when the options are
+shuffled (the author's numbers, measured on an H100). What its helper sends is one user turn under
+the chat template — `State:`, the state, `Question:`, `Options:` as `[A] key: description`
+lines, "Answer with the letter of the best option only." — read at the bare letters A–Z then
+a–z (up to 52 options) with the letters' logits divided by 0.85; a score appends the helper's
+"Rate along the ordered levels below (lowest first)." and lists its levels as `0: level`; a
+yes/no lists `yes` / `no` with what each means and calibrates P(yes) as the helper does,
+sigmoid(logit(p) / 1.829074). The bundle declares all of that in its metadata, and the kit
+renders it byte for byte: on the author's 61-row fixture (`decide-cli parity`, 2026-09-23;
+35 choice rows with 2–52 options, 14 yes/no compared after calibration, 12 score with 2–10
+levels, four rows in the other languages, four DOM-like agent states) the kit's rows are
+token-, slot- and argmax-identical to the helper's own readout on 61/61, max |Δp| 0.0003. On
+SemIf's 144 English rows, the same evaluator as the table above: 134/144, mean family balanced
+accuracy 0.907, 8.3 s median per decision. The helper's own README example — a customer charged
+twice — comes back billing 1.000 (the helper: 0.9998), P(angry) 0.630 (0.6183) and urgency
+"today" 0.675 (expected level 2.08) in 5,064, 4,771 and 6,198 ms for its 70-, 74- and 95-token
+rows, 0 reused; over the fixture 9.3 s median per question (rows of 90–505 tokens), the two
+1,559-token rows 137 s. A 27B on a decode-only graph reads about 70 ms per token on the
+sequential engine, with the GPU shared with a conversion run while these were taken. Mac only:
+the int8 bundle is 28 GB and about 28 GB resident; nothing shared between questions.
+
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
 a short text leans *yes*: "is this what the purpose needs?" says yes to a phone number, a

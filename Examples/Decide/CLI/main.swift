@@ -476,6 +476,8 @@ struct LetterFixture: Decodable {
         let request: Request?
         let kind: String?
         let state: String?
+        /// The question text of a flat row; the letter-list fixture puts the request object here
+        /// and the text under `instructions`, so a non-string is ignored.
         let question: String?
         let instructions: String?
         let options: [Listed]?
@@ -486,6 +488,27 @@ struct LetterFixture: Decodable {
         /// The helper's calibrated P(yes) of a yes/no row (the letter list), beside the raw pair.
         let noul: Double?
         let zoo_only: Bool?
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            request = try? c.decodeIfPresent(Request.self, forKey: .request)
+            kind = try c.decodeIfPresent(String.self, forKey: .kind)
+            state = try? c.decodeIfPresent(String.self, forKey: .state)
+            question = try? c.decodeIfPresent(String.self, forKey: .question)
+            instructions = try c.decodeIfPresent(String.self, forKey: .instructions)
+            options = try c.decodeIfPresent([Listed].self, forKey: .options)
+            ids = try c.decode([Int32].self, forKey: .ids)
+            slot = try c.decode(Int.self, forKey: .slot)
+            label_ids = try c.decode([Int32].self, forKey: .label_ids)
+            p_oracle = try c.decode([Double].self, forKey: .p_oracle)
+            noul = try c.decodeIfPresent(Double.self, forKey: .noul)
+            zoo_only = try c.decodeIfPresent(Bool.self, forKey: .zoo_only)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, request, kind, state, question, instructions, options, ids, slot, label_ids, p_oracle, noul, zoo_only
+        }
 
         /// The request either way: primitive, state, instructions and the criteria texts.
         var shape: (primitive: String, state: String, instructions: String, criteria: [Criterion])? {

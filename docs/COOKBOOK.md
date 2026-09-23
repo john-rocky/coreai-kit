@@ -274,6 +274,23 @@ team.choice          // "billing"
 team.probabilities   // one per option: the rows' scores, softmaxed at the author's temperature
 ```
 
+**The OpenJev model itself, non-commercial.** `openjev-27b` (English, German, French, Hindi,
+Chinese, Japanese; kind `decision`; CC BY-NC 4.0 — `CatalogEntry.license` carries it) is the open
+27B behind the OpenJev helper, read exactly as the helper reads it (`Decision.Format.letterList`,
+declared by the bundle's metadata with the helper's temperature 0.85 and yes/no calibration). Up to
+52 options; a score lists its levels, a yes/no lists what each side means. Token-identical to the
+helper's rows on the fixture's 61 (int8 max |Δp| 0.0003); about 8 s per decision on an M4 Max,
+28 GB, Mac only.
+
+```swift
+let openjev = try await TypedDecisions(catalog: "openjev-27b")   // Format.letterList, T = 0.85 from the bundle
+let route = try await openjev.decide(customerMessage,
+    .choice("Which team should handle this?", ["billing", "shipping", "technical"]))
+route.choice          // "billing"
+let angry = try await openjev.decide(customerMessage, .noul("Is the customer angry?"))
+angry.noul            // P(yes), calibrated the helper's way
+```
+
 ## Chat, tools, and guided JSON
 
 Streaming chat with history, live stats, and a stop button — `ChatSession`:
