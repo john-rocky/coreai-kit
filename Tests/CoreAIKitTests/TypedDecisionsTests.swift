@@ -31,13 +31,52 @@ struct DecisionPromptTests {
         let payload = DecisionPrompt.userPayload(
             state: "The optician ordered replacement lenses.",
             criterion: "Assess the claim.",
-            options: ["The evidence establishes the claim", "It doesn't"])
+            options: ["The evidence establishes the claim", "It doesn't"],
+            labels: StubVocabulary().table(.chat, LabelTable.letters).names)
         #expect(
             payload
                 == "{\"evidence\": \"The optician ordered replacement lenses.\", "
                 + "\"criterion\": \"Assess the claim.\", "
                 + "\"options\": [{\"letter\": \"A\", \"description\": \"The evidence establishes the claim\"}, "
                 + "{\"letter\": \"B\", \"description\": \"It doesn't\"}]}")
+    }
+
+    /// Up to 26 options a chat model is read at the letters under the published system line;
+    /// past 26, at the numbers "1"… under the number system line, with the key `number` — when
+    /// its tokenizer writes that run as single tokens. Where it does not, 26 is the limit.
+    @Test func aChoicePast26IsNumberedWhereTheTokenizerHasTheNumbers() throws {
+        let letters = StubVocabulary().table(.chat, LabelTable.letters)
+        let numbers = StubVocabulary(numbersAreTokens: true).table(.chat, LabelTable.numbers, run: true)
+        #expect(letters.count == 26 && numbers.count == 255 && numbers.names.last == "255")
+        #expect(DecisionPrompt.maxOptions(letters: letters, numbers: numbers) == 255)
+        for count in [2, 16, 26] {
+            let chosen = try #require(DecisionPrompt.labels(count: count, letters: letters, numbers: numbers))
+            #expect(chosen.table == letters && !chosen.wide)
+        }
+        for count in [27, 100, 255] {
+            let chosen = try #require(DecisionPrompt.labels(count: count, letters: letters, numbers: numbers))
+            #expect(chosen.table == numbers && chosen.wide)
+        }
+        #expect(DecisionPrompt.labels(count: 256, letters: letters, numbers: numbers) == nil)
+
+        let options = (1...27).map { "option \($0)" }
+        let wide = DecisionPrompt.messages(state: "s", criterion: "Which?", options: options, labels: numbers.names, wide: true)
+        #expect(wide[0]["content"] as? String == DecisionPrompt.wideSystem)
+        #expect(DecisionPrompt.wideSystem.hasSuffix("Respond with only its number, with no explanation or reasoning."))
+        let payload = try #require(wide[1]["content"] as? String)
+        #expect(payload.hasPrefix("{\"evidence\": \"s\", \"criterion\": \"Which?\", \"options\": [{\"number\": \"1\", \"description\": \"option 1\"}, "))
+        #expect(payload.hasSuffix("{\"number\": \"27\", \"description\": \"option 27\"}]}"))
+        // Twenty-six options or fewer: the published rendering, letters under the letter line.
+        let narrow = DecisionPrompt.messages(
+            state: "s", criterion: "Which?", options: Array(options.prefix(26)), labels: letters.names)
+        #expect(narrow[0]["content"] as? String == DecisionPrompt.system)
+        #expect((narrow[1]["content"] as? String)?.hasSuffix("{\"letter\": \"Z\", \"description\": \"option 26\"}]}") == true)
+
+        // A tokenizer that splits "10" into two tokens has no numbers past 9: 26 options.
+        let split = StubVocabulary().table(.chat, LabelTable.numbers, run: true)
+        #expect(split.names == (1...9).map(String.init))
+        #expect(DecisionPrompt.maxOptions(letters: letters, numbers: split) == 26)
+        #expect(DecisionPrompt.labels(count: 27, letters: letters, numbers: split) == nil)
     }
 
     @Test func questionShapesRenderTheirOptions() {
@@ -63,22 +102,23 @@ struct DecisionPromptTests {
         #expect(throws: DecisionError.tooFewOptions(count: 1)) {
             try DecisionPrompt.validate(.choice("Which?", ["only"]))
         }
-        let seventeen = (0..<17).map { "option \($0)" }
-        #expect(throws: DecisionError.tooManyOptions(count: 17, max: 16)) {
-            try DecisionPrompt.validate(.choice("Which?", seventeen))
-        }
         let eleven = (0..<11).map { "level \($0)" }
         #expect(throws: DecisionError.tooManyOptions(count: 11, max: 10)) {
             try DecisionPrompt.validate(.score("How much?", levels: eleven))
         }
         #expect(throws: Never.self) {
-            try DecisionPrompt.validate(.choice("Which?", (0..<16).map { "o\($0)" }))
+            // The hosted API's width: any count up to 255 is a choice.
+            for count in [2, 16, 17, 26, 100, 255] {
+                try DecisionPrompt.validate(.choice("Which?", (0..<count).map { "o\($0)" }))
+            }
             try DecisionPrompt.validate(.noul("Yes?"))
-            // A slot head addresses its options by control token: its ceiling is its slot count.
-            try DecisionPrompt.validate(.choice("Which?", (0..<255).map { "o\($0)" }), maxOptions: 255)
         }
         #expect(throws: DecisionError.tooManyOptions(count: 256, max: 255)) {
-            try DecisionPrompt.validate(.choice("Which?", (0..<256).map { "o\($0)" }), maxOptions: 255)
+            try DecisionPrompt.validate(.choice("Which?", (0..<256).map { "o\($0)" }))
+        }
+        // A model whose readout lists fewer passes its own count (the `Shared state:` form's 16).
+        #expect(throws: DecisionError.tooManyOptions(count: 17, max: 16)) {
+            try DecisionPrompt.validate(.choice("Which?", (0..<17).map { "o\($0)" }), maxOptions: 16)
         }
     }
 
@@ -197,7 +237,39 @@ struct DeciderPromptTests {
 
     @Test func narrowTextIsTheTrainedForm() {
         let row = DeciderPrompt.Row(question: "Which?", options: ["a", "b", "c"])
-        #expect(DeciderPrompt.narrowText(row) == "\n\nQuestion: Which?\nOptions:\n(A) a\n(B) b\n(C) c\nAnswer: (")
+        #expect(
+            DeciderPrompt.narrowText(row, labels: StubVocabulary().table(.decider).names)
+                == "\n\nQuestion: Which?\nOptions:\n(A) a\n(B) b\n(C) c\nAnswer: (")
+    }
+
+    /// Past ten options the author's builder writes each label as its token id alone, between
+    /// "\n(" and ") option" — for every width up to the table's 255.
+    @Test func aWideRowPutsEachLabelTokenInByItself() throws {
+        let vocabulary = StubVocabulary(split: ["BQ"])
+        let labels = vocabulary.table(.decider)
+        let encode = { (text: String) in vocabulary.encode(text).map(Int32.init) }
+        let open = encode("\n(")
+        let tail = encode("\nAnswer: (")
+        for count in [11, 17, 100, 255] {
+            let row = DeciderPrompt.Row(question: "Which slot?", options: (1...count).map(String.init))
+            let rendered = try DeciderPrompt.render(state: "Slot 7.", row: row, labels: labels, encode: encode)
+            #expect(rendered.slots == Array(labels.ids.prefix(count)))
+            var tokens = rendered.tokens[...]
+            let head = encode("Context:\nSlot 7.") + encode("\n\nQuestion: Which slot?\nOptions:")
+            #expect(Array(tokens.prefix(head.count)) == head)
+            tokens = tokens.dropFirst(head.count)
+            for (index, option) in row.options.enumerated() {
+                let text = encode(") \(option)")
+                #expect(Array(tokens.prefix(open.count + 1 + text.count)) == open + [labels.ids[index]] + text)
+                tokens = tokens.dropFirst(open.count + 1 + text.count)
+            }
+            #expect(Array(tokens) == tail)
+        }
+        // A row wider than the table is refused, not cut.
+        let wide = DeciderPrompt.Row(question: "Which?", options: (1...256).map(String.init))
+        #expect(throws: DecisionError.tooManyOptions(count: 256, max: 255)) {
+            try DeciderPrompt.render(state: "s", row: wide, labels: labels, encode: encode)
+        }
     }
 
     @Test func combineNormalisesFitAndSurvivesZeroMass() {
@@ -343,7 +415,7 @@ struct ScalarPromptTests {
         #expect(ScalarPrompt.probabilities(kitOrder: [0.936, 0.064], for: .noul("x")) == [0.064, 0.936])
         let score = ScalarPrompt.row(for: .score("Rate the evidence from 1 to 3.", levels: ["level 1", "level 2", "level 3"]))
         #expect(score.options == ["level 1", "level 2", "level 3"])
-        #expect(ScalarPrompt.maxOptions == 64)
+        #expect(ScalarPrompt.maxOptions == 255)
         #expect(Decision.Format(rawValue: "scalar") == .scalar)
     }
 
@@ -505,5 +577,135 @@ struct SlotPromptTests {
         #expect(DecisionPrompt.answer(
             for: .noul("Yes?"), probabilities: [0.4, 0.6],
             timing: .init(promptTokens: 1, reusedTokens: 0, seconds: 0)).abstain == nil)
+    }
+}
+
+/// The label table: the author's candidate order, the rules that keep a name, and each form's
+/// option count — checkable with a stub vocabulary, no tokenizer.
+struct LabelTableTests {
+    @Test func candidatesAreAToZThenTheTwoLetterNamesInOrder() {
+        let names = LabelTable.candidates
+        #expect(names.count == 702)
+        #expect(names[0] == "A" && names[25] == "Z")
+        #expect(names[26] == "AA" && names[51] == "AZ" && names[52] == "BA" && names[701] == "ZZ")
+    }
+
+    @Test func aTableKeepsTheFirst255SingleTokenNames() {
+        let vocabulary = StubVocabulary()
+        let full = vocabulary.table(.decider)
+        #expect(full.count == 255)
+        #expect(full.names == Array(LabelTable.candidates.prefix(255)) && full.names.last == "IU")
+        #expect(full.ids == full.names.map { Int32(vocabulary.id($0)) })
+        // The first sixteen are A–P: a question of up to sixteen options reads as it always did.
+        #expect(Array(full.names.prefix(16)) == "ABCDEFGHIJKLMNOP".map(String.init))
+
+        // A name the tokenizer writes as two tokens is skipped; every later option moves up
+        // one name and the table still reaches 255.
+        let skipped = StubVocabulary(split: ["AQ"]).table(.decider)
+        #expect(skipped.count == 255 && !skipped.names.contains("AQ"))
+        #expect(skipped.names[41] == "AP" && skipped.names[42] == "AR" && skipped.names.last == "IV")
+        #expect(Array(skipped.names.prefix(16)) == Array(full.names.prefix(16)))
+    }
+
+    @Test func theChatRuleAlsoNeedsARoundTripAndNoMergeAfterTheNewline() {
+        let vocabulary = StubVocabulary(mergedAfterNewline: ["AB"], misdecoded: ["AC"])
+        let decider = vocabulary.table(.decider)
+        let chat = vocabulary.table(.chat)
+        #expect(decider.names[27] == "AB" && decider.names[28] == "AC")
+        #expect(!chat.names.contains("AB") && !chat.names.contains("AC"))
+        #expect(chat.count == 255 && chat.names[27] == "AD")
+    }
+
+    @Test func noTwoOptionsShareASlot() {
+        let table = StubVocabulary(aliases: ["AB": "AA"]).table(.decider)
+        #expect(table.names[26] == "AA" && table.names[27] == "AC")
+        #expect(Set(table.ids).count == table.count)
+    }
+
+    /// A run of numbers has no gaps: the first number that is not one token ends it.
+    @Test func aNumberRunEndsAtTheFirstMiss() {
+        let table = StubVocabulary(numbersAreTokens: true, split: ["100"]).table(.chat, LabelTable.numbers, run: true)
+        #expect(table.count == 99 && table.names.last == "99")
+        // The same miss is skipped, not an end, in a list of names that is not a run.
+        let skipped = StubVocabulary(numbersAreTokens: true, split: ["100"]).table(.chat, LabelTable.numbers)
+        #expect(skipped.count == 254 && !skipped.names.contains("100"))
+    }
+
+    @Test func slotsAreThePrefixAndAWiderQuestionIsRefused() throws {
+        let table = StubVocabulary().table(.chat)
+        #expect(try table.slots(count: 3) == [100, 101, 102])
+        #expect(throws: DecisionError.tooManyOptions(count: 256, max: 255)) { try table.slots(count: 256) }
+        let short = StubVocabulary().table(.chat, limit: 20)
+        #expect(short.count == 20)
+        #expect(throws: DecisionError.tooManyOptions(count: 21, max: 20)) { try short.slots(count: 21) }
+    }
+
+    /// `TypedDecisions.maxOptions` is the model's own count: the decider's label table's, a chat
+    /// model's number run past its letters (else its 26 letters), its letter set's or its head's.
+    @Test func eachFormReportsItsOwnOptionCount() {
+        let none = LabelTable(names: [], ids: [])
+        let letters = StubVocabulary().table(.chat, LabelTable.letters)
+        let numbers = StubVocabulary(numbersAreTokens: true).table(.chat, LabelTable.numbers, run: true)
+        let splitNumbers = StubVocabulary().table(.chat, LabelTable.numbers, run: true)
+        #expect(TypedDecisions.maxOptions(format: .chat, labels: letters, numbers: numbers, slot: nil) == 255)
+        #expect(TypedDecisions.maxOptions(format: .chat, labels: letters, numbers: splitNumbers, slot: nil) == 26)
+        #expect(TypedDecisions.maxOptions(format: .decider, labels: StubVocabulary().table(.decider), numbers: none, slot: nil) == 255)
+        #expect(TypedDecisions.maxOptions(format: .decider, labels: StubVocabulary().table(.decider, limit: 200), numbers: none, slot: nil) == 200)
+        #expect(TypedDecisions.maxOptions(format: .sharedState, labels: none, numbers: none, slot: nil) == 16)
+        #expect(TypedDecisions.maxOptions(format: .decisionFunction, labels: none, numbers: none, slot: nil) == 26)
+        #expect(TypedDecisions.maxOptions(format: .letterList, labels: none, numbers: none, slot: nil) == 52)
+        #expect(TypedDecisions.maxOptions(format: .scalar, labels: none, numbers: none, slot: nil) == 255)
+        #expect(TypedDecisions.maxOptions(format: .slot, labels: none, numbers: none, slot: SlotPromptTests.layout) == 255)
+        #expect(TypedDecisions.maxOptions(format: .slot, labels: none, numbers: none, slot: SlotPrompt.Layout(slots: 8, abstainSlot: nil)) == 8)
+    }
+}
+
+/// A vocabulary without a tokenizer: each label candidate is one token (100 + its index), "\n\n"
+/// is token 1, anything else one token per character — so "1"…"9" are single tokens and "10" is
+/// two — except where a case says otherwise.
+struct StubVocabulary {
+    /// "1"…"255" as one token each (3000 + the number), as in MiniCPM5.
+    var numbersAreTokens = false
+    /// Names written as two tokens.
+    var split: Set<String> = []
+    /// Names that merge with a preceding "\n\n" into one token.
+    var mergedAfterNewline: Set<String> = []
+    /// Names whose token decodes to something else.
+    var misdecoded: Set<String> = []
+    /// Names that share another name's token.
+    var aliases: [String: String] = [:]
+
+    func id(_ name: String) -> Int {
+        100 + LabelTable.candidates.firstIndex(of: aliases[name] ?? name)!
+    }
+
+    func encode(_ text: String) -> [Int] {
+        if text == "\n\n" { return [1] }
+        if text.hasPrefix("\n\n") {
+            let rest = String(text.dropFirst(2))
+            return mergedAfterNewline.contains(rest) ? [10_000 + id(rest)] : [1] + encode(rest)
+        }
+        if LabelTable.candidates.contains(text), !split.contains(text) { return [id(text)] }
+        if numbersAreTokens, !split.contains(text), let n = Int(text), (1...255).contains(n), String(n) == text {
+            return [3_000 + n]
+        }
+        return text.unicodeScalars.map { 1_000 + Int($0.value) }
+    }
+
+    func decode(_ ids: [Int]) -> String {
+        ids.map { id in
+            if (100..<100 + LabelTable.candidates.count).contains(id) {
+                let name = LabelTable.candidates[id - 100]
+                return misdecoded.contains(name) ? name.lowercased() : name
+            }
+            if (3_001...3_255).contains(id) { return String(id - 3_000) }
+            return UnicodeScalar(UInt32(id - 1_000)).map { String(Character($0)) } ?? "?"
+        }.joined()
+    }
+
+    func table(
+        _ rule: LabelTable.Rule, _ names: [String] = LabelTable.candidates, limit: Int = LabelTable.limit, run: Bool = false
+    ) -> LabelTable {
+        LabelTable.build(names, rule: rule, limit: limit, run: run, encode: encode, decode: decode)
     }
 }

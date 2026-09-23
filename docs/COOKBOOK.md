@@ -131,8 +131,9 @@ a["anger"]?.score         // 1.4 — expected level on the 0…2 scale
 a["reply"]?.timing        // promptTokens, reusedTokens, milliseconds
 ```
 
-`choice` takes 2–16 options (`Decision.Option(id:description:)` when the model should read a
-description and the answer report an id); `score` takes 2–10 ordered level descriptions and
+`choice` takes from 2 options up to the model's `maxOptions` — 255 on `minicpm5-2b`,
+[per model](SYSTEM_ONE.md#how-many-options-a-choice-lists) — with `Decision.Option(id:description:)` when the model should read a
+description and the answer report an id; `score` takes 2–10 ordered level descriptions and
 answers the expected level plus the distribution; `noul` takes optional descriptions of what
 yes and no mean. The request shape — a state, then questions keyed by id, each with
 `instructions` and `criteria` — is the one the hosted typed-decision APIs use, so a client

@@ -275,7 +275,7 @@ public struct SystemOneMCP: Sendable {
           {
             "name": "decide",
             "title": "Typed decisions on this machine",
-            "description": "Ask typed questions about a text and get each answer's probability from a model on this machine. Nothing is generated and nothing leaves the machine. state: the text the questions are about (a ticket, a transcript, a document, a tool result), or a JSON object/array. questions: an object keyed by ids of your choosing, each {type, instructions, criteria}: choice (which of these; criteria = an object of option → what it means, 2–16 options, or an array of option names), score (where on this ordered scale; criteria = 2–10 level descriptions, lowest first), noul (does this hold, as a probability; criteria = optional {\\"true\\": …, \\"false\\": …}). Ask several questions of one state in one call. Returns answers under your ids — choice with every option's probability, score with its legend, noul as P(true) — with confidence, usage and timing_ms.",
+            "description": "Ask typed questions about a text and get each answer's probability from a model on this machine. Nothing is generated and nothing leaves the machine. state: the text the questions are about (a ticket, a transcript, a document, a tool result), or a JSON object/array. questions: an object keyed by ids of your choosing, each {type, instructions, criteria}: choice (which of these; criteria = an object of option → what it means, 2–255 options (some models take fewer and say so), or an array of option names), score (where on this ordered scale; criteria = 2–10 level descriptions, lowest first), noul (does this hold, as a probability; criteria = optional {\\"true\\": …, \\"false\\": …}). Ask several questions of one state in one call. Returns answers under your ids — choice with every option's probability, score with its legend, noul as P(true) — with confidence, usage and timing_ms.",
             "inputSchema": {
               "type": "object",
               "properties": {
@@ -296,7 +296,7 @@ public struct SystemOneMCP: Sendable {
                         "anyOf": [{"type": "string"}, {"type": "object"}, {"type": "array"}]
                       },
                       "criteria": {
-                        "description": "choice: {option: what it means, …} (2–16) or [option, …]. score: [lowest level, …, highest] (2–10). noul: optional {\\"true\\": what makes it true, \\"false\\": what makes it false}.",
+                        "description": "choice: {option: what it means, …} (2–255) or [option, …]. score: [lowest level, …, highest] (2–10). noul: optional {\\"true\\": what makes it true, \\"false\\": what makes it false}.",
                         "anyOf": [{"type": "object"}, {"type": "array"}]
                       }
                     },

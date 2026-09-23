@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Conformance of a `/v1/systemone` server to the hosted System One forms: 20 requests
+"""Conformance of a `/v1/systemone` server to the hosted System One forms: 22 requests
 (`cases.json`), each checked for status and answer *shape* (types and keys, not values),
 plus the three routes around it. A case whose `expect` is "4xx|200" passes either way and
-reports which (the option limit differs per readout).
+reports which (the option limit differs per model, up to the hosted 255).
 
     python3 check.py http://127.0.0.1:8090 [--model minicpm5-2b] [--timeout 60] [-v]
 
@@ -186,7 +186,7 @@ def main():
                 problems.append("error body is not JSON")
         note = "; ".join(problems) if problems else (f"HTTP {status}" + (f": {json.dumps(body, ensure_ascii=False)[:90]}" if status != 200 else ""))
         if not problems and case["expect"] == "4xx|200":
-            note += "  (16-option letter readout: 422; a slot-head model answers 200)"
+            note += "  (the model decides: 422 past its option count or its context, 200 within)"
         record(case["name"], not problems, note, ms)
         if a.verbose and status == 200:
             print("     ", json.dumps(body, ensure_ascii=False)[:400])

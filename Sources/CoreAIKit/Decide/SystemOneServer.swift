@@ -262,7 +262,8 @@ public final class SystemOneServer: @unchecked Sendable {
     private func decide(_ request: HTTPRequest) async -> HTTPResponse {
         let parsed: SystemOne.Request
         do {
-            parsed = try SystemOne.request(from: request.body)
+            // The loaded model's own option count, so a list it cannot read is a 422 that says so.
+            parsed = try SystemOne.request(from: request.body, maxOptions: decider.maxOptions)
         } catch let error as SystemOne.WireError {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.message))
         } catch {

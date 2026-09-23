@@ -18,13 +18,19 @@
 // first question is as cheap as the rest; `Decision.Timing.reusedTokens` reports what was
 // kept. Engines that cannot rewind mid-sequence (recurrent hybrids — Qwen3.5, LFM2.5,
 // Granite 4) fall back to a full re-prefill on every decision, losslessly; the timing says so.
+// A chat question past 26 options is read under its own system line (`DecisionPrompt`'s
+// wide rendering), so it keeps only the start of the shared prefix and prefills the state again.
 //
 // ## Which prompt
 //
 // A chat model reads the request as JSON in one user turn under its chat template
 // (`Decision.Format.chat`); a model trained for decisions (`decider-0.8b`, catalog kind
 // `decision`) reads the plain `Context:` / `Question:` / `Options:` / `Answer: (` form it was
-// trained on (`Decision.Format.decider`, `DeciderPrompt.swift`); a slot-head model
+// trained on (`Decision.Format.decider`, `DeciderPrompt.swift`). Both are read at one label
+// token per option, from tables built once at load (`LabelTable.swift`): the decision model at
+// its author's A–Z, AA, AB, … (255 labels), a chat model at A–Z and, past 26 options, at the
+// numbers 1, 2, … where its tokenizer writes them as single tokens — 255 on MiniCPM5, none past
+// 9 on the Qwen tokenizers — so `maxOptions` is 255 there and 26 elsewhere. A slot-head model
 // (OpenThai-SystemOne) reads its control-token layout and is read at a 256-way head
 // (`Decision.Format.slot`, `SlotPrompt.swift`); a model trained on the `Shared state:` + JSON
 // task turn (APUS-OpenJev-v1) is read at the letters under its chat template
@@ -46,7 +52,10 @@
 //
 // On iPhone keep a prompt under 1024 tokens: the on-device compiler miscompiles the growing
 // KV cache of a dynamic bundle once it reaches 2048 positions (the same guard the pipelined
-// engine enforces), and a decision has no reason to be longer than that.
+// engine enforces). A choice of 255 options does not fit that — 1,965 tokens for the decider's
+// fixture row, 3,100–4,200 for a chat model's JSON of short options — so it is a Mac call; on
+// a phone the ceiling is what fits in 1024 tokens (about 60 short options in the chat form,
+// estimated from the Mac prompt sizes, not measured on a phone).
 
 import CoreAILanguageModels
 import Foundation
@@ -93,9 +102,18 @@ public actor TypedDecisions {
     /// The tokenizer path of a slot-head bundle (control tokens by id, text cut the
     /// reference way); nil for the other formats.
     nonisolated private let slotEncoder: SlotPrompt.Encoder?
-    /// Options a choice may list on this model: 16 for the letter readouts, 26 for the
-    /// decision-function form, 52 for the letter list, every slot but the abstain one (255
-    /// for OpenThai-SystemOne) for a slot head, 64 rows for a scalar head. A score keeps 10 levels.
+    /// The answer labels, built from the tokenizer at load: the author's table for the decider
+    /// form, the letters A–Z for the chat form; empty for the other formats.
+    nonisolated let labels: LabelTable
+    /// The chat form's labels past the letters: the run of single-token numbers "1", "2", …;
+    /// empty for the other formats.
+    nonisolated let numbers: LabelTable
+    /// Options a choice may list on this model: 255 for the decider form (its label table) and
+    /// for a chat model whose tokenizer writes the numbers to 255 as single tokens (minicpm5-2b),
+    /// 26 for another chat model (qwen3-0.6b), 16 for the `Shared state:` form, 26 for the
+    /// decision-function form, 52 for the letter list, 255 rows for a scalar head, every slot
+    /// but the abstain one (255 for OpenThai-SystemOne) for a slot head. A score keeps 10
+    /// levels. `maxOptions(format:labels:numbers:slot:)` is the rule.
     nonisolated public let maxOptions: Int
     /// The catalog id, or the bundle directory name for a local bundle.
     public let id: String
@@ -200,12 +218,19 @@ public actor TypedDecisions {
             throw DecisionError.engineWithoutLogits(model: id)
         }
         // The first two letters cover every question shape; a tokenizer that cannot slot
-        // them fails here, at load, not on the first decision. A slot-head model has no
-        // letters: its control tokens must each be one token, and its bundle must say so.
+        // them fails here, at load, not on the first decision. The chat and decider forms
+        // build their whole label table here, once. A slot-head model has no letters: its
+        // control tokens must each be one token, and its bundle must say so.
         var encoder: SlotPrompt.Encoder? = nil
+        var labels = LabelTable(names: [], ids: [])
+        var numbers = LabelTable(names: [], ids: [])
         switch format {
-        case .chat, .sharedState: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
-        case .decider: _ = try DeciderPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .chat:
+            labels = try Self.labels(LabelTable.letters, .chat, tokenizer: runtime.tokenizer)
+            numbers = LabelTable.build(LabelTable.numbers, rule: .chat, run: true, tokenizer: runtime.tokenizer)
+        case .sharedState:
+            _ = try DecisionPrompt.slotTokens(names: Array(SharedStatePrompt.letters.prefix(2)), tokenizer: runtime.tokenizer)
+        case .decider: labels = try Self.labels(LabelTable.candidates, .decider, tokenizer: runtime.tokenizer)
         case .decisionFunction: _ = try DecisionFunctionPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
         case .letterList:
             // The temperature and the yes/no calibration are the helper's contract: the
@@ -237,13 +262,9 @@ public actor TypedDecisions {
         self.scalarLayout = format == .scalar ? scalar : nil
         self.letterLayout = format == .letterList ? letters : nil
         self.slotEncoder = encoder
-        switch format {
-        case .slot: self.maxOptions = layout?.maxOptions ?? DecisionPrompt.maxOptions
-        case .decisionFunction: self.maxOptions = DecisionFunctionPrompt.maxOptions
-        case .scalar: self.maxOptions = ScalarPrompt.maxOptions
-        case .letterList: self.maxOptions = LetterListPrompt.maxOptions
-        case .chat, .decider, .sharedState: self.maxOptions = DecisionPrompt.maxOptions
-        }
+        self.labels = labels
+        self.numbers = numbers
+        self.maxOptions = Self.maxOptions(format: format, labels: labels, numbers: numbers, slot: layout)
         switch format {
         case .chat, .sharedState, .decisionFunction: self.temperature = configuration.temperature ?? 1
         case .decider: self.temperature = configuration.temperature ?? DeciderPrompt.defaultTemperature
@@ -279,6 +300,34 @@ public actor TypedDecisions {
         }
     }
 
+    /// The options a choice may list on a model read in `format`: the decider's label table's
+    /// count, a chat model's number run where it reaches past its letters (else the letters'),
+    /// a slot head's slot count, the form's own letter set otherwise (16, 26, 52), and the
+    /// hosted API's 255 rows for a scalar head.
+    static func maxOptions(
+        format: Decision.Format, labels: LabelTable, numbers: LabelTable, slot: SlotPrompt.Layout?
+    ) -> Int {
+        switch format {
+        case .chat: return DecisionPrompt.maxOptions(letters: labels, numbers: numbers)
+        case .decider: return labels.count
+        case .sharedState: return SharedStatePrompt.maxOptions
+        case .decisionFunction: return DecisionFunctionPrompt.maxOptions
+        case .letterList: return LetterListPrompt.maxOptions
+        case .scalar: return ScalarPrompt.maxOptions
+        case .slot: return slot?.maxOptions ?? DecisionPrompt.maxOptions
+        }
+    }
+
+    /// The label table a letter readout reads its options at, refused at load when the
+    /// tokenizer cannot label even two options.
+    static func labels(_ names: [String], _ rule: LabelTable.Rule, tokenizer: any Tokenizer) throws -> LabelTable {
+        let table = LabelTable.build(names, rule: rule, tokenizer: tokenizer)
+        guard table.count >= 2 else {
+            throw DecisionError.answerSlotNotSingleToken(letter: names.first { !table.names.contains($0) } ?? names[0])
+        }
+        return table
+    }
+
     // MARK: - Decide
 
     /// One question on one state. Under `.decider` a score question is several rows (one
@@ -289,7 +338,7 @@ public actor TypedDecisions {
         switch format {
         case .chat:
             let rendered = try DecisionPrompt.render(
-                state: state, question: question, tokenizer: runtime.tokenizer)
+                state: state, question: question, letters: labels, numbers: numbers, tokenizer: runtime.tokenizer)
             let (probabilities, timing) = try await readout(rendered)
             return DecisionPrompt.answer(for: question, probabilities: probabilities, timing: timing)
         case .sharedState:
@@ -346,7 +395,7 @@ public actor TypedDecisions {
             var last: [Double] = []
             var total = Decision.Timing(promptTokens: 0, reusedTokens: 0, seconds: 0)
             for row in DeciderPrompt.rows(for: question) {
-                let rendered = try DeciderPrompt.render(state: state, row: row, tokenizer: runtime.tokenizer)
+                let rendered = try DeciderPrompt.render(state: state, row: row, labels: labels, tokenizer: runtime.tokenizer)
                 let (probabilities, timing) = try await readout(rendered)
                 last = probabilities
                 fit.append(probabilities[1])
@@ -424,11 +473,11 @@ public actor TypedDecisions {
         switch format {
         case .chat:
             let rendered = try DecisionPrompt.render(
-                state: state, question: question, tokenizer: runtime.tokenizer)
+                state: state, question: question, letters: labels, numbers: numbers, tokenizer: runtime.tokenizer)
             return [(rendered.tokens, rendered.slots)]
         case .decider:
             return try DeciderPrompt.rows(for: question).map { row in
-                let rendered = try DeciderPrompt.render(state: state, row: row, tokenizer: runtime.tokenizer)
+                let rendered = try DeciderPrompt.render(state: state, row: row, labels: labels, tokenizer: runtime.tokenizer)
                 return (rendered.tokens, rendered.slots)
             }
         case .slot:

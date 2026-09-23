@@ -53,7 +53,7 @@ swift run -c release decide-cli serve --model minicpm5-2b          # http://127.
 clients/systemone.sh                                               # one request with curl
 python3 clients/systemone.py                                       # the same from Python, standard library only
 TYPESAFE_BASE_URL=http://127.0.0.1:8090 TYPESAFE_API_KEY=local python3 your_client.py   # the official SDKs; other clients have a base-URL setting
-python3 conformance/check.py http://127.0.0.1:8090                 # 20 requests in the hosted forms, every answer's shape checked
+python3 conformance/check.py http://127.0.0.1:8090                 # 22 requests in the hosted forms, every answer's shape checked
 ```
 
 ```json
@@ -82,14 +82,15 @@ A structured `state` or `instructions` (an object or an array) is serialized the
 `json.dumps(…, ensure_ascii=False)` writes it, key order kept, so the model reads the bytes a
 Python client would have sent (`JSONValue` in the kit). `confidence` is 1 − normalised entropy
 of the distribution for a choice or a score and max(p, 1 − p) for a noul; probabilities are
-rounded to four decimals. One declared difference from the hosted API: a choice lists at most
-16 options here (the answer slots are single letters), so a longer list comes back as a 422
-that says so. `GET /v1/models` lists the loaded model in the hosted form (`models`, each
+rounded to four decimals. A choice lists up to the hosted API's 255 options where the model
+reads that many (`minicpm5-2b` does; [the count per model](../../docs/SYSTEM_ONE.md#how-many-options-a-choice-lists)).
+A longer list comes back as a 422 that names the model's count. `GET /v1/models` lists the
+loaded model in the hosted form (`models`, each
 `name` / `description` / `release_date`, the pinned `revision` beside them; the OpenAI-style
 `data` list follows), `GET /health` answers `ok`, CORS is open so a page or a browser extension
 can call it, and `--host 0.0.0.0` serves the local network (a phone on the same Wi-Fi, another
-machine). `conformance/check.py <base_url>` is the same contract as a test: 20 requests —
-every shape above, the 16- and 17-option edges, structured state and instructions, a
+machine). `conformance/check.py <base_url>` is the same contract as a test: 22 requests —
+every shape above, the 16-, 17-, 255- and 256-option edges, structured state and instructions, a
 three-message chat as the state, four malformed requests — and the keys and types each
 answer must come back with; `cases.json` is the list, and any other `/v1/systemone` server
 can be run against it. The codec is public API (`SystemOne.request(from:)`,
@@ -280,9 +281,10 @@ speed only where a wrong decision is cheap.
 **A model trained for decisions.** `decider-0.8b` (catalog kind `decision`, `Decision.Format.decider`)
 was fine-tuned to answer typed questions at an answer slot; the kit renders its own prompt
 form and reads it at its card's temperature. On the model's 44-row fixture (`decide-cli
-parity`, 2026-09-22, int8 bundle): the 43 rows the kit can list (the 255-option row is beyond
-its 16) are token-identical, slot-identical and argmax-identical to the author's fp32 readout,
-max |Δp| 0.0088, mean 0.0009. It ships as a decode-only graph on a recurrent hybrid, so every
+parity`, 2026-09-23, int8 bundle): all 44 rows, the 255-option one included, are
+token-identical, slot-identical and argmax-identical to the author's fp32 readout, max |Δp|
+0.0088, mean 0.0010. The 255-option row is 1,965 tokens and takes 11–14 s. It ships as a
+decode-only graph on a recurrent hybrid, so every
 row re-prefills its whole prompt one token at a time: median 343 ms per fixture question
 here, about 490 ms per clipboard kind and 710 ms per sorter need — five to seven times
 `minicpm5-2b`'s shared-prefix figures. On the two demo questions it was not more accurate
@@ -293,8 +295,8 @@ what the model's own API would report; the screens default to `minicpm5-2b`.
 `Decision.Format.slot`; iApp's OpenThai-SystemOne, Thai + English, Qwen3.5-0.8B tower,
 Apache-2.0) replaces the LM head with a 256-way slot head read at a `<|ts_answer|>` control
 token: option i is slot i, the last slot means "none of these" (`Decision.Answer.abstain`), and
-a choice may list up to 255 options (`TypedDecisions.maxOptions`), not the 16 of the letter
-readouts. The bundle declares the head and its temperature per question type in its
+a choice may list up to 255 options (`TypedDecisions.maxOptions`). The bundle declares the
+head and its temperature per question type in its
 `metadata.json`; the kit renders the author's control-token layout, one question per row. On
 the author's 50-row fixture (`decide-cli parity`, 2026-09-23, Thai, English and JSON states,
 rows of 2–16, 40 and 255 options): tokens, slots and argmax identical on 50/50 for both the
