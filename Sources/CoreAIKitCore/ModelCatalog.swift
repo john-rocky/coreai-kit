@@ -416,6 +416,18 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin", sizeMB: 4859),
                 ],
                 engine: "pipelined", format: "scalar", license: "CC-BY-NC-4.0"),
+            // ── OpenJev 27B: the open decision model behind the OpenJev helper (a Qwen3.8-27B
+            //    fine-tune) — its lettered option list under the chat template, read at the bare
+            //    letters at the helper's temperature (`format: letterList`; the bundle declares
+            //    it). CC BY-NC 4.0, and `license` says so. macOS only: a 28 GB int8hu bundle,
+            //    about 28 GB resident on the sequential engine, no device measurement. ──
+            CatalogEntry(
+                id: "openjev-27b", name: "OpenJev 27B",
+                repo: "mlboydaisuke/OpenJev-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/openjev_27b_decode_int8hu_block32_sym", sizeMB: 28423),
+                ],
+                engine: "pipelined", format: "letterList", license: "CC-BY-NC-4.0"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

@@ -316,6 +316,22 @@
       "license": "CC-BY-NC-4.0"
     },
     {
+      "id": "openjev-27b",
+      "name": "OpenJev 27B",
+      "repo": "mlboydaisuke/OpenJev-CoreAI",
+      "revision": "5a66d1d0d2985ee05239520ef33a80d697257767",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/openjev_27b_decode_int8hu_block32_sym",
+          "sizeMB": 28423
+        }
+      },
+      "engine": "pipelined",
+      "format": "letterList",
+      "license": "CC-BY-NC-4.0"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",
