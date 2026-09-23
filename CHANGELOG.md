@@ -27,6 +27,18 @@ policy.
   forms and the shape each answer must come back in (types and keys), for this server or any
   other that speaks the route; `calibration.py`: accuracy, NLL, Brier, top-label ECE and a
   fitted temperature from `decide-cli oracle` output on SemIf's `authored144`.
+- `CatalogEntry.calibration` (`CatalogEntry.Calibration`: `temperature`, `byType`,
+  `temperature(forType:)`): the temperature a model's decisions are read at by default, fitted
+  by the maintainer. catalog.json keeps what it was fitted and reported on (`fit`, `report`) in
+  the same object; the kit reads only the temperatures.
+- `DecisionCalibration`: `rescale` (a distribution re-read at another temperature — exact when it
+  is one softmax), `fitTemperature` (least NLL on `calibration.py`'s grid), `metrics` and
+  `familyMetrics` (accuracy, balanced accuracy over the right options' ids, NLL, multi-class
+  Brier, top-label ECE), each defined as the script defines it.
+- `decide-cli calibrate --fit <rows> --report <rows>`: a temperature per question type fitted on
+  one labelled fixture and read on another, before and after, per family. It refuses a row id in
+  both sets and prints what else they share (situations, source rows, states); `--record`
+  writes the catalog record, `--out` / `--out-raw` the rows `calibration.py` reads.
 
 ### Changed
 
@@ -34,6 +46,13 @@ policy.
   takes the loaded model's count, and `SystemOneServer` passes it, so a list the model cannot
   read is a 422 that names the count ("this engine lists at most 26 options, got 27"). The wire
   never takes more than 255. The MCP `decide` tool describes 2–255 options.
+- `TypedDecisions` — and so `CoreAI.decide`, `systemone` and `SystemOneServer` — reads a catalog
+  model at its entry's `calibration` when it has one. The order is `Configuration.temperature`,
+  the catalog, the bundle's declaration, the prompt form's default. `minicpm5-2b` (2.93),
+  `minicpm5-1b` (9.974) and `qwen3-0.6b` (11.882) carry records fitted on SemIf's
+  `perturbations108`: their probabilities change, their answers do not. `minicpm5-2b` on
+  `authored144`: ECE 0.167 → 0.071, Brier 0.455 → 0.411, accuracy 0.701 either way. A local
+  bundle (`init(bundleAt:)`) has no catalog entry and reads as before.
 
 ### Docs
 

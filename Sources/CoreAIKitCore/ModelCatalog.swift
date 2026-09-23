@@ -101,11 +101,15 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// (Apache-2.0, MIT, the Gemma terms); the exact terms of every model are on its card in
     /// the model zoo. Shown by `systemone models` and in `/v1/models` so a client sees it.
     public let license: String?
+    /// For a model that answers typed decisions: the temperature its answer-slot logits are read
+    /// at by default, fitted by the maintainer on labelled rows (`decide-cli calibrate`). nil =
+    /// the model's own temperature — its bundle's declaration, or its prompt form's default.
+    public let calibration: Calibration?
 
     public init(
         id: String, name: String, repo: String, revision: String? = nil, kind: Kind,
         variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil,
-        format: String? = nil, license: String? = nil
+        format: String? = nil, license: String? = nil, calibration: Calibration? = nil
     ) {
         self.id = id
         self.name = name
@@ -117,6 +121,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.engine = engine
         self.format = format
         self.license = license
+        self.calibration = calibration
     }
 
     static var platformKey: String {
@@ -140,6 +145,31 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// sibling paths through this so every part downloads from the same pinned revision.
     public func modelID(path: String) -> ModelID {
         ModelID(repo, path: path, revision: revision ?? "main")
+    }
+}
+
+extension CatalogEntry {
+    /// The calibration the kit applies to a model's answer-slot logits by default: a softmax
+    /// temperature, fitted by the maintainer on one labelled fixture and reported on another
+    /// (`decide-cli calibrate`). catalog.json keeps the record's provenance in the same object —
+    /// what it was fitted on (`fit`) and the before/after numbers where it was checked
+    /// (`report`) — which the kit does not read. Only a model without a temperature of its own
+    /// carries one: a bundle whose author fitted or folded in a temperature keeps that.
+    public struct Calibration: Sendable, Codable, Hashable {
+        /// Temperature for every question type `byType` does not name.
+        public let temperature: Double
+        /// Per question type — "choice", "score", "noul" — when the types were fitted apart.
+        public let byType: [String: Double]?
+
+        public init(temperature: Double, byType: [String: Double]? = nil) {
+            self.temperature = temperature
+            self.byType = byType
+        }
+
+        /// The temperature for a question type: its own when fitted apart, else `temperature`.
+        public func temperature(forType type: String) -> Double {
+            byType?[type] ?? temperature
+        }
     }
 }
 
@@ -213,7 +243,7 @@ public struct ModelCatalog: Sendable, Codable {
                 return CatalogEntry(
                     id: e.id, name: e.name, repo: e.repo, revision: rev, kind: e.kind,
                     variants: e.variants, thinking: e.thinking, engine: e.engine, format: e.format,
-                    license: e.license)
+                    license: e.license, calibration: e.calibration)
             })
     }
 
@@ -230,6 +260,8 @@ public struct ModelCatalog: Sendable, Codable {
     static let builtinLiteral = ModelCatalog(
         version: 1,
         models: [
+            // Its calibration is the top of the fit grid: its three-option answers are at chance
+            // on the fixture, and the fit reads them nearly flat.
             CatalogEntry(
                 id: "qwen3-0.6b", name: "Qwen3 0.6B",
                 repo: "mlboydaisuke/qwen3-0.6b-CoreAI-official", kind: .chat,
@@ -237,7 +269,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "macos", sizeMB: 352),
                     "ios": .init(path: "ios", sizeMB: 456),
                 ],
-                thinking: true),
+                thinking: true, calibration: .init(temperature: 11.882)),
             CatalogEntry(
                 id: "qwen3-4b", name: "Qwen3 4B",
                 repo: "mlboydaisuke/qwen3-4b-CoreAI-official", kind: .chat,
@@ -334,6 +366,8 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "ios-h18p/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
                 ],
                 thinking: true, engine: "pipelined"),
+            // ── MiniCPM5 1B / 2B carry the temperature typed decisions read them at (`decide-cli
+            //    calibrate`; catalog.json has what it was fitted and reported on). ──
             CatalogEntry(
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
@@ -341,7 +375,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "int8", sizeMB: 1159),
                     "ios": .init(path: "int8", sizeMB: 1159),
                 ],
-                thinking: true, engine: "pipelined"),
+                thinking: true, engine: "pipelined", calibration: .init(temperature: 9.974)),
             CatalogEntry(
                 id: "minicpm5-2b", name: "MiniCPM5 2B",
                 repo: "mlboydaisuke/MiniCPM5-2B-CoreAI", kind: .chat,
@@ -349,7 +383,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "int8", sizeMB: 2685),
                     "ios": .init(path: "int8", sizeMB: 2685),
                 ],
-                thinking: true, engine: "pipelined"),
+                thinking: true, engine: "pipelined", calibration: .init(temperature: 2.93)),
             // ── decision: a model trained to answer typed questions at an answer slot
             //    (Qwen3.5-0.8B-Base fine-tune, S=1 decode graph, int8 + head). Not a chat
             //    model: `TypedDecisions` renders its own prompt form and reads the letter

@@ -79,6 +79,13 @@ like `qwen3-0.6b`, `qwen3.5-2b`, `youtu-llm-2b`, `lfm2.5-1.2b` — lowercase, hy
 - Every entry is pinned to an **immutable Hugging Face revision**. Do not "upgrade" a pin to
   `main` to pick up a newer model — the pin is what was gated. Bumping one is a deliberate,
   reviewed change (`scripts/pin-catalog.py --check` is what CI enforces).
+- A model that answers typed decisions may carry `calibration` in its entry: the temperature the
+  kit reads its answer-slot logits at by default, fitted by the maintainer (`decide-cli
+  calibrate`), with what it was fitted and reported on beside it. Only a model without a
+  temperature of its own gets one — never add it to a model whose author fitted or folded one in
+  (`decider-0.8b`'s card, a bundle's `decision` block, `qwen3.5-2b-decision`). Like a pin, a
+  record in the live catalog reaches shipped apps without an update, so changing one is a
+  reviewed change.
 - Weights download from Hugging Face on **first use** and cache. They are not vendored in the
   package and must not be committed into an app repo.
 - `catalog.json` has two **generated** copies — the built-in offline fallback and `llms.txt` —

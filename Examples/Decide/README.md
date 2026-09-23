@@ -65,12 +65,13 @@ python3 conformance/check.py http://127.0.0.1:8090                 # 22 requests
 ```
 ```json
 {"model": "minicpm5-2b",
- "answers": {"is_urgent": {"type": "noul", "noul": 0.9274, "confidence": 0.9274},
-             "queue": {"type": "choice", "choice": "billing", "probabilities": {"billing": 0.5886, "technical": 0.4109, "other": 0.0004}, "confidence": 0.3804}},
+ "answers": {"is_urgent": {"type": "noul", "noul": 0.7046, "confidence": 0.7046},
+             "queue": {"type": "choice", "choice": "billing", "probabilities": {"billing": 0.5078, "technical": 0.4492, "other": 0.0430}, "confidence": 0.2364}},
  "usage": {"input_tokens": 239, "output_tokens": 2}, "timing_ms": 103.5733}
 ```
 
-The state is prefilled once per request and every question rewinds to it; that request took
+The probabilities are read at the catalog temperature (2.93 for `minicpm5-2b`; raw, the same
+request answers `noul` 0.9274 and `billing` 0.5886). The state is prefilled once per request and every question rewinds to it; that request took
 204 ms end to end on the Mac (M4 Max, 2026-09-23), four questions on a 69-token state 436 ms.
 A third-party client library written for the hosted endpoint (`system-one` 0.1.0 on PyPI,
 `HTTPConfig(base_url=…)`) got its typed answers back from this server unchanged, 179 ms round
@@ -257,22 +258,47 @@ the hands-off run — positive, sharing news, 😀; three decisions in 279 ms at
 Agreement with the published bf16 readout of the same models on the same 144 authored rows
 (SemIf's `authored144` fixture, its `direct` rendering byte for byte, its `evaluate.py` metric):
 
-| Model | Prompt tokens identical | Argmax agreement | max / mean \|Δp\| | Mean family balanced accuracy (kit) | Published bf16 | Accuracy | Brier | ECE (10 bins) |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| MiniCPM5 2B int8 | 144/144 | 141/144 | 0.183 / 0.020 | 0.681 | 0.686 | 0.701 | 0.455 | 0.167 |
-| MiniCPM5 1B int8 | — | — | — | 0.513 | — | — | — | — |
-| Qwen3 0.6B 4-bit | 144/144 | 59/144 | 1.000 / 0.580 | 0.333 | 0.440 | — | — | — |
-| decider 0.8B int8, card temperature 1.03 | — (its own prompt form) | — | — | 0.753 | — | 0.771 | 0.296 | 0.061 |
+| Model | Prompt tokens identical | Argmax agreement | max / mean \|Δp\| | Mean family balanced accuracy (kit) | Published bf16 | Accuracy | Catalog temperature | Brier, raw → catalog | ECE (10 bins), raw → catalog |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| MiniCPM5 2B int8 | 144/144 | 141/144 | 0.183 / 0.020 | 0.681 | 0.686 | 0.701 | 2.93 | 0.455 → 0.411 | 0.167 → 0.071 |
+| MiniCPM5 1B int8 | — | — | — | 0.513 | — | 0.535 | 9.974 | 0.636 → 0.623 | 0.184 → 0.157 |
+| Qwen3 0.6B 4-bit | 144/144 | 59/144 | 1.000 / 0.580 | 0.333 | 0.440 | 0.340 | 11.882 | 1.299 → 0.722 | 0.650 → 0.185 |
+| decider 0.8B int8, card temperature 1.03 | — (its own prompt form) | — | — | 0.753 | — | 0.771 | none (its card's 1.03) | 0.296 | 0.061 |
 
-Brier is the multi-class score (sum over options of (p − 1[correct])², SemIf's definition),
-ECE the top-label expected calibration error over 10 equal-width bins, both from
-`decide-cli oracle` output through `conformance/calibration.py` (2026-09-23, the same Mac).
-Fitting one temperature on these 144 rows: `minicpm5-2b` 2.34 (ECE 0.167 → 0.078, Brier
-0.455 → 0.407, NLL 0.886 → 0.696; the argmax, so the accuracy, does not move);
-`decider-0.8b` ×0.84 on its card's 1.03 (ECE 0.061 → 0.032). Neither is applied: the chat
-model's readout stays raw and the decision model keeps its author's temperature, because a
-value fitted on one 144-row fixture is a measurement of that fixture. `TypedDecisions.Configuration.temperature`
-takes a temperature for an app that has fitted its own.
+Brier is the multi-class score (sum over options of (p − 1[correct])², SemIf's definition), ECE
+the top-label expected calibration error over 10 equal-width bins, both from `decide-cli
+calibrate` (2026-09-23, the same Mac); `conformance/calibration.py` gives the same numbers from
+the rows it writes (`--out`, `--out-raw`). A chat model's decisions are read at the temperature
+its catalog entry records (`CatalogEntry.calibration`): fitted, least NLL, on SemIf's 108
+perturbation rows — the same situations with the options reversed, the criterion reworded or
+irrelevant context added — and reported on these 144. No answer moves (0 of 144 argmaxes); the
+probabilities get less extreme. The two sets share situations: every perturbation row was made
+from one of 36 rows here, and 36 of their 72 states are the same text. Fitted instead on two
+task families of these rows and read on the third, which shares nothing with them, `minicpm5-2b`
+takes 1.69, 2.79 and 2.52, and the 144 held-out rows go from ECE 0.167 to 0.067 and Brier 0.455
+to 0.424 — per family 0.279 → 0.174 (candidate selection), 0.185 → 0.169 (rule application) and
+0.096 → 0.123 (evidence interpretation, already close raw). Fitted on these 144 rows themselves
+the value would be 2.34 (ECE 0.078). The perturbations break `minicpm5-1b` (accuracy 0.435 on
+them, 0.25 on evidence interpretation), so its temperature is high and its probabilities near
+flat; fitted on two families here and read on the third it would be 2.23–2.65, and the held-out
+ECE 0.040 against the record's 0.157. No temperature makes `qwen3-0.6b` better than a flat guess
+over three options (NLL 1.176 at the top of the grid, 11.882, against ln 3 = 1.099 for the flat
+guess). The temperatures were fitted on three-option choices; a yes/no and a score are read at
+the same one until they are fitted apart. `decider-0.8b` keeps its card's 1.03: fitted on the
+perturbation rows it would be 1.16, which reads no better here (ECE 0.061 → 0.062, Brier 0.296 →
+0.299). `TypedDecisions.Configuration.temperature` sets one for every question type; `decide-cli
+calibrate --fit <rows> --report <rows> --record <file>` fits one on an app's own labelled rows
+and writes the record.
+
+The screens above were measured at temperature 1, before the kit read `minicpm5-2b` at 2.93.
+Their choices are the same at either temperature; their probabilities were more extreme. What
+depends on a probability beyond its winner was re-read at 2.93 on the screens' own samples
+(2026-09-23, the Mac; the raw answers re-read, which is exact for one softmax): Autofill still
+fills every field of the sample email — the address line, the lowest, at 0.36 against its 0.3
+floor (0.64 raw) — Context keeps the same 7 of 13 tool results at its 0.8 line (the nearest,
+`read docs/api.md`, at 0.84 against 0.85 raw), and Typing's sample line stays positive
+(expected level 1.86 against 2.00 raw). Search's order in its score mode has not been
+re-measured.
 
 So `minicpm5-2b` is the default: its int8 decisions track the fp32 model. The official 4-bit
 Qwen3 0.6B bundle does **not** — it answers the last option far too often — so use it for its

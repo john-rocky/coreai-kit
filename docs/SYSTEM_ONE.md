@@ -122,13 +122,25 @@ three-option decision on the Mac.
 (CC BY-NC 4.0), is token-identical to its helper's rows and argmax-identical on all 61 fixture rows
 (int8 max |Δp| 0.0003) and scores 0.907 on the same 144 rows, at about 8 s per decision on the Mac.
 
-What the probabilities are worth, on the same 144 rows (`conformance/calibration.py`, top-label
-ECE over 10 equal-width bins, multi-class Brier): `minicpm5-2b` as reported is over-confident,
-ECE 0.167 and Brier 0.455 at accuracy 0.701; one temperature fitted on those rows (2.34) takes
-the ECE to 0.078. `decider-0.8b` at its card's temperature: accuracy 0.771, balanced 0.753,
-ECE 0.061, Brier 0.296. The kit applies no fitted temperature of its own
-(`TypedDecisions.Configuration.temperature` takes one); the table is in
-[`Examples/Decide/README.md`](../Examples/Decide/README.md#measured).
+What the probabilities are worth, on the same 144 rows (top-label ECE over 10 equal-width bins,
+multi-class Brier): read raw, `minicpm5-2b` is over-confident — ECE 0.167, Brier 0.455 at
+accuracy 0.701. So the kit reads it at the temperature its catalog entry records
+(`CatalogEntry.calibration`): 2.93, fitted by `decide-cli calibrate` on SemIf's 108 perturbation
+rows and reported on the 144 authored rows, where ECE goes to 0.071, Brier to 0.411 and NLL from
+0.886 to 0.706. No answer changes; a temperature never moves the argmax. The two sets share no
+row but do share situations — every perturbation row was made from one of 36 authored rows — so
+the temperature was also checked where nothing is shared: fitted on two of the authored rows'
+three task families and read on the third, it comes out 1.69, 2.79 and 2.52, and the 144
+held-out rows go from ECE 0.167 to 0.067 (Brier 0.455 → 0.424). One temperature is an average:
+per family the ECE goes 0.279 → 0.174 and 0.185 → 0.169, and 0.096 → 0.123 for the family that
+was already close. The records were fitted on three-option choices; a yes/no and a score are
+read at the same temperature until they are fitted apart. `minicpm5-1b` (9.974) and `qwen3-0.6b`
+(11.882) carry records too, and both read nearly flat: the perturbations break the 1B (accuracy
+0.435 on them), and the 0.6B answers at chance (0.340 on the authored rows). A model whose
+author fitted or folded in a temperature keeps it and has no record — `decider-0.8b` at its
+card's 1.03 (accuracy 0.771, balanced 0.753, ECE 0.061, Brier 0.296), the bundles that declare
+one, `qwen3.5-2b-decision` at 1. `TypedDecisions.Configuration.temperature` overrides every one
+of them; the tables are in [`Examples/Decide/README.md`](../Examples/Decide/README.md#measured).
 
 The shape of the question decides more than the model. On MiniCPM5 2B, measured on the
 screens' samples:
