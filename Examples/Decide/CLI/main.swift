@@ -8,6 +8,8 @@
 //   swift run -c release decide-cli oracle --model qwen3-0.6b --fixture authored144.jsonl \
 //       --prompts prompts.jsonl --reference predictions.jsonl --limit 48 --out predictions.out.jsonl
 //   (--dump-prompts <path> writes the kit's own rendering in the --prompts shape, for a reference to score)
+//   swift run -c release decide-cli calibrate --model minicpm5-2b --fit perturbations108.jsonl --report authored144.jsonl \
+//       --record minicpm5-2b.calibration.json --out report.after.jsonl --out-raw report.raw.jsonl
 //   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
 //   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
 //   (a scalar-head model's fixture, coreai-scalar-fixtures/1, compares every option row of each question)
@@ -16,6 +18,7 @@
 //   swift run -c release decide-cli --list-models
 
 import CoreAIOps
+import CryptoKit
 import Foundation
 
 let usage = """
@@ -24,6 +27,10 @@ let usage = """
            decide-cli bench [--model <catalog-id>] [--state-file <path>] [--repeat <n>]
            decide-cli oracle --fixture <rows.jsonl> [--prompts <rows.jsonl>] [--reference <rows.jsonl>]
                             [--model <catalog-id>] [--limit <n>] [--out <predictions.jsonl>] [--dump-prompts <rows.jsonl>]
+           decide-cli calibrate --fit <rows.jsonl> --report <rows.jsonl> [--model <catalog-id>] [--record <calibration.json>]
+                            [--out <report-calibrated.jsonl>] [--out-raw <report-raw.jsonl>] [--bins 10] [--limit <n>]
+                            [--fit-name <text>] [--report-name <text>] [--verbose]
+                            (a temperature fitted on --fit, before / after on --report; the record is a catalog.json `calibration`)
            decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
                             (--bundle <dir> loads a local bundle directory instead of a catalog id, for any command)
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
@@ -92,6 +99,13 @@ var port: UInt16 = 8090
 var preload = false
 /// A local bundle directory instead of a catalog id — a port gated before it is published.
 var bundlePath: String?
+var fitPath: String?
+var reportPath: String?
+var recordPath: String?
+var outRawPath: String?
+var bins = 10
+var fitName: String?
+var reportName: String?
 
 /// The decider every command loads: the `--bundle` directory when given, else the catalog id.
 @MainActor func loadDecider(configuration: TypedDecisions.Configuration = .init()) async throws -> TypedDecisions {
@@ -136,6 +150,13 @@ while let arg = args.popFirst() {
     case "--host": host = args.popFirst() ?? host
     case "--port": port = UInt16(args.popFirst() ?? "") ?? port
     case "--preload": preload = true
+    case "--fit": fitPath = args.popFirst()
+    case "--report": reportPath = args.popFirst()
+    case "--record": recordPath = args.popFirst()
+    case "--out-raw": outRawPath = args.popFirst()
+    case "--bins": bins = Int(args.popFirst() ?? "") ?? bins
+    case "--fit-name": fitName = args.popFirst()
+    case "--report-name": reportName = args.popFirst()
     case "--bundle":
         bundlePath = args.popFirst()
         if let bundlePath { modelID = URL(fileURLWithPath: bundlePath).lastPathComponent }
@@ -255,11 +276,22 @@ struct FixtureRow: Decodable {
         let id: String
         let description: String
     }
+    struct Provenance: Decodable {
+        /// The row a perturbation was made from.
+        let base_id: String?
+    }
     let id: String
     let state: String
     let question: String
     let options: [Option]
     let label: Int?
+    /// SemIf's task family, the situation the row belongs to (`<group>` or `<group>/<set>`),
+    /// where it came from, and its question type — "choice" when absent; "noul" lists no then
+    /// yes, "score" its levels lowest first. `calibrate` reads them.
+    let family: String?
+    let group_id: String?
+    let provenance: Provenance?
+    let type: String?
 }
 
 struct PromptRow: Decodable {
@@ -375,6 +407,248 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
         print("max |Δp| vs reference: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(deltas.count), 4))")
     }
     print("ms per decision: median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
+}
+
+// MARK: - calibrate (a temperature fitted on one labelled fixture, reported on another)
+
+/// One row as the model answered it, kept at temperature 1 so any other temperature is one
+/// `rescale` away.
+struct CalibrationScore {
+    let fixture: FixtureRow
+    let type: String
+    let label: Int
+    /// The temperature the kit read the answer at by default.
+    let temperature: Double
+    let raw: [Double]
+    let tokens: Int
+    let seconds: Double
+
+    func row(at t: Double) -> DecisionCalibration.Row {
+        DecisionCalibration.Row(
+            probabilities: DecisionCalibration.rescale(raw, to: t), label: label,
+            optionIDs: fixture.options.map(\.id), family: fixture.family)
+    }
+}
+
+/// The typed question a calibration row asks, with its type's name.
+func calibrationQuestion(_ row: FixtureRow) -> (type: String, question: Decision.Question)? {
+    switch row.type ?? "choice" {
+    case "choice":
+        return ("choice", .choice(row.question, options: row.options.map { .init(id: $0.id, description: $0.description) }))
+    case "noul":
+        guard row.options.count == 2 else { return nil }
+        func meaning(_ option: FixtureRow.Option) -> String? {
+            option.description.isEmpty || option.description == option.id ? nil : option.description
+        }
+        return ("noul", .noul(row.question, yes: meaning(row.options[1]), no: meaning(row.options[0])))
+    case "score":
+        return ("score", .score(row.question, levels: row.options.map(\.description)))
+    default:
+        return nil
+    }
+}
+
+func sha256(ofFile path: String) throws -> String {
+    SHA256.hash(data: try Data(contentsOf: URL(fileURLWithPath: path))).map { String(format: "%02x", $0) }.joined()
+}
+
+/// A number in the record: three places, no trailing zeros.
+func recordNumber(_ value: Double) -> JSONValue {
+    var text = String(format: "%.3f", value)
+    while text.hasSuffix("0") { text.removeLast() }
+    if text.hasSuffix(".") { text += "0" }
+    return .number(text)
+}
+
+func tally(_ values: [String]) -> String {
+    Dictionary(grouping: values, by: { $0 }).keys.sorted()
+        .map { key in "\(key) \(values.filter { $0 == key }.count)" }.joined(separator: ", ")
+}
+
+/// Index of the largest probability, the first on a tie.
+func firstMax(_ p: [Double]) -> Int {
+    var best = 0
+    for i in p.indices where p[i] > p[best] { best = i }
+    return best
+}
+
+@MainActor func runCalibrate() async throws {
+    guard let fitPath, let reportPath else { fail(usage) }
+    let fitRows = Array(try readRows(fitPath, as: FixtureRow.self).prefix(limit))
+    let reportRows = Array(try readRows(reportPath, as: FixtureRow.self).prefix(limit))
+    guard !fitRows.isEmpty, !reportRows.isEmpty else { fail("calibrate: --fit and --report each need a row") }
+
+    // The two sets must not share a row. What else they share is printed on every run.
+    for (flag, rows) in [("--fit", fitRows), ("--report", reportRows)] {
+        let repeated = Dictionary(grouping: rows.map(\.id), by: { $0 }).filter { $0.value.count > 1 }.keys.sorted()
+        if let first = repeated.first { fail("calibrate: \(flag) repeats \(repeated.count) row ids (\(first), …)") }
+    }
+    let fitIDs = Set(fitRows.map(\.id)), reportIDs = Set(reportRows.map(\.id))
+    let shared = fitIDs.intersection(reportIDs).sorted()
+    if let first = shared.first {
+        fail("calibrate: \(shared.count) row ids are in both --fit and --report (\(first), …); a temperature is reported on rows it was not fitted on")
+    }
+    var typed: [String: (type: String, question: Decision.Question, label: Int)] = [:]
+    for row in fitRows + reportRows {
+        guard let (type, question) = calibrationQuestion(row) else {
+            fail("calibrate: row \(row.id) is type \(row.type ?? "choice") with \(row.options.count) options; calibrate asks a choice, a noul (options no, yes) or a score (options its levels)")
+        }
+        guard let label = row.label, row.options.indices.contains(label) else {
+            fail("calibrate: row \(row.id) has no label among its \(row.options.count) options")
+        }
+        typed[row.id] = (type, question, label)
+    }
+    func situation(_ row: FixtureRow) -> String? { row.group_id.map { String($0.prefix { $0 != "/" }) } }
+    let fitSituations = Set(fitRows.compactMap(situation)), reportSituations = Set(reportRows.compactMap(situation))
+    let fitFromReport = fitRows.compactMap(\.provenance?.base_id).filter { reportIDs.contains($0) }
+    let reportFromFit = reportRows.compactMap(\.provenance?.base_id).filter { fitIDs.contains($0) }
+    let fitStates = Set(fitRows.map(\.state)), reportStates = Set(reportRows.map(\.state))
+    let fitHash = try sha256(ofFile: fitPath), reportHash = try sha256(ofFile: reportPath)
+    let fitLabel = fitName ?? URL(fileURLWithPath: fitPath).deletingPathExtension().lastPathComponent
+    let reportLabel = reportName ?? URL(fileURLWithPath: reportPath).deletingPathExtension().lastPathComponent
+    for (side, path, rows, hash) in [("fit", fitPath, fitRows, fitHash), ("report", reportPath, reportRows, reportHash)] {
+        print("\(side): \(path)  \(rows.count) rows  sha256 \(hash.prefix(12))…  families: \(tally(rows.map { $0.family ?? "-" }))  types: \(tally(rows.map { typed[$0.id]!.type }))")
+    }
+    print("shared by fit and report: row ids 0 · situations (group_id before \"/\") \(fitSituations.intersection(reportSituations).count) (fit \(fitSituations.count), report \(reportSituations.count)) · fit rows made from a report row \(fitFromReport.count) (from \(Set(fitFromReport).count) report rows) · report rows made from a fit row \(reportFromFit.count) · states \(fitStates.intersection(reportStates).count) (fit \(fitStates.count), report \(reportStates.count) distinct)")
+
+    let decider = try await loadDecider()
+    let name = await decider.modelName
+    // Re-reading an answer at another temperature needs one softmax behind it.
+    let types = Set(typed.values.map(\.type))
+    if decider.format == .decider, types.contains("score") {
+        fail("calibrate: a .decider score normalises one yes/no per level, not one softmax; calibrate its choice and noul rows")
+    }
+    if decider.format == .letterList, types.contains("noul") {
+        fail("calibrate: a .letterList yes/no is recalibrated after its softmax; calibrate its choice and score rows")
+    }
+    let probes: [(String, Decision.Question)] = [
+        ("choice", .choice("?", ["a", "b"])), ("score", .score("?", levels: ["a", "b"])), ("noul", .noul("?")),
+    ]
+    let defaults = probes.map { "\($0.0) \(fmt(decider.temperature(for: $0.1)))" }.joined(separator: ", ")
+    var source = "the model's own (its bundle's, or its prompt form's default)"
+    if bundlePath == nil, let calibration = try await ModelCatalog.entry(forID: id).calibration {
+        source = "the catalog's calibration (\(calibration.temperature)\(calibration.byType.map { ", by type \($0)" } ?? ""))"
+    }
+    print("model: \(id) (\(name))   format: \(decider.format.rawValue)   default temperature: \(defaults) — \(source)")
+
+    func score(_ rows: [FixtureRow], _ side: String) async throws -> [CalibrationScore] {
+        var scored: [CalibrationScore] = []
+        for (index, row) in rows.enumerated() {
+            let (type, question, label) = typed[row.id]!
+            let answer = try await decider.decide(row.state, question)
+            let t = decider.temperature(for: question)
+            let raw = DecisionCalibration.rescale(answer.probabilities, from: t, to: 1)
+            scored.append(
+                CalibrationScore(
+                    fixture: row, type: type, label: label, temperature: t, raw: raw,
+                    tokens: answer.timing.promptTokens, seconds: answer.timing.seconds))
+            if verbose {
+                stderrPrint("  \(side) \(row.id) \(type) label \(label)  p \(answer.probabilities.map { fmt($0) }) at T \(fmt(t))  raw \(raw.map { fmt($0) })")
+            } else if (index + 1) % 12 == 0 || index + 1 == rows.count {
+                stderrPrint("\rscoring \(side) rows: \(index + 1)/\(rows.count)", terminator: index + 1 == rows.count ? "\n" : "")
+            }
+        }
+        return scored
+    }
+    let fitScored = try await score(fitRows, "fit")
+    let reportScored = try await score(reportRows, "report")
+    print("scored \(fitScored.count) fit and \(reportScored.count) report rows, median \(fmt(median((fitScored + reportScored).map { $0.seconds * 1000 }), 1)) ms per decision")
+
+    // One temperature per question type fitted, and the one over all of them: the record keeps
+    // three places, and the kit applies what the record says, so `after` is read at that.
+    let order = ["choice", "score", "noul"]
+    let fitTypes = order.filter { type in fitScored.contains { $0.type == type } }
+    let rawFit = fitScored.map { $0.row(at: 1) }
+    var fitted: [String: Double] = [:]
+    for type in fitTypes {
+        fitted[type] = DecisionCalibration.fitTemperature(zip(fitScored, rawFit).filter { $0.0.type == type }.map(\.1))
+    }
+    let pooled = DecisionCalibration.fitTemperature(rawFit)
+    func threePlaces(_ t: Double) -> Double { (t * 1000).rounded() / 1000 }
+    let recorded = threePlaces(pooled)
+    let recordedByType = fitTypes.count > 1 ? fitted.mapValues(threePlaces) : nil
+    func applied(_ type: String) -> Double { recordedByType?[type] ?? recorded }
+    let perType = fitTypes.map { type in "\(type) \(fmt(fitted[type]!, 4)) (\(fitScored.filter { $0.type == type }.count) rows)" }
+    print("fitted on the fit rows (least NLL on exp(x/40), x in -60..<100): \(perType.joined(separator: ", ")); all types \(fmt(pooled, 4)) → recorded \(recordNumber(recorded).dumps())\(recordedByType == nil ? "" : " and one per type")")
+    print("for comparison, fitted on the report rows themselves: \(fmt(DecisionCalibration.fitTemperature(reportScored.map { $0.row(at: 1) }), 4))")
+
+    func table(_ title: String, _ rows: [DecisionCalibration.Row]) {
+        print("\n\(title)")
+        print("| family | n | accuracy | balanced acc. | NLL | Brier | ECE | mean conf. |")
+        print("|---|---:|---:|---:|---:|---:|---:|---:|")
+        for (family, m) in DecisionCalibration.familyMetrics(rows, bins: bins) {
+            print("| \(family) | \(m.n) | \(fmt(m.accuracy)) | \(fmt(m.balancedAccuracy)) | \(fmt(m.nll)) | \(fmt(m.brier)) | \(fmt(m.ece)) | \(fmt(m.meanConfidence)) |")
+        }
+    }
+    let fitBefore = fitScored.map { $0.row(at: $0.temperature) }
+    let fitAfter = fitScored.map { $0.row(at: applied($0.type)) }
+    let reportBefore = reportScored.map { $0.row(at: $0.temperature) }
+    let reportAfter = reportScored.map { $0.row(at: applied($0.type)) }
+    let afterText = fitTypes.count > 1
+        ? fitTypes.map { "\($0) \(recordNumber(applied($0)).dumps())" }.joined(separator: ", ")
+        : recordNumber(recorded).dumps()
+    table("fit rows (\(fitLabel)), in-sample, before: the default temperature", fitBefore)
+    table("fit rows (\(fitLabel)), in-sample, after: \(afterText)", fitAfter)
+    table("report rows (\(reportLabel)), before: the default temperature", reportBefore)
+    table("report rows (\(reportLabel)), after: \(afterText)", reportAfter)
+    func moved(_ a: [DecisionCalibration.Row], _ b: [DecisionCalibration.Row]) -> Int {
+        zip(a, b).filter { firstMax($0.probabilities) != firstMax($1.probabilities) }.count
+    }
+    print("\nargmax moved by the temperature: \(moved(reportBefore, reportAfter)) of \(reportScored.count) report rows, \(moved(fitBefore, fitAfter)) of \(fitScored.count) fit rows")
+
+    if let recordPath {
+        let before = DecisionCalibration.metrics(reportBefore, bins: bins)
+        let after = DecisionCalibration.metrics(reportAfter, bins: bins)
+        let day = DateFormatter()
+        day.locale = Locale(identifier: "en_US_POSIX")
+        day.dateFormat = "yyyy-MM-dd"
+        #if os(macOS)
+        let platform = "macos"
+        #else
+        let platform = "ios"
+        #endif
+        let fit = JSONValue.object([
+            .init("fixture", .string(fitLabel)), .init("sha256", .string(fitHash)), .init("rows", .int(fitScored.count)),
+            .init("questionTypes", .array(fitTypes.map(JSONValue.string))), .init("format", .string(decider.format.rawValue)),
+            .init("date", .string(day.string(from: Date()))), .init("platform", .string(platform)),
+        ])
+        let report = JSONValue.object([
+            .init("fixture", .string(reportLabel)), .init("sha256", .string(reportHash)), .init("rows", .int(reportScored.count)),
+            .init("accuracy", recordNumber(before.accuracy)),
+            .init("eceBefore", recordNumber(before.ece)), .init("eceAfter", recordNumber(after.ece)),
+            .init("brierBefore", recordNumber(before.brier)), .init("brierAfter", recordNumber(after.brier)),
+            .init("nllBefore", recordNumber(before.nll)), .init("nllAfter", recordNumber(after.nll)),
+        ])
+        var lines = ["{", "  \"temperature\": \(recordNumber(recorded).dumps()),"]
+        if let recordedByType {
+            let byType = JSONValue.object(fitTypes.map { JSONValue.Member($0, recordNumber(recordedByType[$0]!)) })
+            lines.append("  \"byType\": \(byType.dumps()),")
+        }
+        lines += ["  \"fit\": \(fit.dumps()),", "  \"report\": \(report.dumps())", "}"]
+        try (lines.joined(separator: "\n") + "\n").write(toFile: recordPath, atomically: true, encoding: .utf8)
+        print("record: \(recordPath)")
+    }
+    func write(_ path: String, _ rows: [DecisionCalibration.Row]) throws {
+        let lines = zip(reportScored, rows).map { scored, row in
+            JSONValue.object([
+                .init("id", .string(scored.fixture.id)),
+                .init("option_ids", .array(scored.fixture.options.map { .string($0.id) })),
+                .init("probabilities", .array(row.probabilities.map(JSONValue.double))),
+                .init("input_tokens", .int(scored.tokens)),
+                .init("forward_seconds", .number(fmt(scored.seconds, 4))),
+                .init("model", .object([.init("catalog", .string(id)), .init("name", .string(name))])),
+            ]).dumps()
+        }
+        try (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+    }
+    if let outPath {
+        try write(outPath, reportAfter)
+        print("report rows at the recorded temperature: \(outPath)")
+    }
+    if let outRawPath {
+        try write(outRawPath, reportScored.map { $0.row(at: 1) })
+        print("report rows at temperature 1: \(outRawPath)")
+    }
 }
 
 // MARK: - parity (a decision model's own fixture: every row's token ids, slot and probabilities)
@@ -929,6 +1203,7 @@ do {
     case "ask": try await runAsk()
     case "bench": try await runBench()
     case "oracle": try await runOracle()
+    case "calibrate": try await runCalibrate()
     case "parity": try await runParity()
     case "filter": try await runFilter()
     case "serve": try await runServe()
