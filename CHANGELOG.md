@@ -108,8 +108,15 @@ and Xcode 27 (27A266a); the `coreai-models` runtime pin stays 0.2.4-zoo.
   helper sends (`State:`, `Question:`, `Options:` as `[A] key: description` lines, "Answer with the
   letter of the best option only."), read at the bare letters A–Z then a–z (up to 52) at the
   temperature the bundle declares, a yes/no calibrated the helper's way (`decision.readout ==
-  "letters"` with `temperature` and `noul` in metadata.json). The `openjev-27b` catalog entry follows
-  in its own change; `decide-cli parity` already reads the helper's fixture rows.
+  "letters"` with `temperature` and `noul` in metadata.json); `decide-cli parity` reads the helper's
+  fixture rows.
+- **`openjev-27b`** — OpenJev (the OpenJev project's Qwen3.8-27B fine-tune; English, German, French,
+  Hindi, Chinese, Japanese; **CC BY-NC 4.0** for the weights), the open model behind its
+  `/v1/systemone` helper, as a catalog `decision` model with `format: letterList`. On the author's
+  61-row fixture the kit's rows are token-, slot- and argmax-identical to the helper's own readout
+  on 61/61 (int8 max |Δp| 0.0003; a yes/no compared after the helper's calibration); 0.907 mean
+  family balanced accuracy on SemIf's 144 English rows through the kit. Mac only (28 GB int8hu,
+  about 28 GB resident, about 8 s per decision on an M4 Max).
 - **`CatalogEntry.license`** — the SPDX id of a model's weights license when it restricts use
   (`CC-BY-NC-4.0`); nil for the permissive ones. `systemone models` prints it beside the name and
   `/v1/models` adds it to the description; the zoo card has every model's exact terms.

@@ -116,6 +116,9 @@ on the same 144 rows, at about 1 s per decision on the Mac.
 temperature (CC BY-NC 4.0), is token-identical to its author's 280 fixture rows and argmax-identical
 on all 48 questions (int8 max |Δp| 0.011) and scores 0.844 on the same 144 rows, at about 2 s per
 three-option decision on the Mac.
+`openjev-27b`, the 27B model behind the OpenJev decision API read exactly as its helper reads it
+(CC BY-NC 4.0), is token-identical to its helper's rows and argmax-identical on all 61 fixture rows
+(int8 max |Δp| 0.0003) and scores 0.907 on the same 144 rows, at about 8 s per decision on the Mac.
 
 What the probabilities are worth, on the same 144 rows (`conformance/calibration.py`, top-label
 ECE over 10 equal-width bins, multi-class Brier): `minicpm5-2b` as reported is over-confident,
