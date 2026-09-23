@@ -7,6 +7,7 @@
 //   swift run -c release decide-cli bench --model minicpm5-2b --repeat 3
 //   swift run -c release decide-cli oracle --model qwen3-0.6b --fixture authored144.jsonl \
 //       --prompts prompts.jsonl --reference predictions.jsonl --limit 48 --out predictions.out.jsonl
+//   (--dump-prompts <path> writes the kit's own rendering in the --prompts shape, for a reference to score)
 //   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
 //   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
 //   (a scalar-head model's fixture, coreai-scalar-fixtures/1, compares every option row of each question)
@@ -22,7 +23,7 @@ let usage = """
                             (--noul <q> | --choice "<q>|<opt>|<opt>…" | --score "<q>|<level>|<level>…")…
            decide-cli bench [--model <catalog-id>] [--state-file <path>] [--repeat <n>]
            decide-cli oracle --fixture <rows.jsonl> [--prompts <rows.jsonl>] [--reference <rows.jsonl>]
-                            [--model <catalog-id>] [--limit <n>] [--out <predictions.jsonl>]
+                            [--model <catalog-id>] [--limit <n>] [--out <predictions.jsonl>] [--dump-prompts <rows.jsonl>]
            decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
                             (--bundle <dir> loads a local bundle directory instead of a catalog id, for any command)
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
@@ -80,6 +81,8 @@ var promptsPath: String?
 var referencePath: String?
 var limit = Int.max
 var outPath: String?
+/// `oracle`: where to write each row's rendered token ids and answer-slot ids (the `--prompts` shape).
+var dumpPromptsPath: String?
 var verbose = false
 var threshold = 0.5
 var printAll = false
@@ -125,6 +128,7 @@ while let arg = args.popFirst() {
     case "--reference": referencePath = args.popFirst()
     case "--limit": limit = Int(args.popFirst() ?? "") ?? limit
     case "--out": outPath = args.popFirst()
+    case "--dump-prompts": dumpPromptsPath = args.popFirst()
     case "--verbose": verbose = true
     case "--threshold": threshold = Double(args.popFirst() ?? "") ?? threshold
     case "--states": statesPath = args.popFirst()
@@ -289,6 +293,7 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     let decider = try await loadDecider()
     let name = await decider.modelName
     var out: [String] = []
+    var dumped: [String] = []
     var scored = 0, tokensExact = 0, tokensChecked = 0, argmaxAgree = 0, labelCorrect = 0, labelled = 0
     var deltas: [Double] = []
     var milliseconds: [Double] = []
@@ -306,9 +311,19 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
             labelled += 1
             if best == label { labelCorrect += 1 }
         }
-        if let prompt = promptByID[row.id] {
+        var rendered: (tokens: [Int32], slots: [Int32])? = nil
+        if promptByID[row.id] != nil || dumpPromptsPath != nil {
+            rendered = try decider.promptRows(row.state, question)[0]
+        }
+        if let rendered, dumpPromptsPath != nil {
+            dumped.append(JSONValue.object([
+                .init("id", .string(row.id)),
+                .init("ids", .array(rendered.tokens.map { .int(Int($0)) })),
+                .init("answer_token_ids", .array(rendered.slots.map { .int(Int($0)) })),
+            ]).dumps())
+        }
+        if let prompt = promptByID[row.id], let rendered {
             tokensChecked += 1
-            let rendered = try decider.promptRows(row.state, question)[0]
             if rendered.tokens == prompt.ids, rendered.slots == prompt.answer_token_ids {
                 tokensExact += 1
             } else if verbose {
@@ -333,6 +348,9 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     }
     if let outPath {
         try out.joined(separator: "\n").appending("\n").write(toFile: outPath, atomically: true, encoding: .utf8)
+    }
+    if let dumpPromptsPath {
+        try dumped.joined(separator: "\n").appending("\n").write(toFile: dumpPromptsPath, atomically: true, encoding: .utf8)
     }
     print("model: \(id) (\(name))   rows scored: \(scored)   skipped (non-string state): \(skippedStates)")
     if labelled > 0 {
@@ -772,7 +790,7 @@ struct ScalarFixture: Decodable {
             skipped.append("\(group.key) (could not rebuild the question)")
             continue
         }
-        if rows[0].nopts > decider.maxOptions {  // 16 for a letter readout, the slot count for a slot head
+        if rows[0].nopts > decider.maxOptions {  // the label table's count for a letter readout, the slot count for a slot head
             skipped.append("\(group.key) (\(rows[0].nopts) options; this model lists at most \(decider.maxOptions))")
             continue
         }
