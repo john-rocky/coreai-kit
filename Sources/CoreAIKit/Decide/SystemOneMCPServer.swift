@@ -165,19 +165,16 @@ public final class SystemOneMCPServer: @unchecked Sendable {
                     modern: request.modern)
             case "decide":
                 let parsed = try SystemOneMCP.decideRequest(arguments)
-                let (response, tokens, milliseconds) = try await decisions.run {
+                let (response, modelID) = try await decisions.run {
                     if await self.cancelled.remove(request.id) { throw CallCancelled() }
                     let (decider, modelID) = try await self.decider(for: parsed.model)
-                    let prefilled = try await decider.prefill(parsed.state)
-                    var answers: [(id: String, question: Decision.Question, answer: Decision.Answer)] = []
-                    for (id, question) in parsed.questions {
-                        answers.append((id, question, try await prefilled.decide(question)))
-                    }
-                    let milliseconds = answers.map(\.answer.timing.milliseconds).reduce(0, +) + prefilled.timing.milliseconds
-                    return (SystemOne.response(model: modelID, answers: answers), prefilled.tokens, milliseconds)
+                    return (try await decider.systemOne(parsed), modelID)
                 }
-                log("decide  \(parsed.questions.count) question(s), state \(tokens) tokens, \(Int(milliseconds.rounded())) ms")
-                return codec.callResult(id: request.id, structured: response, modern: request.modern)
+                log("decide  \(parsed.questions.count) question(s), state \(response.stateTokens) tokens, \(Int(response.milliseconds.rounded())) ms")
+                return codec.callResult(
+                    id: request.id,
+                    structured: SystemOne.response(model: modelID, answers: response.answers.map { ($0.id, $0.question, $0.answer) }),
+                    modern: request.modern)
             default:
                 return SystemOneMCP.error(id: request.id, code: -32602, message: "Unknown tool: \(tool)")
             }

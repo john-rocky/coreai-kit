@@ -9,6 +9,23 @@ policy.
 
 ### Added
 
+- **`CoreAI.systemOne`** — the hosted System One call as one op: a request in the `/v1/systemone`
+  form in (`SystemOne.Request`; the request's bytes with `json:`; or `state:` and `questions:`
+  keyed by the caller's ids, in the order the answers come back) and the response in that form
+  out. `SystemOne.Response` holds the typed answers in request order (`response["queue"]?.choice`),
+  `usage`, `stateTokens`, the whole request's `milliseconds`, and the wire object as `value` /
+  `dumps()` — byte for byte what `systemone serve` returns. The model is `options.model`, else the
+  request's own `model`, else `CoreAI.decide`'s default, from the same cache under the same
+  one-request-at-a-time rule; bytes the wire refuses throw `SystemOne.WireError` before any model
+  loads. `TypedDecisions.systemOne(_:)` is the model-level call: every question checked against the
+  model's option count first, the state prefilled once, each question decided against it.
+  `SystemOne.Request` gains initialisers for a request built in Swift, a structured state included
+  (serialized the reference way). `SystemOneServer`, `SystemOneMCPServer` and `systemone ask` now
+  answer through this one path; their replies are unchanged. Checked against the decider's own API
+  on the zoo's 13-request fixture (`SystemOneDeciderSmokeTests`, opt-in with `KIT_DECIDER_FIXTURE`):
+  on `decider-0.8b` every one of the 36 answers names the author's option, and every probability,
+  expected score, level fit and fit mass is within 0.02 of the author's fp32 assembly (max 0.016, on
+  a five-level fit mass; M4 Max, 2026-09-23, GPU shared).
 - **A choice lists up to 255 options**, the hosted API's width, where the model can read that
   many. `minicpm5-2b` reads A–Z and, past 26 options, the numbers "1"…"255" under a system line
   that asks for the number; `decider-0.8b` reads its author's labels A–Z, AA, AB, … (its 44-row
@@ -52,6 +69,9 @@ policy.
 
 ### Changed
 
+- A `/v1/systemone` request that keys two questions by the same id is refused — 422,
+  `duplicate question id 'q'` — instead of answering both under one key, where the second
+  overwrote the first in the response object.
 - `SystemOne.maxOptions` is the hosted API's 255 (was 16). `SystemOne.request(from:maxOptions:)`
   takes the loaded model's count, and `SystemOneServer` passes it, so a list the model cannot
   read is a 422 that names the count ("this engine lists at most 26 options, got 27"). The wire
@@ -63,6 +83,18 @@ policy.
   `perturbations108`: their probabilities change, their answers do not. `minicpm5-2b` on
   `authored144`: ECE 0.167 → 0.071, Brier 0.455 → 0.411, accuracy 0.701 either way. A local
   bundle (`init(bundleAt:)`) has no catalog entry and reads as before.
+
+### Fixed
+
+- **`decider-0.8b` read a described option twice over the wire.** `SystemOne.request(from:)`
+  writes each option's description as `key: description`, the text the chat form reads, and the
+  decider form composed it again: the model read `repair: repair: Replace damaged parts`, and
+  P(repair) on the fixture's one described choice came out 0.941 against the author's 0.971
+  (0.972 read in Python from the same bundle). The decider form now keeps a description that
+  already carries its name, as the slot, scalar and letter-list forms do; a choice built in Swift
+  from separate fields renders as before. This reached every door the wire feeds — `systemone
+  serve`, `systemone mcp`, the `decide` MCP tool — for a `choice` whose criteria carry
+  descriptions; the chosen option did not change on the fixture.
 
 ### Docs
 

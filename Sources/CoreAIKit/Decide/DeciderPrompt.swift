@@ -42,11 +42,7 @@ enum DeciderPrompt {
     static func rows(for question: Decision.Question) -> [Row] {
         switch question.kind {
         case .choice(let options):
-            return [
-                Row(
-                    question: question.instructions,
-                    options: options.map { $0.id == $0.description ? $0.id : "\($0.id): \($0.description)" })
-            ]
+            return [Row(question: question.instructions, options: options.map(optionText))]
         case .score(let levels):
             return levels.map { level in
                 Row(
@@ -60,6 +56,17 @@ enum DeciderPrompt {
                     options: [no.map { "no: \($0)" } ?? "no", yes.map { "yes: \($0)" } ?? "yes"])
             ]
         }
+    }
+
+    /// One option as the author's form writes it: `name: criterion`, or the name alone when
+    /// there is no criterion. An option that came through the wire already carries that
+    /// composed text as its description (`SystemOne.request(from:)` writes `key: description`,
+    /// the text the chat form reads), so it is kept as it is rather than composed twice —
+    /// the same rule as the slot, scalar and letter-list forms.
+    static func optionText(_ option: Decision.Option) -> String {
+        if option.description.isEmpty || option.description == option.id { return option.id }
+        if option.description.hasPrefix(option.id + ": ") { return option.description }
+        return "\(option.id): \(option.description)"
     }
 
     /// The tokens every row on `state` starts with.

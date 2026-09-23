@@ -80,8 +80,8 @@ with package version, model ID/revision, OS/SDK build and the error text.
 
 A typed decision — a text, a question with fixed answers, each answer's probability, nothing
 generated — is what the hosted System One APIs sell by the call. The same call runs on the
-device with a catalog model: `CoreAI.decide` in Swift, or `systemone serve` for everything
-else. It answers `POST /v1/systemone` in the hosted request and answer forms, so a client
+device with a catalog model: `CoreAI.decide` in Swift (`CoreAI.systemOne` for the hosted
+request and response forms), or `systemone serve` for everything else. It answers `POST /v1/systemone` in the hosted request and answer forms, so a client
 written for the hosted endpoint is switched by its base URL and nothing else changes:
 
 ```bash
