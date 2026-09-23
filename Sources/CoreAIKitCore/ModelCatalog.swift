@@ -96,11 +96,16 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// `Shared state:` + JSON task user turn read at the option letters). nil = the kind's
     /// default (`decider` for a decision entry).
     public let format: String?
+    /// The weights' license when it restricts what an app may do with them — the SPDX
+    /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
+    /// (Apache-2.0, MIT, the Gemma terms); the exact terms of every model are on its card in
+    /// the model zoo. Shown by `systemone models` and in `/v1/models` so a client sees it.
+    public let license: String?
 
     public init(
         id: String, name: String, repo: String, revision: String? = nil, kind: Kind,
         variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil,
-        format: String? = nil
+        format: String? = nil, license: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -111,6 +116,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.thinking = thinking
         self.engine = engine
         self.format = format
+        self.license = license
     }
 
     static var platformKey: String {
@@ -206,7 +212,8 @@ public struct ModelCatalog: Sendable, Codable {
                 guard e.revision == nil, let rev = pins[e.id] else { return e }
                 return CatalogEntry(
                     id: e.id, name: e.name, repo: e.repo, revision: rev, kind: e.kind,
-                    variants: e.variants, thinking: e.thinking, engine: e.engine, format: e.format)
+                    variants: e.variants, thinking: e.thinking, engine: e.engine, format: e.format,
+                    license: e.license)
             })
     }
 

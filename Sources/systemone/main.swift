@@ -148,7 +148,8 @@ let id = modelID
         let size = entry.variant?.sizeMB.map { String(format: "%.1f GB", Double($0) / 1000) } ?? "-"
         let cached = entry.modelID.map(store.isCached) ?? false
         let marker = entry.id == CoreAI.defaultDecisionModel ? " *" : ""
-        print("\(entry.id)\(marker)\t\(entry.name)\t\(entry.kind.rawValue)\t\(size)\t\(cached ? "cached" : "not downloaded")")
+        let name = entry.license.map { "\(entry.name) (\($0))" } ?? entry.name
+        print("\(entry.id)\(marker)\t\(name)\t\(entry.kind.rawValue)\t\(size)\t\(cached ? "cached" : "not downloaded")")
     }
 }
 
@@ -203,7 +204,8 @@ func describe(_ answer: Decision.Answer) -> String {
     // GET /v1/models in the hosted list form: the TypeSafe SDK's models.list() reads this one.
     let models = SystemOne.modelsValue(
         id: id,
-        description: "\(entry.name), CoreAIKit catalog kind \(entry.kind.rawValue), bundle \(await decider.modelName), on this machine",
+        description: "\(entry.name), CoreAIKit catalog kind \(entry.kind.rawValue), bundle \(await decider.modelName), on this machine"
+            + (entry.license.map { ", license \($0)" } ?? ""),
         revision: entry.revision)
     let loaded = secondsSinceLaunch()
     stderrPrint("systemone \(systemoneVersion): loaded \(id) (\(await decider.modelName)) \(fmt(loaded, 1)) s after launch; one request at a time, questions share the state's prefill")
