@@ -258,6 +258,22 @@ section.choice          // "Business"
 section.probabilities   // one probability per option, in that order
 ```
 
+**A scoring head, non-commercial.** `system-one-scorer-4b` (English, kind `decision`, CC BY-NC 4.0 —
+`CatalogEntry.license` carries it; do not ship it in a commercial app) has no letters: each option
+is its own row and a scalar head scores it (`Decision.Format.scalar`, declared by the bundle's
+metadata together with its temperature 1.75 and its 384-token rows). Up to 64 options; a yes/no is
+the rows `yes` / `no`, a score one row per level; a choice costs one forward pass per option.
+Token-identical to the author's 280 fixture rows (int8 max |Δp| 0.011); about 2 s per three-option
+decision on the Mac, 5.1 GB, Mac only.
+
+```swift
+let scorer = try await TypedDecisions(catalog: "system-one-scorer-4b")   // Format.scalar, T = 1.75 from the bundle
+let team = try await scorer.decide(ticket,
+    .choice("Which team should handle this?", ["billing", "shipping", "technical"]))
+team.choice          // "billing"
+team.probabilities   // one per option: the rows' scores, softmaxed at the author's temperature
+```
+
 ## Chat, tools, and guided JSON
 
 Streaming chat with history, live stats, and a stop button — `ChatSession`:

@@ -112,6 +112,10 @@ about 2 s per decision on the Mac.
 read at space-prefixed letters after a plain-text prompt, is token-identical to its author's rows and
 argmax-identical to its fp32 reference on all 58 fixture rows (int8 max |Δp| 0.0079) and scores 0.798
 on the same 144 rows, at about 1 s per decision on the Mac.
+`system-one-scorer-4b`, a Qwen3.5-4B scoring head that reads one row per option at its author's
+temperature (CC BY-NC 4.0), is token-identical to its author's 280 fixture rows and argmax-identical
+on all 48 questions (int8 max |Δp| 0.011) and scores 0.844 on the same 144 rows, at about 2 s per
+three-option decision on the Mac.
 
 What the probabilities are worth, on the same 144 rows (`conformance/calibration.py`, top-label
 ECE over 10 equal-width bins, multi-class Brier): `minicpm5-2b` as reported is over-confident,

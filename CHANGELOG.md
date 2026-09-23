@@ -94,6 +94,25 @@ and Xcode 27 (27A266a); the `coreai-models` runtime pin stays 0.2.4-zoo.
   bundles (int8 max |Δp| 0.0079, fp16 0.0058; `decide-cli parity`); 0.798 mean family balanced
   accuracy on SemIf's 144 English rows through the kit. Mac and iPhone (2.9 GB int8; no iPhone
   number yet).
+- **`system-one-scorer-4b`** — pngwn's system-one-qwen3.5-4b-scorer (a Qwen3.5-4B-Base LoRA with
+  a scalar scoring head, English, **CC BY-NC 4.0**) as a catalog `decision` model with its readout:
+  `Decision.Format.scalar`, one `State:` / `Question:` / `Option:` row per option with the state cut
+  from its end to fit 384 tokens, the rows' scalars softmaxed at the author's temperature 1.75 —
+  both declared by the bundle's metadata (`decision.head == "scalar"`), which is how the format is
+  resolved. Up to 64 options; a yes/no is the rows `yes` / `no`, a score one row per level. On the
+  author's 48-question, 280-row fixture the kit's rows are token- and slot-identical on 280/280 and
+  argmax-identical to the fp32 readout on 48/48 for both bundles (int8 max |Δp| 0.0110, fp16 0.0037;
+  `decide-cli parity`, which reads `coreai-scalar-fixtures/1`); 0.844 mean family balanced accuracy
+  on SemIf's 144 English rows through the kit. Mac only (5.1 GB).
+- **`Decision.Format.letterList`** — the lettered option list under the chat template that OpenJev's
+  helper sends (`State:`, `Question:`, `Options:` as `[A] key: description` lines, "Answer with the
+  letter of the best option only."), read at the bare letters A–Z then a–z (up to 52) at the
+  temperature the bundle declares, a yes/no calibrated the helper's way (`decision.readout ==
+  "letters"` with `temperature` and `noul` in metadata.json). The `openjev-27b` catalog entry follows
+  in its own change; `decide-cli parity` already reads the helper's fixture rows.
+- **`CatalogEntry.license`** — the SPDX id of a model's weights license when it restricts use
+  (`CC-BY-NC-4.0`); nil for the permissive ones. `systemone models` prints it beside the name and
+  `/v1/models` adds it to the description; the zoo card has every model's exact terms.
 - `decide-cli --bundle <dir>` — any command on an unpublished bundle directory; `parity` reads
   the slot fixture form (`coreai-slot-fixtures/1`) and renders JSON states itself.
 
