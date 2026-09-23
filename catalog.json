@@ -17,7 +17,33 @@
           "sizeMB": 456
         }
       },
-      "thinking": true
+      "thinking": true,
+      "calibration": {
+        "temperature": 11.882,
+        "fit": {
+          "fixture": "SemIf perturbations108",
+          "sha256": "1dd7ccf80518d0e34886478ca23982aa726e9daccd343b9e95cedaf6b569bec4",
+          "rows": 108,
+          "questionTypes": [
+            "choice"
+          ],
+          "format": "chat",
+          "date": "2026-09-23",
+          "platform": "macos"
+        },
+        "report": {
+          "fixture": "SemIf authored144",
+          "sha256": "8162d1c73f925af64453f1ec05ef36d583b3815bf698e60f0d454bd11537e079",
+          "rows": 144,
+          "accuracy": 0.34,
+          "eceBefore": 0.65,
+          "eceAfter": 0.185,
+          "brierBefore": 1.299,
+          "brierAfter": 0.722,
+          "nllBefore": 6.289,
+          "nllAfter": 1.176
+        }
+      }
     },
     {
       "id": "qwen3-4b",
@@ -207,7 +233,33 @@
         }
       },
       "thinking": true,
-      "engine": "pipelined"
+      "engine": "pipelined",
+      "calibration": {
+        "temperature": 9.974,
+        "fit": {
+          "fixture": "SemIf perturbations108",
+          "sha256": "1dd7ccf80518d0e34886478ca23982aa726e9daccd343b9e95cedaf6b569bec4",
+          "rows": 108,
+          "questionTypes": [
+            "choice"
+          ],
+          "format": "chat",
+          "date": "2026-09-23",
+          "platform": "macos"
+        },
+        "report": {
+          "fixture": "SemIf authored144",
+          "sha256": "8162d1c73f925af64453f1ec05ef36d583b3815bf698e60f0d454bd11537e079",
+          "rows": 144,
+          "accuracy": 0.535,
+          "eceBefore": 0.184,
+          "eceAfter": 0.157,
+          "brierBefore": 0.636,
+          "brierAfter": 0.623,
+          "nllBefore": 1.123,
+          "nllAfter": 1.035
+        }
+      }
     },
     {
       "id": "minicpm5-2b",
@@ -226,7 +278,33 @@
         }
       },
       "thinking": true,
-      "engine": "pipelined"
+      "engine": "pipelined",
+      "calibration": {
+        "temperature": 2.93,
+        "fit": {
+          "fixture": "SemIf perturbations108",
+          "sha256": "1dd7ccf80518d0e34886478ca23982aa726e9daccd343b9e95cedaf6b569bec4",
+          "rows": 108,
+          "questionTypes": [
+            "choice"
+          ],
+          "format": "chat",
+          "date": "2026-09-23",
+          "platform": "macos"
+        },
+        "report": {
+          "fixture": "SemIf authored144",
+          "sha256": "8162d1c73f925af64453f1ec05ef36d583b3815bf698e60f0d454bd11537e079",
+          "rows": 144,
+          "accuracy": 0.701,
+          "eceBefore": 0.167,
+          "eceAfter": 0.071,
+          "brierBefore": 0.455,
+          "brierAfter": 0.411,
+          "nllBefore": 0.886,
+          "nllAfter": 0.706
+        }
+      }
     },
     {
       "id": "decider-0.8b",

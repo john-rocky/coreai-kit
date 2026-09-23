@@ -260,6 +260,8 @@ public struct ModelCatalog: Sendable, Codable {
     static let builtinLiteral = ModelCatalog(
         version: 1,
         models: [
+            // Its calibration is the top of the fit grid: its three-option answers are at chance
+            // on the fixture, and the fit reads them nearly flat.
             CatalogEntry(
                 id: "qwen3-0.6b", name: "Qwen3 0.6B",
                 repo: "mlboydaisuke/qwen3-0.6b-CoreAI-official", kind: .chat,
@@ -267,7 +269,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "macos", sizeMB: 352),
                     "ios": .init(path: "ios", sizeMB: 456),
                 ],
-                thinking: true),
+                thinking: true, calibration: .init(temperature: 11.882)),
             CatalogEntry(
                 id: "qwen3-4b", name: "Qwen3 4B",
                 repo: "mlboydaisuke/qwen3-4b-CoreAI-official", kind: .chat,
@@ -364,6 +366,8 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "ios-h18p/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
                 ],
                 thinking: true, engine: "pipelined"),
+            // ── MiniCPM5 1B / 2B carry the temperature typed decisions read them at (`decide-cli
+            //    calibrate`; catalog.json has what it was fitted and reported on). ──
             CatalogEntry(
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
@@ -371,7 +375,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "int8", sizeMB: 1159),
                     "ios": .init(path: "int8", sizeMB: 1159),
                 ],
-                thinking: true, engine: "pipelined"),
+                thinking: true, engine: "pipelined", calibration: .init(temperature: 9.974)),
             CatalogEntry(
                 id: "minicpm5-2b", name: "MiniCPM5 2B",
                 repo: "mlboydaisuke/MiniCPM5-2B-CoreAI", kind: .chat,
@@ -379,7 +383,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "int8", sizeMB: 2685),
                     "ios": .init(path: "int8", sizeMB: 2685),
                 ],
-                thinking: true, engine: "pipelined"),
+                thinking: true, engine: "pipelined", calibration: .init(temperature: 2.93)),
             // ── decision: a model trained to answer typed questions at an answer slot
             //    (Qwen3.5-0.8B-Base fine-tune, S=1 decode graph, int8 + head). Not a chat
             //    model: `TypedDecisions` renders its own prompt form and reads the letter

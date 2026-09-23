@@ -154,7 +154,11 @@ reply.timing.reusedTokens                                      // the state's to
 The default model is `minicpm5-2b` — the smallest catalog chat model whose zero-shot
 decisions track its own full-precision readout on the published fixtures (141/144 argmax,
 mean |Δp| 0.02; `Examples/Decide` has the tables). `options: .model("minicpm5-1b")` is twice
-as fast at lower accuracy. Decisions need the logits at the answer slot, so the model loads
+as fast at lower accuracy. The probabilities are read at the temperature the model's catalog
+entry records (`CatalogEntry.calibration`, 2.93 for `minicpm5-2b`, fitted on labelled rows by
+`decide-cli calibrate`): the same answers, less over-confident.
+`TypedDecisions.Configuration.temperature` overrides it; `nil` takes the catalog's, and a model
+without a record reads at its own. Decisions need the logits at the answer slot, so the model loads
 on the sequential engine (or the static-shape engine for a Neural Engine bundle) rather
 than the pipelined one; recurrent hybrids (Qwen3.5, LFM2.5, Granite 4) cannot rewind, so on
 them every decision re-prefills its whole prompt — correct, and `timing.reusedTokens` says 0.
