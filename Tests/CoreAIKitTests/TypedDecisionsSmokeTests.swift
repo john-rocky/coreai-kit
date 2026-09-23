@@ -83,4 +83,71 @@ final class TypedDecisionsSmokeTests: XCTestCase {
             XCTFail("expected DecisionError.emptyPrompt")
         } catch DecisionError.emptyPrompt {}
     }
+
+    /// Concurrent calls on one instance take turns on its engine: each reads what it would
+    /// have read alone. Two alternating prompts make every call rewind the other's cache.
+    func testConcurrentCallsOnOneInstanceMatchSequentialCalls() async throws {
+        guard let path = ProcessInfo.processInfo.environment["KIT_SMOKE_BUNDLE"] else {
+            throw XCTSkip("Set KIT_SMOKE_BUNDLE to a local bundle directory to run.")
+        }
+        let decider = try await TypedDecisions(bundleAt: URL(fileURLWithPath: path))
+        let states = ["Water is wet.", "Fire is hot."]
+        let question = Decision.Question.choice(
+            "What is the claim about?", ["water", "fire", "air"])
+        let prompts = try states.map { try decider.promptTokens($0, question) }
+        // Cached and uncached runs of the fp16 engine differ by up to ~4e-3.
+        let accuracy = 5e-3
+        let calls = 6
+
+        func readout(_ logits: Decision.Logits, _ slots: [Int32]) -> [Double] {
+            DecisionPrompt.probabilities(
+                logits: slots.map { Double(logits.values[Int($0)]) }, temperature: 1)
+        }
+
+        var logitsReference: [[Double]] = []
+        var decideReference: [[Double]] = []
+        for (state, prompt) in zip(states, prompts) {
+            try await decider.reset()
+            let logits = try await decider.logits(for: prompt.tokens)
+            logitsReference.append(readout(logits, prompt.slots))
+            try await decider.reset()
+            decideReference.append(try await decider.decide(state, question).probabilities)
+        }
+        // The two prompts must read apart, or a call answered from the other's cache would pass.
+        XCTAssertGreaterThan(
+            zip(decideReference[0], decideReference[1]).map { abs($0 - $1) }.max()!, 10 * accuracy)
+
+        try await decider.reset()
+        let scored = try await withThrowingTaskGroup(of: (Int, Decision.Logits).self) { group in
+            for index in 0..<calls {
+                group.addTask { (index, try await decider.logits(for: prompts[index % 2].tokens)) }
+            }
+            var scored: [Int: Decision.Logits] = [:]
+            for try await (index, logits) in group { scored[index] = logits }
+            return scored
+        }
+        for index in 0..<calls {
+            let probabilities = readout(scored[index]!, prompts[index % 2].slots)
+            for (p, reference) in zip(probabilities, logitsReference[index % 2]) {
+                XCTAssertEqual(p, reference, accuracy: accuracy, "logits(for:) call \(index)")
+            }
+        }
+
+        try await decider.reset()
+        let answers = try await withThrowingTaskGroup(of: (Int, Decision.Answer).self) { group in
+            for index in 0..<calls {
+                group.addTask { (index, try await decider.decide(states[index % 2], question)) }
+            }
+            var answers: [Int: Decision.Answer] = [:]
+            for try await (index, answer) in group { answers[index] = answer }
+            return answers
+        }
+        for index in 0..<calls {
+            let probabilities = answers[index]!.probabilities
+            XCTAssertEqual(probabilities.count, decideReference[index % 2].count)
+            for (p, reference) in zip(probabilities, decideReference[index % 2]) {
+                XCTAssertEqual(p, reference, accuracy: accuracy, "decide call \(index)")
+            }
+        }
+    }
 }
