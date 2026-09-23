@@ -121,11 +121,41 @@ struct SystemOneWireTests {
             == "question 'q': unknown type 'pick' (choice | score | noul)")
         #expect(message("{\"state\": \"s\", \"questions\": {\"q\": {\"type\": \"choice\", \"instructions\": \"i\", \"criteria\": [\"only\"]}}}")
             == "question 'q': a choice needs at least 2 criteria, got 1")
-        let many = (1...17).map { "\"o\($0)\"" }.joined(separator: ", ")
+        let many = (1...256).map { "\"o\($0)\"" }.joined(separator: ", ")
         #expect(message("{\"state\": \"s\", \"questions\": {\"q\": {\"type\": \"choice\", \"instructions\": \"i\", \"criteria\": [\(many)]}}}")
-            == "question 'q': this engine lists at most 16 options, got 17")
+            == "question 'q': this engine lists at most 255 options, got 256")
         #expect(message("{\"state\": \"s\", \"questions\": {\"q\": {\"type\": \"score\", \"instructions\": \"i\", \"criteria\": [\"one\"]}}}")
             == "question 'q': a score needs 2–10 levels, got 1")
+    }
+
+    /// The hosted API's 255 options by default; a server that knows its model passes the
+    /// model's own count, and a list wider than it is refused with that count.
+    @Test func theOptionLimitIsTheHostedOneOrTheModelsNarrowerOne() throws {
+        func body(_ count: Int) -> Data {
+            let criteria = (1...count).map { "\"o\($0)\"" }.joined(separator: ", ")
+            return Data("{\"state\": \"s\", \"questions\": {\"q\": {\"type\": \"choice\", \"instructions\": \"i\", \"criteria\": [\(criteria)]}}}".utf8)
+        }
+        func message(_ count: Int, maxOptions: Int = SystemOne.maxOptions) -> String? {
+            do {
+                _ = try SystemOne.request(from: body(count), maxOptions: maxOptions)
+                return nil
+            } catch let error as SystemOne.WireError {
+                return error.message
+            } catch {
+                return "other: \(error)"
+            }
+        }
+        #expect(SystemOne.maxOptions == 255)
+        let wide = try SystemOne.request(from: body(255))
+        #expect(wide.questions[0].question.optionIDs.count == 255)
+        #expect(message(255) == nil)
+        #expect(message(256) == "question 'q': this engine lists at most 255 options, got 256")
+        #expect(message(16, maxOptions: 16) == nil)
+        #expect(message(17, maxOptions: 16) == "question 'q': this engine lists at most 16 options, got 17")
+        // A count above the hosted one is held to it: the wire form never takes more than 255.
+        #expect(message(256, maxOptions: 511) == "question 'q': this engine lists at most 255 options, got 256")
+        let parsed = try JSONValue.parse(body(17))
+        #expect(throws: SystemOne.WireError.self) { try SystemOne.request(from: parsed, maxOptions: 16) }
     }
 
     @Test func answersAreWrittenInTheReferenceShape() {

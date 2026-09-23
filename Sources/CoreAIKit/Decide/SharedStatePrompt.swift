@@ -27,7 +27,10 @@ import Foundation
 import Tokenizers
 
 enum SharedStatePrompt {
-    static let letters = DecisionPrompt.letters
+    /// The author's letters: a choice lists 2–16 criteria, A–P. Its own set, not the chat
+    /// form's label table, which runs to 255.
+    static let letters: [String] = Array("ABCDEFGHIJKLMNOP").map(String.init)
+    static let maxOptions = letters.count
     static let yesDescription = "The stated proposition is true."
     static let noDescription = "The stated proposition is false."
 
@@ -88,8 +91,11 @@ enum SharedStatePrompt {
     /// The prompt tokens for one question on one state, and the letter token per criterion.
     static func render(state: String, question: Decision.Question, tokenizer: any Tokenizer) throws -> DecisionPrompt.Rendered {
         let row = row(for: question)
+        guard row.descriptions.count <= maxOptions else {
+            throw DecisionError.tooManyOptions(count: row.descriptions.count, max: maxOptions)
+        }
         let tokens = try DecisionPrompt.tokens(messages: messages(state: state, row: row), tokenizer: tokenizer)
-        let slots = try DecisionPrompt.slotTokens(count: row.descriptions.count, tokenizer: tokenizer)
+        let slots = try DecisionPrompt.slotTokens(names: Array(letters.prefix(row.descriptions.count)), tokenizer: tokenizer)
         return DecisionPrompt.Rendered(tokens: tokens, slots: slots)
     }
 

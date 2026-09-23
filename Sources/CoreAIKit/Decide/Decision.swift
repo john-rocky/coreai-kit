@@ -5,7 +5,7 @@
 // and the answer is the probability the model assigns to each listed option at the answer
 // slot. Three shapes cover the ways an app branches on a piece of text:
 //
-//   choice  — which of these options (2–16)            → the option, plus every option's probability
+//   choice  — which of these options (2–maxOptions)    → the option, plus every option's probability
 //   score   — where on this ordered scale (2–10 levels) → the expected level, plus the distribution
 //   noul    — yes or no                                  → P(yes)
 //

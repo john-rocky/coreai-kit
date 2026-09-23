@@ -7,9 +7,10 @@
 // with `confidence` and `usage`. `decide-cli serve` puts this behind an HTTP port; the same
 // codec is here for an app that wants to accept or emit the form itself.
 //
-// The forms are those of TypeSafe's `/v1/systemone` (2026-09); one difference is declared:
-// a choice lists at most 16 options here (the answer slots are single letters), where the
-// hosted API takes 255.
+// The forms are those of TypeSafe's `/v1/systemone` (2026-09), with its limits: a choice
+// lists at most 255 options, a score 10 levels. A server that knows its model passes the
+// model's own option count (`TypedDecisions.maxOptions`) to `request(from:maxOptions:)`, so a
+// list the model cannot read is refused with that count; 255 stays the ceiling either way.
 
 import Foundation
 
@@ -32,24 +33,28 @@ public enum SystemOne {
     }
 
     public static let path = "/v1/systemone"
-    public static let maxOptions = DecisionPrompt.maxOptions
+    /// The widest choice the hosted API takes.
+    public static let maxOptions = 255
     public static let maxScoreLevels = DecisionPrompt.maxScoreLevels
 
     // MARK: - Request
 
-    public static func request(from data: Data) throws -> Request {
+    /// A request from its bytes. `maxOptions` is the widest choice to accept: the hosted
+    /// API's 255 by default, the loaded model's own count when the caller knows it (a larger
+    /// value is held to 255).
+    public static func request(from data: Data, maxOptions: Int = maxOptions) throws -> Request {
         let root: JSONValue
         do {
             root = try JSONValue.parse(data)
         } catch {
             throw WireError("invalid JSON: \(error.localizedDescription)")
         }
-        return try request(from: root)
+        return try request(from: root, maxOptions: maxOptions)
     }
 
     /// The same request from an already parsed value (an MCP tool's arguments carry the
     /// object rather than its bytes).
-    public static func request(from root: JSONValue) throws -> Request {
+    public static func request(from root: JSONValue, maxOptions: Int = maxOptions) throws -> Request {
         guard let members = root.members else { throw WireError("the request must be a JSON object") }
         guard let stateValue = root["state"] else { throw WireError("'state' is required") }
         let state: String
@@ -71,14 +76,16 @@ public enum SystemOne {
         guard !questionMembers.isEmpty else { throw WireError("'questions' is empty") }
         var questions: [(id: String, question: Decision.Question)] = []
         for member in questionMembers {
-            questions.append((member.key, try question(from: member.value, id: member.key)))
+            questions.append((member.key, try question(from: member.value, id: member.key, maxOptions: maxOptions)))
         }
         _ = members
         return Request(state: state, model: model, questions: questions, structuredState: structured)
     }
 
     /// One question from its wire object: `{"type": "choice" | "score" | "noul", "instructions": …, "criteria": …}`.
-    public static func question(from value: JSONValue, id: String) throws -> Decision.Question {
+    /// A choice may list up to `maxOptions` options (held to the hosted API's 255).
+    public static func question(from value: JSONValue, id: String, maxOptions: Int = maxOptions) throws -> Decision.Question {
+        let maxOptions = min(maxOptions, Self.maxOptions)
         guard value.members != nil else { throw WireError("question '\(id)' is not an object") }
         guard let type = value["type"]?.stringValue else { throw WireError("question '\(id)' has no string 'type'") }
         guard let instructionsValue = value["instructions"] else { throw WireError("question '\(id)' has no 'instructions'") }

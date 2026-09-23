@@ -73,10 +73,11 @@ enum ScalarPrompt {
         }
     }
 
-    /// Options a choice may list. The head scores any number, one row each, so this bounds the
-    /// cost of one decision rather than the model (the scorer's author trained with option
-    /// sets capped at 16 and evaluated up to 77).
-    static let maxOptions = 64
+    /// Options a choice may list: the hosted API's 255. The head scores any number, one row
+    /// each, so this is not the model's limit, and the cost is the caller's — a decision is one
+    /// row per option (the scorer's author trained with option sets capped at 16 and evaluated
+    /// up to 77).
+    static let maxOptions = LabelTable.limit
 
     /// One question as its rows read it: the question text and one option string per row.
     struct Row: Sendable, Equatable {

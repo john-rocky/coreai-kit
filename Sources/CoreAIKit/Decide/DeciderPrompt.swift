@@ -2,10 +2,13 @@
 //
 // No chat template and no special tokens: the state under a `Context:` head, then one
 // question block — `Question:`, `Options:` as lettered lines, `Answer: (` — whose last token
-// is the answer slot. The option letters are single tokens, so the probability of each option
-// is the softmax over their logits at that position. The context is encoded on its own and
-// the question block on its own, so every question on a state shares the context's tokens
-// exactly (the shared prefix `TypedDecisions.prefill` runs once).
+// is the answer slot. The option labels are single tokens, so the probability of each option
+// is the softmax over their logits at that position. They are the author's label table
+// (`LabelTable`, `.decider` rule): A–Z, then the two-letter names AA, AB, … the tokenizer
+// writes as one token, 255 in all, as the author's builder labels a wide question. The
+// context is encoded on its own and the question block on its own, so every question on a
+// state shares the context's tokens exactly (the shared prefix `TypedDecisions.prefill` runs
+// once).
 //
 // A score question is not one row: each level is judged alone, as a yes/no row that names the
 // level without its number or its neighbours, and the levels' P(yes) are normalised into the
@@ -20,10 +23,9 @@ import Foundation
 import Tokenizers
 
 enum DeciderPrompt {
-    /// Answer labels in option order. The first ten are written as text inside the row
-    /// (`(A) …`); a wider row puts each label's token id in by itself, the form the model's
-    /// own builder switches to past ten options.
-    static let letters: [String] = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ").map(String.init)
+    /// A row of at most this many options writes its labels as text (`(A) …`); a wider row
+    /// puts each label's token id in by itself, the form the model's own builder switches to
+    /// past ten options.
     static let narrowLimit = 10
     /// The calibration temperature on the model's card: what its API applies to the slot logits.
     static let defaultTemperature = 1.03
@@ -65,45 +67,43 @@ enum DeciderPrompt {
         tokenizer.encode(text: contextHead + state, addSpecialTokens: false).map(Int32.init)
     }
 
-    /// The question block of a row with at most `narrowLimit` options, as one string.
-    static func narrowText(_ row: Row) -> String {
+    /// The question block of a row with at most `narrowLimit` options, as one string;
+    /// `labels` holds the label of each option, in order.
+    static func narrowText(_ row: Row, labels: [String]) -> String {
         var text = "\n\nQuestion: \(row.question)\nOptions:"
         for (index, option) in row.options.enumerated() {
-            text += "\n(\(letters[index])) \(option)"
+            text += "\n(\(labels[index])) \(option)"
         }
         return text + "\nAnswer: ("
     }
 
     /// The prompt tokens of one row on one state, and the answer-slot token per option.
-    static func render(state: String, row: Row, tokenizer: any Tokenizer) throws -> DecisionPrompt.Rendered {
-        let labels = try labelTokens(count: row.options.count, tokenizer: tokenizer)
-        func encode(_ text: String) -> [Int32] {
-            tokenizer.encode(text: text, addSpecialTokens: false).map(Int32.init)
+    static func render(
+        state: String, row: Row, labels: LabelTable, tokenizer: any Tokenizer
+    ) throws -> DecisionPrompt.Rendered {
+        try render(state: state, row: row, labels: labels) {
+            tokenizer.encode(text: $0, addSpecialTokens: false).map(Int32.init)
         }
-        var tokens = contextTokens(state: state, tokenizer: tokenizer)
+    }
+
+    /// The same, with the tokenizer's encoder (no special tokens) as a closure, so a row can
+    /// be checked without a tokenizer.
+    static func render(
+        state: String, row: Row, labels: LabelTable, encode: (String) -> [Int32]
+    ) throws -> DecisionPrompt.Rendered {
+        let slots = try labels.slots(count: row.options.count)
+        var tokens = encode(contextHead + state)
         if row.options.count <= narrowLimit {
-            tokens += encode(narrowText(row))
+            tokens += encode(narrowText(row, labels: labels.names))
         } else {
             tokens += encode("\n\nQuestion: \(row.question)\nOptions:")
             let open = encode("\n(")
             for (index, option) in row.options.enumerated() {
-                tokens += open + [labels[index]] + encode(") \(option)")
+                tokens += open + [slots[index]] + encode(") \(option)")
             }
             tokens += encode("\nAnswer: (")
         }
-        return DecisionPrompt.Rendered(tokens: tokens, slots: labels)
-    }
-
-    /// The answer-slot token for each of the first `count` letters; each must be one token.
-    static func labelTokens(count: Int, tokenizer: any Tokenizer) throws -> [Int32] {
-        guard count <= letters.count else {
-            throw DecisionError.tooManyOptions(count: count, max: letters.count)
-        }
-        return try letters.prefix(count).map { letter in
-            let ids = tokenizer.encode(text: letter, addSpecialTokens: false)
-            guard ids.count == 1 else { throw DecisionError.answerSlotNotSingleToken(letter: letter) }
-            return Int32(ids[0])
-        }
+        return DecisionPrompt.Rendered(tokens: tokens, slots: slots)
     }
 
     /// Per-level P(fits) → the distribution over levels, as the model's API combines them.
