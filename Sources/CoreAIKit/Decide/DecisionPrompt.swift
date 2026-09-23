@@ -5,12 +5,18 @@
 // one whose published numbers the kit can be checked against: a fixed system line, then one
 // user turn holding a JSON object — the state as `evidence`, the instructions as
 // `criterion`, and the options as lettered descriptions — then the assistant turn opened
-// with its thinking block already closed. The answer slot is the next token. Each option's
-// letter is a single token of the model's tokenizer — A–Z, then AA, AB, … as the tokenizer
-// keeps them (`LabelTable`, up to 255) — so the probability of each option is the softmax
-// over those label logits at that one position. Where A–P are single tokens, as on every
-// tokenizer the sixteen-letter readout ran on, the first sixteen labels are A–P: a question
-// of up to sixteen options renders as it always did.
+// with its thinking block already closed. The answer slot is the next token; each option's
+// letter is a single token (A–Z, `LabelTable.letters`), so the probability of each option is
+// the softmax over those letter logits at that one position. Up to sixteen options this is
+// token for token the rendering the published numbers were produced with.
+//
+// Past 26 options, where a letter label would take two letters and a chat model answers with
+// one of them, a question is rendered a second way: the system line asks for "its number",
+// each option carries `"number": "1"`, `"2"`, … instead of a letter, and the slots are the
+// number tokens (`LabelTable.numbers`: one token each up to 255 on MiniCPM5). A tokenizer that
+// writes no such run past 26 (the Qwen tokenizers stop at 9) has no wide rendering, and its
+// model lists 26 options. The wide system line differs from the shared one, so a wide question
+// keeps only the start of the prefilled state prefix and prefills the state again.
 //
 // Static and tokenizer-in so the rendering can be checked against a reference token
 // sequence without loading weights.
@@ -29,6 +35,10 @@ enum DecisionPrompt {
     static let system =
         "Apply the supplied criterion to the supplied evidence. Choose exactly one listed option. "
         + "Respond with only its uppercase letter, with no explanation or reasoning."
+    /// The system line of a question read at numbers, past the letters.
+    static let wideSystem =
+        "Apply the supplied criterion to the supplied evidence. Choose exactly one listed option. "
+        + "Respond with only its number, with no explanation or reasoning."
 
     struct Rendered: Sendable, Equatable {
         /// The full prompt, ending at the answer slot.
@@ -53,34 +63,58 @@ enum DecisionPrompt {
 
     /// The user turn: the request as one JSON object, with Python's default `json.dumps`
     /// spacing — the reference rendering the published numbers were produced with. `labels`
-    /// holds the letter of each option, in order: the label table's names, so the letter the
-    /// model reads for an option is the one whose token is read at the answer slot.
-    static func userPayload(state: String, criterion: String, options: [String], labels: [String]) -> String {
+    /// holds each option's label, in order, from the table whose tokens are read at the answer
+    /// slot; a wide question names them `number`, the others `letter`.
+    static func userPayload(
+        state: String, criterion: String, options: [String], labels: [String], wide: Bool = false
+    ) -> String {
+        let key = jsonString(wide ? "number" : "letter")
         let rendered = options.enumerated().map { index, description in
-            "{\"letter\": \(jsonString(labels[index])), \"description\": \(jsonString(description))}"
+            "{\(key): \(jsonString(labels[index])), \"description\": \(jsonString(description))}"
         }
         return "{\"evidence\": \(jsonString(state)), \"criterion\": \(jsonString(criterion)), "
             + "\"options\": [\(rendered.joined(separator: ", "))]}"
     }
 
     static func messages(
-        state: String, criterion: String, options: [String], labels: [String]
+        state: String, criterion: String, options: [String], labels: [String], wide: Bool = false
     ) -> [[String: any Sendable]] {
         [
-            ["role": "system", "content": system],
-            ["role": "user", "content": userPayload(state: state, criterion: criterion, options: options, labels: labels)],
+            ["role": "system", "content": wide ? wideSystem : system],
+            ["role": "user", "content": userPayload(state: state, criterion: criterion, options: options, labels: labels, wide: wide)],
         ]
     }
 
-    /// The prompt tokens for one question on one state, read at the labels of `labels`.
+    /// The labels a question of `count` options is read at: the letters while they reach, the
+    /// numbers past them (a wide question), nil when neither reaches.
+    static func labels(count: Int, letters: LabelTable, numbers: LabelTable) -> (table: LabelTable, wide: Bool)? {
+        if count <= letters.count { return (letters, false) }
+        if count <= numbers.count { return (numbers, true) }
+        return nil
+    }
+
+    /// Options a chat model lists: the numbers' run where it reaches past the letters (255 on
+    /// MiniCPM5), the letters' 26 otherwise.
+    static func maxOptions(letters: LabelTable, numbers: LabelTable) -> Int {
+        max(letters.count, numbers.count)
+    }
+
+    /// The prompt tokens for one question on one state: at the letters, or at the numbers
+    /// under the wide system line past them.
     static func render(
-        state: String, question: Decision.Question, labels: LabelTable, tokenizer: any Tokenizer
+        state: String, question: Decision.Question, letters: LabelTable, numbers: LabelTable, tokenizer: any Tokenizer
     ) throws -> Rendered {
-        try validate(question, maxOptions: labels.count)
+        let limit = maxOptions(letters: letters, numbers: numbers)
+        try validate(question, maxOptions: limit)
         let options = question.optionDescriptions
-        let slots = try labels.slots(count: options.count)
+        guard let labels = labels(count: options.count, letters: letters, numbers: numbers) else {
+            throw DecisionError.tooManyOptions(count: options.count, max: limit)
+        }
+        let slots = try labels.table.slots(count: options.count)
         let tokens = try tokens(
-            messages: messages(state: state, criterion: question.instructions, options: options, labels: labels.names),
+            messages: messages(
+                state: state, criterion: question.instructions, options: options, labels: labels.table.names,
+                wide: labels.wide),
             tokenizer: tokenizer)
         return Rendered(tokens: tokens, slots: slots)
     }
@@ -91,7 +125,7 @@ enum DecisionPrompt {
     static func statePrefix(state: String, tokenizer: any Tokenizer) throws -> [Int32] {
         // Two renderings that differ from the first character after the state; their
         // common prefix is exactly the tokens that do not depend on the question.
-        let labels = Array(LabelTable.candidates.prefix(2))
+        let labels = Array(LabelTable.letters.prefix(2))
         let a = try tokens(
             messages: messages(state: state, criterion: "A", options: ["a", "b"], labels: labels), tokenizer: tokenizer)
         let b = try tokens(

@@ -32,7 +32,7 @@ struct DecisionPromptTests {
             state: "The optician ordered replacement lenses.",
             criterion: "Assess the claim.",
             options: ["The evidence establishes the claim", "It doesn't"],
-            labels: StubVocabulary().table(.chat).names)
+            labels: StubVocabulary().table(.chat, LabelTable.letters).names)
         #expect(
             payload
                 == "{\"evidence\": \"The optician ordered replacement lenses.\", "
@@ -41,19 +41,42 @@ struct DecisionPromptTests {
                 + "{\"letter\": \"B\", \"description\": \"It doesn't\"}]}")
     }
 
-    /// Past Z the letters are the label table's two-letter names, and the one the model reads
-    /// for an option is the one whose token the answer slot is read at.
-    @Test func aWideChoiceIsLabelledFromTheTable() {
-        let options = (1...100).map { "option \($0)" }
-        let payload = DecisionPrompt.userPayload(
-            state: "s", criterion: "Which?", options: options, labels: StubVocabulary().table(.chat).names)
-        #expect(payload.contains(
-            "{\"letter\": \"Z\", \"description\": \"option 26\"}, {\"letter\": \"AA\", \"description\": \"option 27\"}"))
-        #expect(payload.hasSuffix("{\"letter\": \"CV\", \"description\": \"option 100\"}]}"))
-        // A tokenizer that skips a name moves every later option up one name.
-        let skipping = StubVocabulary(split: ["BQ"]).table(.chat)
-        let shifted = DecisionPrompt.userPayload(state: "s", criterion: "Which?", options: options, labels: skipping.names)
-        #expect(shifted.hasSuffix("{\"letter\": \"CW\", \"description\": \"option 100\"}]}"))
+    /// Up to 26 options a chat model is read at the letters under the published system line;
+    /// past 26, at the numbers "1"… under the number system line, with the key `number` — when
+    /// its tokenizer writes that run as single tokens. Where it does not, 26 is the limit.
+    @Test func aChoicePast26IsNumberedWhereTheTokenizerHasTheNumbers() throws {
+        let letters = StubVocabulary().table(.chat, LabelTable.letters)
+        let numbers = StubVocabulary(numbersAreTokens: true).table(.chat, LabelTable.numbers, run: true)
+        #expect(letters.count == 26 && numbers.count == 255 && numbers.names.last == "255")
+        #expect(DecisionPrompt.maxOptions(letters: letters, numbers: numbers) == 255)
+        for count in [2, 16, 26] {
+            let chosen = try #require(DecisionPrompt.labels(count: count, letters: letters, numbers: numbers))
+            #expect(chosen.table == letters && !chosen.wide)
+        }
+        for count in [27, 100, 255] {
+            let chosen = try #require(DecisionPrompt.labels(count: count, letters: letters, numbers: numbers))
+            #expect(chosen.table == numbers && chosen.wide)
+        }
+        #expect(DecisionPrompt.labels(count: 256, letters: letters, numbers: numbers) == nil)
+
+        let options = (1...27).map { "option \($0)" }
+        let wide = DecisionPrompt.messages(state: "s", criterion: "Which?", options: options, labels: numbers.names, wide: true)
+        #expect(wide[0]["content"] as? String == DecisionPrompt.wideSystem)
+        #expect(DecisionPrompt.wideSystem.hasSuffix("Respond with only its number, with no explanation or reasoning."))
+        let payload = try #require(wide[1]["content"] as? String)
+        #expect(payload.hasPrefix("{\"evidence\": \"s\", \"criterion\": \"Which?\", \"options\": [{\"number\": \"1\", \"description\": \"option 1\"}, "))
+        #expect(payload.hasSuffix("{\"number\": \"27\", \"description\": \"option 27\"}]}"))
+        // Twenty-six options or fewer: the published rendering, letters under the letter line.
+        let narrow = DecisionPrompt.messages(
+            state: "s", criterion: "Which?", options: Array(options.prefix(26)), labels: letters.names)
+        #expect(narrow[0]["content"] as? String == DecisionPrompt.system)
+        #expect((narrow[1]["content"] as? String)?.hasSuffix("{\"letter\": \"Z\", \"description\": \"option 26\"}]}") == true)
+
+        // A tokenizer that splits "10" into two tokens has no numbers past 9: 26 options.
+        let split = StubVocabulary().table(.chat, LabelTable.numbers, run: true)
+        #expect(split.names == (1...9).map(String.init))
+        #expect(DecisionPrompt.maxOptions(letters: letters, numbers: split) == 26)
+        #expect(DecisionPrompt.labels(count: 27, letters: letters, numbers: split) == nil)
     }
 
     @Test func questionShapesRenderTheirOptions() {
@@ -599,6 +622,15 @@ struct LabelTableTests {
         #expect(Set(table.ids).count == table.count)
     }
 
+    /// A run of numbers has no gaps: the first number that is not one token ends it.
+    @Test func aNumberRunEndsAtTheFirstMiss() {
+        let table = StubVocabulary(numbersAreTokens: true, split: ["100"]).table(.chat, LabelTable.numbers, run: true)
+        #expect(table.count == 99 && table.names.last == "99")
+        // The same miss is skipped, not an end, in a list of names that is not a run.
+        let skipped = StubVocabulary(numbersAreTokens: true, split: ["100"]).table(.chat, LabelTable.numbers)
+        #expect(skipped.count == 254 && !skipped.names.contains("100"))
+    }
+
     @Test func slotsAreThePrefixAndAWiderQuestionIsRefused() throws {
         let table = StubVocabulary().table(.chat)
         #expect(try table.slots(count: 3) == [100, 101, 102])
@@ -608,24 +640,32 @@ struct LabelTableTests {
         #expect(throws: DecisionError.tooManyOptions(count: 21, max: 20)) { try short.slots(count: 21) }
     }
 
-    /// `TypedDecisions.maxOptions` is the model's own count: its label table's for the chat and
-    /// decider forms, its letter set's or its head's otherwise.
+    /// `TypedDecisions.maxOptions` is the model's own count: the decider's label table's, a chat
+    /// model's number run past its letters (else its 26 letters), its letter set's or its head's.
     @Test func eachFormReportsItsOwnOptionCount() {
         let none = LabelTable(names: [], ids: [])
-        #expect(TypedDecisions.maxOptions(format: .chat, labels: StubVocabulary().table(.chat), slot: nil) == 255)
-        #expect(TypedDecisions.maxOptions(format: .decider, labels: StubVocabulary().table(.decider, limit: 200), slot: nil) == 200)
-        #expect(TypedDecisions.maxOptions(format: .sharedState, labels: none, slot: nil) == 16)
-        #expect(TypedDecisions.maxOptions(format: .decisionFunction, labels: none, slot: nil) == 26)
-        #expect(TypedDecisions.maxOptions(format: .letterList, labels: none, slot: nil) == 52)
-        #expect(TypedDecisions.maxOptions(format: .scalar, labels: none, slot: nil) == 255)
-        #expect(TypedDecisions.maxOptions(format: .slot, labels: none, slot: SlotPromptTests.layout) == 255)
-        #expect(TypedDecisions.maxOptions(format: .slot, labels: none, slot: SlotPrompt.Layout(slots: 8, abstainSlot: nil)) == 8)
+        let letters = StubVocabulary().table(.chat, LabelTable.letters)
+        let numbers = StubVocabulary(numbersAreTokens: true).table(.chat, LabelTable.numbers, run: true)
+        let splitNumbers = StubVocabulary().table(.chat, LabelTable.numbers, run: true)
+        #expect(TypedDecisions.maxOptions(format: .chat, labels: letters, numbers: numbers, slot: nil) == 255)
+        #expect(TypedDecisions.maxOptions(format: .chat, labels: letters, numbers: splitNumbers, slot: nil) == 26)
+        #expect(TypedDecisions.maxOptions(format: .decider, labels: StubVocabulary().table(.decider), numbers: none, slot: nil) == 255)
+        #expect(TypedDecisions.maxOptions(format: .decider, labels: StubVocabulary().table(.decider, limit: 200), numbers: none, slot: nil) == 200)
+        #expect(TypedDecisions.maxOptions(format: .sharedState, labels: none, numbers: none, slot: nil) == 16)
+        #expect(TypedDecisions.maxOptions(format: .decisionFunction, labels: none, numbers: none, slot: nil) == 26)
+        #expect(TypedDecisions.maxOptions(format: .letterList, labels: none, numbers: none, slot: nil) == 52)
+        #expect(TypedDecisions.maxOptions(format: .scalar, labels: none, numbers: none, slot: nil) == 255)
+        #expect(TypedDecisions.maxOptions(format: .slot, labels: none, numbers: none, slot: SlotPromptTests.layout) == 255)
+        #expect(TypedDecisions.maxOptions(format: .slot, labels: none, numbers: none, slot: SlotPrompt.Layout(slots: 8, abstainSlot: nil)) == 8)
     }
 }
 
 /// A vocabulary without a tokenizer: each label candidate is one token (100 + its index), "\n\n"
-/// is token 1, anything else one token per character — except where a case says otherwise.
+/// is token 1, anything else one token per character — so "1"…"9" are single tokens and "10" is
+/// two — except where a case says otherwise.
 struct StubVocabulary {
+    /// "1"…"255" as one token each (3000 + the number), as in MiniCPM5.
+    var numbersAreTokens = false
     /// Names written as two tokens.
     var split: Set<String> = []
     /// Names that merge with a preceding "\n\n" into one token.
@@ -646,6 +686,9 @@ struct StubVocabulary {
             return mergedAfterNewline.contains(rest) ? [10_000 + id(rest)] : [1] + encode(rest)
         }
         if LabelTable.candidates.contains(text), !split.contains(text) { return [id(text)] }
+        if numbersAreTokens, !split.contains(text), let n = Int(text), (1...255).contains(n), String(n) == text {
+            return [3_000 + n]
+        }
         return text.unicodeScalars.map { 1_000 + Int($0.value) }
     }
 
@@ -655,11 +698,14 @@ struct StubVocabulary {
                 let name = LabelTable.candidates[id - 100]
                 return misdecoded.contains(name) ? name.lowercased() : name
             }
+            if (3_001...3_255).contains(id) { return String(id - 3_000) }
             return UnicodeScalar(UInt32(id - 1_000)).map { String(Character($0)) } ?? "?"
         }.joined()
     }
 
-    func table(_ rule: LabelTable.Rule, limit: Int = LabelTable.limit) -> LabelTable {
-        LabelTable.build(rule: rule, limit: limit, encode: encode, decode: decode)
+    func table(
+        _ rule: LabelTable.Rule, _ names: [String] = LabelTable.candidates, limit: Int = LabelTable.limit, run: Bool = false
+    ) -> LabelTable {
+        LabelTable.build(names, rule: rule, limit: limit, run: run, encode: encode, decode: decode)
     }
 }
