@@ -9,6 +9,7 @@
 //       --prompts prompts.jsonl --reference predictions.jsonl --limit 48 --out predictions.out.jsonl
 //   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
 //   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
+//   (a scalar-head model's fixture, coreai-scalar-fixtures/1, compares every option row of each question)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
 //   swift run -c release decide-cli mcp --preload      # a Model Context Protocol server on stdio (SystemOneMCPServer in the kit)
 //   swift run -c release decide-cli --list-models
@@ -451,6 +452,24 @@ struct LetterFixture: Decodable {
         let primitive: String
         let criteria: [Criterion]
     }
+    /// A listed option: a bare string, or the helper's `{key, desc}` pair.
+    struct Listed: Decodable {
+        let key: String
+        let desc: String
+
+        init(from decoder: any Decoder) throws {
+            if let text = try? decoder.singleValueContainer().decode(String.self) {
+                key = text
+                desc = text
+                return
+            }
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            key = try c.decode(String.self, forKey: .key)
+            desc = try c.decodeIfPresent(String.self, forKey: .desc) ?? ""
+        }
+
+        enum CodingKeys: String, CodingKey { case key, desc }
+    }
     struct Row: Decodable {
         let id: String
         /// The author's request object (APUS form), or the flat fields of a plain-text form.
@@ -458,19 +477,22 @@ struct LetterFixture: Decodable {
         let kind: String?
         let state: String?
         let question: String?
-        let options: [String]?
+        let instructions: String?
+        let options: [Listed]?
         let ids: [Int32]
         let slot: Int
         let label_ids: [Int32]
         let p_oracle: [Double]
+        /// The helper's calibrated P(yes) of a yes/no row (the letter list), beside the raw pair.
+        let noul: Double?
         let zoo_only: Bool?
 
         /// The request either way: primitive, state, instructions and the criteria texts.
         var shape: (primitive: String, state: String, instructions: String, criteria: [Criterion])? {
             if let request { return (request.primitive, request.state, request.instructions, request.criteria) }
-            guard let kind, let state, let question, let options else { return nil }
+            guard let kind, let state, let options, let question = instructions ?? question else { return nil }
             let primitive = kind == "bool" ? "noul" : kind
-            return (primitive, state, question, options.map { Criterion(id: $0, description: $0) })
+            return (primitive, state, question, options.map { Criterion(id: $0.key, description: $0.desc.isEmpty ? $0.key : $0.desc) })
         }
     }
     let schema: String
@@ -496,9 +518,14 @@ struct LetterFixture: Decodable {
         case "choice":
             question = .choice(request.instructions, options: request.criteria.map { .init(id: $0.id, description: $0.description) })
         case "noul":
-            question = .noul(request.instructions)
+            // The letter list carries what yes and no mean; the other forms have fixed pairs.
+            if decider.format == .letterList, request.criteria.count == 2 {
+                question = .noul(request.instructions, yes: request.criteria[0].description, no: request.criteria[1].description)
+            } else {
+                question = .noul(request.instructions)
+            }
         case "score":
-            // The plain-text form scores by listing the levels as the options.
+            // The plain-text forms score by listing the levels as the options.
             question = .score(request.instructions, levels: request.criteria.map(\.description))
         default:
             // score_level is the author's yes/no on one proposition; the kit's questions have no such kind.
@@ -517,19 +544,26 @@ struct LetterFixture: Decodable {
         let slotsOK = rendered.slots == row.label_ids && rendered.tokens.count - 1 == row.slot
         if tokensOK { tokensExact += 1 }
         if slotsOK { slotExact += 1 }
-        // The fixture's probabilities are in label order: yes then no for a noul.
+        // The fixture's probabilities are in label order: yes then no for a noul. A letter-list
+        // yes/no is compared calibrated, against the helper's own `noul`.
         let p: [Double]
-        if case .noul(let yes) = answer.value { p = [yes, 1 - yes] } else { p = answer.probabilities }
+        var reference = row.p_oracle
+        if case .noul(let yes) = answer.value {
+            p = [yes, 1 - yes]
+            if decider.format == .letterList, let calibrated = row.noul { reference = [calibrated, 1 - calibrated] }
+        } else {
+            p = answer.probabilities
+        }
         let best = p.indices.max { p[$0] < p[$1] } ?? 0
-        let refBest = row.p_oracle.indices.max { row.p_oracle[$0] < row.p_oracle[$1] } ?? 0
+        let refBest = reference.indices.max { reference[$0] < reference[$1] } ?? 0
         if best == refBest { argmaxAgree += 1 }
-        let delta = zip(p, row.p_oracle).map { abs($0 - $1) }.max() ?? 0
+        let delta = zip(p, reference).map { abs($0 - $1) }.max() ?? 0
         deltas.append(delta)
         let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
         lines.append("| \(row.id) | \(request.primitive) | \(request.criteria.count) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
         if verbose || flag == "DIFF" {
             let firstDiff = zip(rendered.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
-            stderrPrint("  \(row.id): tokens kit \(rendered.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(row.p_oracle.map { fmt($0) })")
+            stderrPrint("  \(row.id): tokens kit \(rendered.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(reference.map { fmt($0) })")
             if verbose, !tokensOK {
                 stderrPrint("  \(row.id): kit tokens \(rendered.tokens.map(String.init).joined(separator: ","))")
             }
@@ -545,11 +579,122 @@ struct LetterFixture: Decodable {
     if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
 }
 
+/// A scalar-head fixture (`coreai-scalar-fixtures/1`, the System One scorer): the author's
+/// requests, one question per (state, question, options) with the fp32 probabilities over its
+/// options, and one row per option with the author's token ids (state cut to `max_len`) and
+/// the head's scalar.
+struct ScalarFixture: Decodable {
+    struct Request: Decodable {
+        let id: String
+        let state: String
+    }
+    struct Question: Decodable {
+        let id: String
+        let type: String  // choice / noul / score
+        let question: String
+        let options: [String]
+        let zoo_only: Bool?
+        let request_id: String
+        let row_ids: [String]
+        let p_oracle: [Double]
+    }
+    struct Row: Decodable {
+        let id: String
+        let ids: [Int32]
+        let slot: Int
+        let scalar: Double?
+    }
+    let schema: String
+    let temperature: Double?
+    let max_len: Int?
+    let requests: [Request]
+    let questions: [Question]
+    let rows: [Row]
+}
+
+@MainActor func runScalarParity(_ data: Data) async throws {
+    let fx = try JSONDecoder().decode(ScalarFixture.self, from: data)
+    let decider = try await loadDecider()
+    let name = await decider.modelName
+    print("model: \(id) (\(name))   format: \(decider.format.rawValue)   temperature: \(decider.temperature) (fixture \(fx.temperature.map { String($0) } ?? "-"), max_len \(fx.max_len.map(String.init) ?? "-"))   fixture: \(fx.schema)")
+    let states = Dictionary(fx.requests.map { ($0.id, $0.state) }, uniquingKeysWith: { a, _ in a })
+    let rows = Dictionary(fx.rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var checked = 0, rowsChecked = 0, tokensExact = 0, slotExact = 0, argmaxAgree = 0, skipped: [String] = []
+    var deltas: [Double] = []
+    var milliseconds: [Double] = []
+    var lines: [String] = []
+    for q in fx.questions {
+        guard let state = states[q.request_id] else {
+            skipped.append("\(q.id) (no request state)")
+            continue
+        }
+        let question: Decision.Question
+        switch q.type {
+        case "choice": question = .choice(q.question, q.options)
+        case "noul": question = .noul(q.question)
+        case "score": question = .score(q.question, levels: q.options)
+        default:
+            skipped.append("\(q.id) (type \(q.type))")
+            continue
+        }
+        if q.options.count > decider.maxOptions {
+            skipped.append("\(q.id) (\(q.options.count) options; this model lists at most \(decider.maxOptions))")
+            continue
+        }
+        let rendered = try decider.promptRows(state, question)
+        guard rendered.count == q.row_ids.count else {
+            skipped.append("\(q.id) (kit planned \(rendered.count) rows, fixture has \(q.row_ids.count))")
+            continue
+        }
+        let answer = try await decider.decide(state, question)
+        milliseconds.append(answer.timing.milliseconds)
+        checked += 1
+        var tokensOK = true, slotsOK = true
+        for (r, rowID) in zip(rendered, q.row_ids) {
+            guard let row = rows[rowID] else { tokensOK = false; continue }
+            rowsChecked += 1
+            if r.tokens == row.ids { tokensExact += 1 } else { tokensOK = false }
+            if r.tokens.count - 1 == row.slot { slotExact += 1 } else { slotsOK = false }
+        }
+        // The fixture's probabilities are in option order: yes then no for a noul.
+        let p: [Double]
+        if case .noul(let yes) = answer.value { p = [yes, 1 - yes] } else { p = answer.probabilities }
+        let best = p.indices.max { p[$0] < p[$1] } ?? 0
+        let refBest = q.p_oracle.indices.max { q.p_oracle[$0] < q.p_oracle[$1] } ?? 0
+        if best == refBest { argmaxAgree += 1 }
+        let delta = zip(p, q.p_oracle).map { abs($0 - $1) }.max() ?? 0
+        deltas.append(delta)
+        let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
+        lines.append("| \(q.id) | \(q.type) | \(q.options.count) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag)\(q.zoo_only == true ? " zoo_only" : "") |")
+        if verbose || flag == "DIFF" {
+            for (r, rowID) in zip(rendered, q.row_ids) {
+                guard let row = rows[rowID], r.tokens != row.ids else { continue }
+                let firstDiff = zip(r.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+                stderrPrint("  \(rowID): tokens kit \(r.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-")")
+                if verbose { stderrPrint("  \(rowID): kit tokens \(r.tokens.map(String.init).joined(separator: ","))") }
+            }
+            stderrPrint("  \(q.id): kit p \(p.map { fmt($0) }) ref \(q.p_oracle.map { fmt($0) })")
+        }
+    }
+    print("| question | type | options | tokens | slot | argmax | max \\|Δp\\| | |")
+    print("|---|---|---:|:-:|:-:|:-:|---:|---|")
+    lines.forEach { print($0) }
+    print("questions checked: \(checked)   rows: \(rowsChecked)   tokens identical: \(tokensExact)/\(rowsChecked)   slot identical: \(slotExact)/\(rowsChecked)")
+    print("argmax agreement with the fp32 readout: \(argmaxAgree)/\(checked)")
+    print("|Δp| vs the fp32 readout: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(max(1, deltas.count)), 4))")
+    print("ms per question (all option rows summed): median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
+    if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
+}
+
 @MainActor func runParity() async throws {
     guard let fixture else { fail(usage) }
     let data = try Data(contentsOf: URL(fileURLWithPath: fixture))
     if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-letter-fixtures") {
         try await runLetterParity(data)
+        return
+    }
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-scalar-fixtures") {
+        try await runScalarParity(data)
         return
     }
     let fx = try JSONDecoder().decode(DeciderFixture.self, from: data)

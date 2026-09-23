@@ -300,6 +300,22 @@
       "format": "decisionFunction"
     },
     {
+      "id": "system-one-scorer-4b",
+      "name": "System One scorer 4B",
+      "repo": "mlboydaisuke/system-one-qwen3.5-4b-scorer-CoreAI",
+      "revision": "f27dcd3124cb3aa53e46b6707d3edb976f55c5f3",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin",
+          "sizeMB": 4859
+        }
+      },
+      "engine": "pipelined",
+      "format": "scalar",
+      "license": "CC-BY-NC-4.0"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

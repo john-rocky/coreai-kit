@@ -64,6 +64,7 @@ enum BuiltinPins {
         "shieldstral-3b": "5ec6faf69eb47e2e6b05527fd50c7cd65005b6a6",
         "sortformer-diar-v2": "bd063df510a0354714a67c2caa91529de8ceda5c",
         "stable-audio-open-small": "c52f04a8207ebe0e5bba4582a7dac7737e6a9127",
+        "system-one-scorer-4b": "f27dcd3124cb3aa53e46b6707d3edb976f55c5f3",
         "timesfm-2.5-200m": "9b5300026f96d1799a0dd1439a07e378a72e2b46",
         "unlimited-ocr": "6404db22f4020785006460b49acd8f2aad326959",
         "vibevoice-realtime-0.5b": "889897cdc1df88428a3eed24e89f1814e580c033",

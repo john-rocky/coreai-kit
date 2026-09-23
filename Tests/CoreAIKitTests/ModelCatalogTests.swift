@@ -104,7 +104,7 @@ final class ModelCatalogTests: XCTestCase {
             CatalogEntry(
                 id: entry.id, name: entry.name, repo: entry.repo, kind: entry.kind,
                 variants: entry.variants, thinking: entry.thinking, engine: entry.engine,
-                format: entry.format)
+                format: entry.format, license: entry.license)
         }
         XCTAssertEqual(unpinned.map(\.id), ModelCatalog.builtinLiteral.models.map(\.id))
         for (shippedEntry, builtinEntry) in zip(unpinned, ModelCatalog.builtinLiteral.models) {

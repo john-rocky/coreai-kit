@@ -66,12 +66,16 @@ catalog model; `brew services start systemone` keeps it running).
 
 ## The catalog is data — read it, do not invent it
 
-`catalog.json` holds **65 entries**, each `{id, kind, name, repo, revision, variants}`. Ids look
+`catalog.json` holds **66 entries**, each `{id, kind, name, repo, revision, variants}`. Ids look
 like `qwen3-0.6b`, `qwen3.5-2b`, `youtu-llm-2b`, `lfm2.5-1.2b` — lowercase, hyphenated.
 
 - **Never guess a catalog id.** Read `catalog.json`, or call `ModelCatalog` at runtime. A
   hallucinated id is a runtime failure the user sees, and model naming here does not follow
   Hugging Face naming.
+- An entry whose weights restrict what an app may do with them says so in `license` (the
+  SPDX id, `CC-BY-NC-4.0` for a non-commercial model); the others are permissive, and every
+  model's exact terms are on its zoo card. Do not ship a non-commercial model in a commercial
+  app.
 - Every entry is pinned to an **immutable Hugging Face revision**. Do not "upgrade" a pin to
   `main` to pick up a newer model — the pin is what was gated. Bumping one is a deliberate,
   reviewed change (`scripts/pin-catalog.py --check` is what CI enforces).

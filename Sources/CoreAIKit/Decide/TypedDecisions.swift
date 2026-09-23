@@ -28,10 +28,14 @@
 // (OpenThai-SystemOne) reads its control-token layout and is read at a 256-way head
 // (`Decision.Format.slot`, `SlotPrompt.swift`); a model trained on the `Shared state:` + JSON
 // task turn (APUS-OpenJev-v1) is read at the letters under its chat template
-// (`Decision.Format.sharedState`, `SharedStatePrompt.swift`). A slot-head bundle declares
-// itself in its metadata.json (`decision.head == "slot"`, with its temperatures); otherwise
-// the catalog entry's `format` decides, then the catalog kind. `Configuration.format`
-// overrides all of them.
+// (`Decision.Format.sharedState`, `SharedStatePrompt.swift`); a scalar-head model (the
+// System One scorer) is one row per option, read by its head at each row's last token
+// (`Decision.Format.scalar`, `ScalarPrompt.swift`); OpenJev's lettered option list under
+// the chat template is read at the bare letters A–Z a–z at its helper's temperature
+// (`Decision.Format.letterList`, `LetterListPrompt.swift`). A slot-head, scalar-head or
+// letter-list bundle declares itself in its metadata.json (`decision.head` / `readout`,
+// with its temperature); otherwise the catalog entry's `format` decides, then the catalog
+// kind. `Configuration.format` overrides all of them.
 //
 // ## Which engine
 //
@@ -82,11 +86,16 @@ public actor TypedDecisions {
     nonisolated public let temperature: Double
     /// What a slot-head bundle declares about its head (`Format.slot`); nil otherwise.
     nonisolated let slotLayout: SlotPrompt.Layout?
+    /// What a scalar-head bundle declares about its head (`Format.scalar`); nil otherwise.
+    nonisolated let scalarLayout: ScalarPrompt.Layout?
+    /// What a letter-list bundle declares about its readout (`Format.letterList`); nil otherwise.
+    nonisolated let letterLayout: LetterListPrompt.Layout?
     /// The tokenizer path of a slot-head bundle (control tokens by id, text cut the
     /// reference way); nil for the other formats.
     nonisolated private let slotEncoder: SlotPrompt.Encoder?
-    /// Options a choice may list on this model: 16 for the letter readouts, every slot but
-    /// the abstain one (255 for OpenThai-SystemOne) for a slot head. A score keeps 10 levels.
+    /// Options a choice may list on this model: 16 for the letter readouts, 26 for the
+    /// decision-function form, 52 for the letter list, every slot but the abstain one (255
+    /// for OpenThai-SystemOne) for a slot head, 64 rows for a scalar head. A score keeps 10 levels.
     nonisolated public let maxOptions: Int
     /// The catalog id, or the bundle directory name for a local bundle.
     public let id: String
@@ -134,6 +143,8 @@ public actor TypedDecisions {
             bundleName: model.resolvedPath, override: configuration.singleTokenPrefill)
         let bundle = try LanguageBundle(at: url)
         let layout = try SlotPrompt.Layout.read(bundleAt: url)
+        let scalar = try ScalarPrompt.Layout.read(bundleAt: url)
+        let letters = try LetterListPrompt.Layout.read(bundleAt: url)
         let runtime = try await ModelRuntime(
             bundleAt: url,
             engineVariant: Self.resolveEngine(configuration.engineVariant, hint: entry.engine))
@@ -143,9 +154,13 @@ public actor TypedDecisions {
             format: configuration.format
                 ?? (layout != nil
                     ? .slot
-                    : entry.format.flatMap(Decision.Format.init(rawValue:))
-                        ?? (entry.kind == .decision ? .decider : .chat)),
-            layout: layout)
+                    : scalar != nil
+                        ? .scalar
+                        : letters != nil
+                            ? .letterList
+                            : entry.format.flatMap(Decision.Format.init(rawValue:))
+                                ?? (entry.kind == .decision ? .decider : .chat)),
+            layout: layout, scalar: scalar, letters: letters)
     }
 
     /// Loads a local bundle directory (metadata.json + *.aimodel/ + tokenizer/). The prompt
@@ -158,21 +173,28 @@ public actor TypedDecisions {
             bundleAt: url, engineVariant: Self.resolveEngine(configuration.engineVariant, hint: nil))
         let name = url.lastPathComponent.lowercased()
         let layout = try SlotPrompt.Layout.read(bundleAt: url)
+        let scalar = try ScalarPrompt.Layout.read(bundleAt: url)
+        let letters = try LetterListPrompt.Layout.read(bundleAt: url)
         try self.init(
             runtime: runtime, configuration: configuration, id: url.lastPathComponent,
             maxContextLength: bundle.maxContextLength,
             format: configuration.format
                 ?? (layout != nil
                     ? .slot
-                    : name.contains("decider")
-                        ? .decider
-                        : name.contains("openjev") ? .sharedState : name.contains("decision") ? .decisionFunction : .chat),
-            layout: layout)
+                    : scalar != nil
+                        ? .scalar
+                        : letters != nil
+                            ? .letterList
+                            : name.contains("decider")
+                                ? .decider
+                                : name.contains("openjev") ? .sharedState : name.contains("decision") ? .decisionFunction : .chat),
+            layout: layout, scalar: scalar, letters: letters)
     }
 
     private init(
         runtime: ModelRuntime, configuration: Configuration, id: String, maxContextLength: Int,
-        format: Decision.Format, layout: SlotPrompt.Layout?
+        format: Decision.Format, layout: SlotPrompt.Layout?, scalar: ScalarPrompt.Layout?,
+        letters: LetterListPrompt.Layout?
     ) throws {
         guard runtime.engine.supportsLogits else {
             throw DecisionError.engineWithoutLogits(model: id)
@@ -185,6 +207,20 @@ public actor TypedDecisions {
         case .chat, .sharedState: _ = try DecisionPrompt.slotTokens(count: 2, tokenizer: runtime.tokenizer)
         case .decider: _ = try DeciderPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
         case .decisionFunction: _ = try DecisionFunctionPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .letterList:
+            // The temperature and the yes/no calibration are the helper's contract: the
+            // bundle must declare them.
+            guard letters != nil else {
+                throw DecisionError.unsupportedModel(
+                    id: id, reason: "its metadata.json declares no letter readout ('decision' block), which Format.letterList needs")
+            }
+            _ = try LetterListPrompt.labelTokens(count: 2, tokenizer: runtime.tokenizer)
+        case .scalar:
+            // No letters: the head is one number per row, and the bundle must declare it.
+            guard scalar != nil else {
+                throw DecisionError.unsupportedModel(
+                    id: id, reason: "its metadata.json declares no scalar head ('decision' block), which Format.scalar needs")
+            }
         case .slot:
             guard let layout else {
                 throw DecisionError.unsupportedModel(
@@ -198,16 +234,22 @@ public actor TypedDecisions {
         self.maxContextLength = maxContextLength
         self.format = format
         self.slotLayout = format == .slot ? layout : nil
+        self.scalarLayout = format == .scalar ? scalar : nil
+        self.letterLayout = format == .letterList ? letters : nil
         self.slotEncoder = encoder
         switch format {
         case .slot: self.maxOptions = layout?.maxOptions ?? DecisionPrompt.maxOptions
         case .decisionFunction: self.maxOptions = DecisionFunctionPrompt.maxOptions
+        case .scalar: self.maxOptions = ScalarPrompt.maxOptions
+        case .letterList: self.maxOptions = LetterListPrompt.maxOptions
         case .chat, .decider, .sharedState: self.maxOptions = DecisionPrompt.maxOptions
         }
         switch format {
         case .chat, .sharedState, .decisionFunction: self.temperature = configuration.temperature ?? 1
         case .decider: self.temperature = configuration.temperature ?? DeciderPrompt.defaultTemperature
         case .slot: self.temperature = configuration.temperature ?? layout?.choiceTemperature ?? 1
+        case .scalar: self.temperature = configuration.temperature ?? scalar?.temperature ?? 1
+        case .letterList: self.temperature = configuration.temperature ?? letters?.temperature ?? 1
         }
     }
 
@@ -240,7 +282,8 @@ public actor TypedDecisions {
     // MARK: - Decide
 
     /// One question on one state. Under `.decider` a score question is several rows (one
-    /// per level), and the answer's timing is their sum.
+    /// per level) and under `.scalar` every question is one row per option; the answer's
+    /// timing is their sum.
     public func decide(_ state: String, _ question: Decision.Question) async throws -> Decision.Answer {
         try DecisionPrompt.validate(question, maxOptions: maxOptions)
         switch format {
@@ -263,6 +306,31 @@ public actor TypedDecisions {
             return DecisionPrompt.answer(
                 for: question, probabilities: DecisionFunctionPrompt.probabilities(kitOrder: letterOrder, for: question),
                 timing: timing)
+        case .letterList:
+            guard let layout = letterLayout else { throw DecisionError.noLogits }
+            let rendered = try LetterListPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
+            let (letterOrder, timing) = try await readout(rendered)
+            return DecisionPrompt.answer(
+                for: question,
+                probabilities: LetterListPrompt.probabilities(kitOrder: letterOrder, for: question, layout: layout),
+                timing: timing)
+        case .scalar:
+            // One row per option; the head's one logit per row, softmaxed across the rows.
+            guard let layout = scalarLayout else { throw DecisionError.noLogits }
+            var scalars: [Double] = []
+            var total = Decision.Timing(promptTokens: 0, reusedTokens: 0, seconds: 0)
+            for tokens in ScalarPrompt.render(state: state, question: question, layout: layout, tokenizer: runtime.tokenizer) {
+                let (logits, timing) = try await score(tokens)
+                guard let scalar = logits.first else { throw DecisionError.noLogits }
+                scalars.append(Double(scalar))
+                total = Decision.Timing(
+                    promptTokens: total.promptTokens + timing.promptTokens,
+                    reusedTokens: total.reusedTokens + timing.reusedTokens,
+                    seconds: total.seconds + timing.seconds)
+            }
+            let p = DecisionPrompt.probabilities(logits: scalars, temperature: temperature(for: question))
+            return DecisionPrompt.answer(
+                for: question, probabilities: ScalarPrompt.probabilities(kitOrder: p, for: question), timing: total)
         case .slot:
             guard let layout = slotLayout, let encoder = slotEncoder else { throw DecisionError.noLogits }
             let rendered = try SlotPrompt.render(state: state, question: question, encoder: encoder)
@@ -336,6 +404,10 @@ public actor TypedDecisions {
             prefix = try SlotPrompt.contextTokens(state: state, encoder: encoder)
         case .sharedState: prefix = try SharedStatePrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         case .decisionFunction: prefix = DecisionFunctionPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .scalar:
+            guard let layout = scalarLayout else { throw DecisionError.noLogits }
+            prefix = ScalarPrompt.statePrefix(state: state, layout: layout, tokenizer: runtime.tokenizer)
+        case .letterList: prefix = try LetterListPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         }
         let (_, timing) = try await score(prefix, includeLogits: false)
         return PrefilledState(state: state, tokens: prefix.count, timing: timing, decider: self)
@@ -344,7 +416,7 @@ public actor TypedDecisions {
     /// The exact token sequences a question on a state is scored as — one per row, with the
     /// answer-slot token per option — for checking the rendering against a reference token
     /// file without a decision. One row, except a score question under `.decider` (one row
-    /// per level).
+    /// per level) and every question under `.scalar` (one row per option, no slot tokens).
     nonisolated public func promptRows(
         _ state: String, _ question: Decision.Question
     ) throws -> [(tokens: [Int32], slots: [Int32])] {
@@ -368,6 +440,13 @@ public actor TypedDecisions {
             return [(rendered.tokens, rendered.slots)]
         case .decisionFunction:
             let rendered = try DecisionFunctionPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
+            return [(rendered.tokens, rendered.slots)]
+        case .scalar:
+            guard let layout = scalarLayout else { throw DecisionError.noLogits }
+            return ScalarPrompt.render(state: state, question: question, layout: layout, tokenizer: runtime.tokenizer)
+                .map { ($0, []) }
+        case .letterList:
+            let rendered = try LetterListPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
             return [(rendered.tokens, rendered.slots)]
         }
     }

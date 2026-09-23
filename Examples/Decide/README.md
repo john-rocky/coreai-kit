@@ -354,6 +354,28 @@ puts them back, proved against the author's MLX bf16 readout (58/58, max |Δp| 0
 bundle is that converted checkpoint. 2.9 GB int8, the size of `qwen3.5-2b`, so it ships to
 iPhone too; no iPhone number yet.
 
+**A scoring head instead of letters, under a non-commercial license.** `system-one-scorer-4b`
+(catalog kind `decision`, `Decision.Format.scalar`; pngwn's system-one-qwen3.5-4b-scorer, a
+Qwen3.5-4B-Base LoRA with a scalar scoring head, English, CC BY-NC 4.0 — its ticket training data
+is non-commercial and the model inherits that; `CatalogEntry.license` carries it and `systemone
+models` shows it) has no letters to read: every option is its own row — `State:`, the state,
+`Question:`, `Option:` — read by the head at the row's last token, and the rows' numbers are
+softmaxed together at the author's calibration temperature (1.75, fitted on a validation split;
+the bundle declares it). The author's `encode` keeps the question and the option whole and cuts
+the state from its end so a row fits 384 tokens; the kit does the same. The author reports 0.707
+accuracy and ECE 0.044 on a 576-question test split, 0.135 for the raw head (the author's
+numbers, not re-measured here). On the author's 48-question, 280-row fixture (`decide-cli
+parity`, 2026-09-23; 28 choice questions with 2–32 options, 10 yes/no, 10 score with 2–10
+levels, six states cut to fit) the kit's rows are token- and slot-identical on 280/280 and the
+question argmax matches the author's fp32 readout on 48/48, for both the int8 bundle (max |Δp|
+0.0110, mean 0.0012) and the fp16 reference (0.0037 / 0.0004). On SemIf's 144 English rows, each
+option a row, the same evaluator as the table above: 121/144, mean family balanced accuracy
+0.844 (int8), 2.3 s median per three-option decision with the GPU shared with a conversion run.
+A support ticket with three questions — which team, is the customer angry, how urgent on four
+levels — took 1,862, 1,094 and 2,198 ms for its 3, 2 and 4 rows (123, 80 and 163 tokens in
+all), 0 reused: a 4B on a decode-only graph pays every row from its first token, and a choice
+costs one row per option. Mac only (5.1 GB int8); no iPhone number.
+
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
 a short text leans *yes*: "is this what the purpose needs?" says yes to a phone number, a
