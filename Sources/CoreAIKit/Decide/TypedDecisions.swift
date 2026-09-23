@@ -90,7 +90,8 @@ public actor TypedDecisions {
         /// name; set it explicitly for a local bundle the heuristic cannot see.
         public var singleTokenPrefill: Bool? = nil
         /// Compute units for an encoder bundle's graphs (`Format.encoder`); the language
-        /// formats load on their engine and ignore it.
+        /// formats load on their engine and ignore it. `.neuralEngine` is refused at load: the
+        /// shipped encoder graph's answers are wrong there.
         public var computeUnits: GraphModel.ComputeUnits = .gpu
 
         public init() {}
@@ -381,6 +382,13 @@ public actor TypedDecisions {
         if let requested = configuration.format, requested != .encoder {
             throw DecisionError.unsupportedModel(
                 id: id, reason: "it is an encoder bundle, which reads as Format.encoder, not .\(requested.rawValue)")
+        }
+        // `EncoderDecider` itself still takes the Neural Engine, for measuring it.
+        if configuration.computeUnits == .neuralEngine {
+            throw DecisionError.unsupportedModel(
+                id: id,
+                reason: "with a Neural Engine preference this graph's answers fall outside the 1e-3 bar and change "
+                    + "from run to run (2026-09-23, Mac GPU exact); use the GPU")
         }
         self.backend = .encoder(
             try await EncoderDecider(bundleAt: url, layout: layout, computeUnits: configuration.computeUnits))

@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import CoreAIKit
+import CoreAIKitVision
 
 struct EncoderPromptTests {
     /// One token per Unicode scalar: every count below is a character count.
@@ -331,6 +332,28 @@ struct EncoderBundleTests {
         var chat = TypedDecisions.Configuration()
         chat.format = .chat
         await #expect(throws: DecisionError.self) { try await TypedDecisions(bundleAt: dir, configuration: chat) }
+    }
+
+    @Test func theNeuralEngineIsRefusedBeforeAnythingLoads() async throws {
+        // Refused from the metadata alone: with no graph in the directory, anything past the check
+        // would fail on the missing graph (KitBundleError) instead.
+        let dir = try Self.bundle(#"{"metadata_version": "0.2", "kind": "encoder", "decision": "# + Self.block + "}")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        var ane = TypedDecisions.Configuration()
+        ane.computeUnits = .neuralEngine
+        do {
+            _ = try await TypedDecisions(bundleAt: dir, configuration: ane)
+            Issue.record("a Neural Engine preference loaded")
+        } catch DecisionError.unsupportedModel(let id, let reason) {
+            #expect(id == dir.lastPathComponent)
+            #expect(reason.contains("Neural Engine") && reason.contains("1e-3"))
+        }
+        // The other units get as far as the graph.
+        for units in [GraphModel.ComputeUnits.gpu, .cpuOnly] {
+            var configuration = TypedDecisions.Configuration()
+            configuration.computeUnits = units
+            await #expect(throws: KitBundleError.self) { try await TypedDecisions(bundleAt: dir, configuration: configuration) }
+        }
     }
 }
 
