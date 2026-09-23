@@ -55,6 +55,7 @@ enum BuiltinPins {
         "qwen3-vl-8b": "9517acb959fbdf9483de0a819e1de632b13b9c7e",
         "qwen3.5-0.8b": "1b8c0203c0f317027db508e97372c589afaace7b",
         "qwen3.5-2b": "3aa6c97d9545b9f7de6307b953a81db38cb660af",
+        "qwen3.5-2b-decision": "3b79912057db40be51697dfdaa433d6cb436b409",
         "qwen3.6-27b": "e745d8f071e1730c91473ae38ffbe449bc1c0645",
         "qwen3.6-35b-a3b": "700470f9d982175e249fc7aec0d29a81c96c8ef9",
         "qwen3.8-27b": "927bbeed505949f99a24811f795f838427a6fe0f",

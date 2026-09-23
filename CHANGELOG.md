@@ -85,6 +85,15 @@ and Xcode 27 (27A266a); the `coreai-models` runtime pin stays 0.2.4-zoo.
   choice and yes/no rows, argmax 40/40, max |Δp| 0.0055 (`decide-cli parity`, which also reads
   the letter fixture form, `coreai-letter-fixtures/1`); 0.906 mean family balanced accuracy on
   SemIf's 144 English rows through the kit. Mac only (5.8 GB).
+- **`qwen3.5-2b-decision`** — chaoliangUNSW's Jev-Style-Qwen3.5-2B-Decision (Qwen3.5-2B-Base
+  fine-tune, English, Apache-2.0; its calibration temperature folded into the weights, the author
+  reports ECE 0.017) as a catalog `decision` model with its readout: `Decision.Format.decisionFunction`,
+  the author's plain-text prompt without a chat template read at the space-prefixed letters ` A`–` Z`
+  (up to 26 options), T = 1. On the author's 58-row fixture the kit's rows are token- and
+  slot-identical to the author's and argmax-identical to the fp32 reference on 58/58 for both
+  bundles (int8 max |Δp| 0.0079, fp16 0.0058; `decide-cli parity`); 0.798 mean family balanced
+  accuracy on SemIf's 144 English rows through the kit. Mac and iPhone (2.9 GB int8; no iPhone
+  number yet).
 - `decide-cli --bundle <dir>` — any command on an unpublished bundle directory; `parity` reads
   the slot fixture form (`coreai-slot-fixtures/1`) and renders JSON states itself.
 
