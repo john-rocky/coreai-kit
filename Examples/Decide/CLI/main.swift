@@ -298,10 +298,18 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     var deltas: [Double] = []
     var milliseconds: [Double] = []
     var skippedStates = 0
+    var skippedLong: [String] = []
     for row in rows.prefix(limit) {
         let question = Decision.Question.choice(
             row.question, options: row.options.map { .init(id: $0.id, description: $0.description) })
-        let answer = try await decider.decide(row.state, question)
+        let answer: Decision.Answer
+        do {
+            answer = try await decider.decide(row.state, question)
+        } catch DecisionError.promptTooLong(let tokens, let max) {
+            // A wide row can outgrow a small context: skip it and say so, rather than end the run.
+            skippedLong.append("\(row.id) (\(tokens) tokens, at most \(max))")
+            continue
+        }
         guard case .choice(let choice) = answer.value else { continue }
         scored += 1
         milliseconds.append(answer.timing.milliseconds)
@@ -353,6 +361,9 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
         try dumped.joined(separator: "\n").appending("\n").write(toFile: dumpPromptsPath, atomically: true, encoding: .utf8)
     }
     print("model: \(id) (\(name))   rows scored: \(scored)   skipped (non-string state): \(skippedStates)")
+    if !skippedLong.isEmpty {
+        print("skipped (prompt longer than the model's context): \(skippedLong.count) — \(skippedLong.joined(separator: "; "))")
+    }
     if labelled > 0 {
         print("accuracy vs fixture label: \(labelCorrect)/\(labelled) = \(fmt(Double(labelCorrect) / Double(labelled), 4))")
     }
