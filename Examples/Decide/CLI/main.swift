@@ -13,6 +13,9 @@
 //   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
 //   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
 //   (a scalar-head model's fixture, coreai-scalar-fixtures/1, compares every option row of each question)
+//   swift run -c release decide-cli parity --fixture fixtures-laya-multilingual.json --bundle <dir> [--compute ane]
+//   (an encoder model's fixture, coreai-encoder-fixtures/1: tokens and markers, then the raw logits at T = 1;
+//    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
 //   swift run -c release decide-cli mcp --preload      # a Model Context Protocol server on stdio (SystemOneMCPServer in the kit)
 //   swift run -c release decide-cli --list-models
@@ -33,6 +36,8 @@ let usage = """
                             (a temperature fitted on --fit, before / after on --report; the record is a catalog.json `calibration`)
            decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
                             (--bundle <dir> loads a local bundle directory instead of a catalog id, for any command)
+                            (an encoder fixture: [--tokens-only] [--tokenizer <dir> --head-max-len <n>]
+                             [--compute gpu|ane|cpu|cpuonly] [--act-compute gpu|ane|cpu|cpuonly])
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
@@ -106,9 +111,30 @@ var outRawPath: String?
 var bins = 10
 var fitName: String?
 var reportName: String?
+/// An encoder fixture's rows checked with no bundle: the tokenizer folder, and the head budget
+/// a bundle's metadata would otherwise declare.
+var tokenizerPath: String?
+var tokensOnly = false
+var headMaxLength: Int?
+/// Compute units for an encoder bundle's graphs, and for its act head when it differs.
+var computeUnits: GraphModel.ComputeUnits = .gpu
+var actComputeUnits: GraphModel.ComputeUnits?
+
+func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
+    switch name {
+    case "gpu": return .gpu
+    case "ane", "neuralEngine": return .neuralEngine
+    case "cpu": return .cpu
+    case "cpuonly", "cpuOnly": return .cpuOnly
+    default: fail(usage)
+    }
+}
 
 /// The decider every command loads: the `--bundle` directory when given, else the catalog id.
+/// `--compute` reaches an encoder bundle's graphs; the language formats ignore it.
 @MainActor func loadDecider(configuration: TypedDecisions.Configuration = .init()) async throws -> TypedDecisions {
+    var configuration = configuration
+    configuration.computeUnits = computeUnits
     if let bundlePath {
         return try await TypedDecisions(bundleAt: URL(fileURLWithPath: bundlePath), configuration: configuration)
     }
@@ -160,6 +186,11 @@ while let arg = args.popFirst() {
     case "--bundle":
         bundlePath = args.popFirst()
         if let bundlePath { modelID = URL(fileURLWithPath: bundlePath).lastPathComponent }
+    case "--tokenizer": tokenizerPath = args.popFirst()
+    case "--tokens-only": tokensOnly = true
+    case "--head-max-len": headMaxLength = Int(args.popFirst() ?? "")
+    case "--compute": computeUnits = parseComputeUnits(args.popFirst())
+    case "--act-compute": actComputeUnits = parseComputeUnits(args.popFirst())
     default: fail(usage)
     }
 }
@@ -1012,9 +1043,220 @@ struct ScalarFixture: Decodable {
     if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
 }
 
+/// A question in the wire form (`{type, instructions, criteria}`), rebuilt the way the wire codec
+/// builds it — without its 16-option cap, which an encoder fixture passes (20).
+func wireQuestion(_ value: JSONValue) -> Decision.Question {
+    func text(_ value: JSONValue) -> String? {
+        switch value {
+        case .null: return nil
+        case .string(let s): return s
+        default: return value.dumps()
+        }
+    }
+    let instructions = value["instructions"].flatMap(text) ?? ""
+    switch value["type"]?.stringValue {
+    case "choice":
+        if let members = value["criteria"]?.members {
+            return .choice(instructions, options: members.map { member in
+                let description = text(member.value).flatMap { $0.isEmpty ? nil : $0 }
+                return .init(id: member.key, description: description.map { "\(member.key): \($0)" } ?? member.key)
+            })
+        }
+        return .choice(instructions, (value["criteria"]?.elements ?? []).compactMap(text))
+    case "score":
+        return .score(instructions, levels: (value["criteria"]?.elements ?? []).compactMap(text))
+    default:
+        let criteria = value["criteria"]
+        return .noul(instructions, yes: criteria?["true"].flatMap(text), no: criteria?["false"].flatMap(text))
+    }
+}
+
+func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactMap(\.doubleValue) }
+
+/// An encoder model's fixture (`coreai-encoder-fixtures/1`, laya): one row per question and
+/// window — the question in the wire form, the publisher's token ids and marker positions, its
+/// raw marker and act logits, and its probabilities and act probability at the fixture's
+/// temperature (1, the publisher's own). The states ride in the rows (`state`), in `states` /
+/// `requests` / `fixtures` keyed by the rows' `fixture_id`, or in `--states` (an id → state
+/// object, or a list of `{id, state}`); a structured state is written the reference way.
+///
+/// Tokens and markers need only the tokenizer: `--tokens-only` with a bundle directory, or with
+/// `--tokenizer <dir>` and the head budget (`head_max_len` in the fixture, or `--head-max-len`).
+/// The numbers run the bundle's graphs on the kit's own rows (`EncoderDecider.decideRow`).
+@MainActor func runEncoderParity(_ data: Data) async throws {
+    let root = try JSONValue.parse(data)
+    guard let rows = root["rows"]?.elements, !rows.isEmpty else { fail("the fixture has no rows") }
+    func stateText(_ value: JSONValue) -> String { value.stringValue ?? value.dumps() }
+    var states: [String: String] = [:]
+    func collect(_ value: JSONValue?) {
+        for member in value?.members ?? [] where states[member.key] == nil { states[member.key] = stateText(member.value) }
+        for item in value?.elements ?? [] {
+            if let id = item["id"]?.stringValue, let state = item["state"], states[id] == nil { states[id] = stateText(state) }
+        }
+    }
+    collect(root["states"])
+    collect(root["requests"])
+    collect(root["fixtures"])
+    if let statesPath { collect(try JSONValue.parse(Data(contentsOf: URL(fileURLWithPath: statesPath)))) }
+    // The fixture's temperature: one number, or one per question type with optional buckets.
+    let temperatures: EncoderReadout.Temperatures
+    if let t = root["temperature"]?.doubleValue {
+        temperatures = .init(byType: [t, t, t])
+    } else if let t = root["temperature"], numbers(t).count == 3 {
+        var buckets: [String: Double] = [:]
+        for member in root["temperature_by_options"]?.members ?? [] { buckets[member.key] = member.value.doubleValue }
+        temperatures = .init(byType: numbers(t), byOptions: buckets)
+    } else {
+        temperatures = .one
+    }
+    func window(of row: JSONValue) -> Int? { (row["window"] ?? root["window"])?.doubleValue.map { Int($0) } }
+
+    // The rows' builder, and the bundle's graphs unless only the tokens are asked for.
+    var decider: EncoderDecider? = nil
+    let base: EncoderPrompt
+    var bundleWindow: Int? = nil
+    let source: String
+    if let tokenizerPath, bundlePath == nil {
+        guard tokensOnly else { fail("--tokenizer checks tokens only: pass --tokens-only, or --bundle for the numbers") }
+        guard let head = headMaxLength ?? root["head_max_len"]?.doubleValue.map({ Int($0) }) else {
+            fail("the fixture declares no head_max_len: pass --head-max-len")
+        }
+        guard let first = rows.lazy.compactMap(window).first else { fail("the fixture's rows carry no window") }
+        base = try await EncoderPrompt(tokenizerFolder: URL(fileURLWithPath: tokenizerPath), window: first, headMaxLength: head)
+        source = "tokenizer \(URL(fileURLWithPath: tokenizerPath).lastPathComponent), head_max_len \(head)"
+    } else {
+        let url: URL
+        if let bundlePath {
+            url = URL(fileURLWithPath: bundlePath)
+        } else {
+            let entry = try await ModelCatalog.entry(forID: id)
+            guard let model = entry.modelID else { fail("'\(id)' is not published for this platform") }
+            url = try await ModelStore.default.download(model, progress: progress)
+        }
+        guard let layout = try EncoderPrompt.Layout.read(bundleAt: url) else {
+            fail("\(url.lastPathComponent) declares no encoder head (metadata.json 'decision' block)")
+        }
+        if tokensOnly {
+            base = try await EncoderPrompt(tokenizerFolder: url.appendingPathComponent("tokenizer"), layout: layout)
+        } else {
+            let loaded = try await EncoderDecider(bundleAt: url, computeUnits: computeUnits, actComputeUnits: actComputeUnits)
+            decider = loaded
+            base = loaded.prompt
+        }
+        bundleWindow = layout.window
+        source = "bundle \(url.lastPathComponent) (\(decider?.modelName ?? "tokens only")), window \(layout.window)"
+    }
+    print("fixture: \(root["schema"]?.stringValue ?? "-")   \(source)   temperature: \(temperatures.byType)\(temperatures.byOptions.isEmpty ? "" : " + buckets")")
+
+    struct Tally {
+        var rows = 0, tokens = 0, markers = 0, scored = 0, withinBar = 0, argmaxRows = 0, argmax = 0
+        var deltas: [Double] = [], actDeltas: [Double] = [], markerErrors: [Double] = [], actRelative: [Double] = []
+        var milliseconds: [Double] = []
+    }
+    var tallies: [Int: Tally] = [:]
+    var prompts: [Int: EncoderPrompt] = [:]
+    var skipped: [String] = []
+    var lines: [String] = []
+    for row in rows {
+        let rid = row["row_id"]?.stringValue ?? row["id"]?.stringValue ?? "?"
+        guard let w = window(of: row), let q = row["question"] else {
+            skipped.append("\(rid) (no window or question)")
+            continue
+        }
+        if let bundleWindow, bundleWindow != w {
+            skipped.append("\(rid) (window \(w); the bundle's is \(bundleWindow))")
+            continue
+        }
+        let fixtureID = row["fixture_id"]?.stringValue ?? row["request_id"]?.stringValue
+        guard let state = row["state"].map(stateText) ?? fixtureID.flatMap({ states[$0] }) else {
+            skipped.append("\(rid) (no state; pass --states)")
+            continue
+        }
+        let prompt = prompts[w] ?? base.windowed(w)
+        prompts[w] = prompt
+        let question = wireQuestion(q)
+        let rendered: EncoderPrompt.Rendered
+        do {
+            rendered = try prompt.render(state: state, question: question)
+        } catch {
+            skipped.append("\(rid) (\(error.localizedDescription))")
+            continue
+        }
+        var tally = tallies[w] ?? Tally()
+        tally.rows += 1
+        let ids = numbers(row["sequence_ids"]).map { Int32($0) }
+        let markers = numbers(row["marker_positions"]).map { Int32($0) }
+        let tokensOK = rendered.tokens == ids, markersOK = rendered.markers == markers
+        if tokensOK { tally.tokens += 1 }
+        if markersOK { tally.markers += 1 }
+        var cells = "\(tokensOK ? "=" : "≠") | \(markersOK ? "=" : "≠")"
+        var flag = tokensOK && markersOK ? "ok" : "DIFF"
+        if !tokensOK || verbose {
+            let first = zip(rendered.tokens, ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+            stderrPrint("  \(rid) s\(w): tokens kit \(rendered.tokens.count) ref \(ids.count), first diff \(first.map(String.init) ?? "-"); markers kit \(rendered.markers) ref \(markers)")
+        }
+        if let decider {
+            let out = try await decider.decideRow(ids: rendered.tokens, markers: rendered.markers, qtype: rendered.qtype)
+            let p = EncoderReadout.probabilities(
+                logits: out.optionLogits, temperature: temperatures.temperature(qtype: rendered.qtype, options: rendered.markers.count))
+            let reference = numbers(row["probabilities"])
+            // A noul is compared on P(true), a choice or a score on every option (the gate's rule).
+            let delta = rendered.qtype == 2
+                ? abs((p.last ?? 0) - (reference.last ?? 0))
+                : (zip(p, reference).map { abs($0 - $1) }.max() ?? 0)
+            let act = EncoderReadout.actProbability(actLogits: out.actLogits)
+            let actDelta = abs(act - (row["act_probability"]?.doubleValue ?? .nan))
+            tally.scored += 1
+            // The acceptance bar of the port's gate: 1e-3 on the probabilities and on the act probability.
+            if delta <= 1e-3, actDelta <= 1e-3 { tally.withinBar += 1 } else { flag = "DIFF" }
+            tally.deltas.append(delta)
+            tally.actDeltas.append(actDelta)
+            tally.milliseconds.append(out.seconds * 1000)
+            var argmaxCell = "-"
+            if rendered.qtype != 2 {
+                tally.argmaxRows += 1
+                let best = p.indices.max { p[$0] < p[$1] }, refBest = reference.indices.max { reference[$0] < reference[$1] }
+                if best == refBest { tally.argmax += 1 } else { flag = "DIFF" }
+                argmaxCell = best == refBest ? "=" : "≠"
+            }
+            // Informational: the fixture's raw logits come from the publisher's batched, padded call.
+            let rawLogits = numbers(row["raw_logits"]), rawAct = numbers(row["raw_act_logits"])
+            if rawLogits.count == out.optionLogits.count {
+                tally.markerErrors.append(zip(out.optionLogits, rawLogits).map { abs(Double($0) - $1) }.max() ?? 0)
+            }
+            if rawAct.count == out.actLogits.count, let scale = rawAct.map(abs).max(), scale > 0 {
+                tally.actRelative.append((zip(out.actLogits, rawAct).map { abs(Double($0) - $1) }.max() ?? 0) / scale)
+            }
+            cells += " | \(argmaxCell) | \(fmt(delta, 6)) | \(fmt(actDelta, 6))"
+        }
+        tallies[w] = tally
+        lines.append("| \(rid) | \(w) | \(EncoderReadout.questionTypes[rendered.qtype]) | \(rendered.markers.count) | \(cells) | \(flag) |")
+    }
+    let numbersToo = decider != nil
+    print(numbersToo
+        ? "| row | window | type | options | tokens | markers | argmax | \\|Δp\\| | act \\|Δ\\| | |\n|---|---:|---|---:|:-:|:-:|:-:|---:|---:|---|"
+        : "| row | window | type | options | tokens | markers | |\n|---|---:|---|---:|:-:|:-:|---|")
+    lines.forEach { print($0) }
+    for w in tallies.keys.sorted() {
+        let t = tallies[w]!
+        print("s\(w): rows \(t.rows)   tokens identical \(t.tokens)/\(t.rows)   markers identical \(t.markers)/\(t.rows)")
+        guard t.scored > 0 else { continue }
+        print("s\(w): argmax agreement (choice + score) \(t.argmax)/\(t.argmaxRows)   max |Δp| \(fmt(t.deltas.max() ?? 0, 6))   max act-probability |Δ| \(fmt(t.actDeltas.max() ?? 0, 6))   within 1e-3: \(t.withinBar)/\(t.scored)")
+        if !t.markerErrors.isEmpty || !t.actRelative.isEmpty {
+            print("s\(w): vs the fixture's raw logits (batched and padded upstream, informational): marker max |Δ| \(fmt(t.markerErrors.max() ?? 0, 6)), act max relative \(String(format: "%.3g", t.actRelative.max() ?? 0))")
+        }
+        print("s\(w): ms per question (main + act): median \(fmt(median(t.milliseconds), 2)), max \(fmt(t.milliseconds.max() ?? 0, 2)) over \(t.milliseconds.count) rows, no warm-up")
+    }
+    if !skipped.isEmpty { print("skipped \(skipped.count): " + skipped.joined(separator: "; ")) }
+}
+
 @MainActor func runParity() async throws {
     guard let fixture else { fail(usage) }
     let data = try Data(contentsOf: URL(fileURLWithPath: fixture))
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-encoder-fixtures") {
+        try await runEncoderParity(data)
+        return
+    }
     if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-letter-fixtures") {
         try await runLetterParity(data)
         return

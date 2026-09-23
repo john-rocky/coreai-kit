@@ -91,6 +91,7 @@ MCP server itself.
 | Reading a 565-token contract once, then 12 answers | 316 ms + 532 ms | 508 ms + 1,134 ms |
 | Twenty tickets × three columns, 60 decisions | 3,963 ms | 7,420 ms |
 | A `/v1/systemone` request, 2 questions on a 59-token state, end to end | 204 ms | — |
+| One decision, `laya-multilingual` (an encoder, 256-token window, GPU, state shared) | 11.5 ms | not yet measured |
 
 Measured 2026-09-22/23 on the runs in `Examples/Decide/README.md`, which says what each
 number is and what else was running.
@@ -121,6 +122,18 @@ three-option decision on the Mac.
 `openjev-27b`, the 27B model behind the OpenJev decision API read exactly as its helper reads it
 (CC BY-NC 4.0), is token-identical to its helper's rows and argmax-identical on all 61 fixture rows
 (int8 max |Δp| 0.0003) and scores 0.907 on the same 144 rows, at about 8 s per decision on the Mac.
+`laya-multilingual`, an encoder-type decision model (convaiinnovations' laya, the multilingual
+checkpoint: an mmBERT-base encoder with a typed decision head, Apache-2.0), reads the whole question
+in one forward pass and answers at a mask marker in front of each option; nothing is generated or
+prefilled. Its rows through the kit are token- and marker-identical to its publisher's builder on
+all 201 multilingual fixture rows at both of its windows (256 and 512 tokens), and the fp16-weight
+bundle is argmax-identical to the official model on all 81 choice and score rows (max |Δp| 5e-6 on
+the Mac GPU, 9e-6 on the CPU, at T = 1). On the same 144 rows it answers as the official model does
+(144/144 argmax; family-balanced accuracy 0.611 and accuracy 0.590, the model's own figures), at
+11.5 ms per decision on the Mac GPU, read at the calibration its bundle declares. The shipped
+bundles run on the GPU: the Neural Engine takes only an fp16-compute graph, which misses the answer
+bar, and with a Neural Engine preference the shipped graph misses it too, its answers changing from
+run to run.
 
 What the probabilities are worth, on the same 144 rows (top-label ECE over 10 equal-width bins,
 multi-class Brier): read raw, `minicpm5-2b` is over-confident — ECE 0.167, Brier 0.455 at
@@ -171,6 +184,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `qwen3.5-2b-decision` | ` A`–` Z` after its plain-text prompt | 26 |
 | `apus-openjev-v1-4b` | A–P | 16 |
 | `openjev-27b` | A–Z, a–z | 52 |
+| `laya-multilingual` | a mask marker before each option, in one forward pass | 20 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its
 letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
@@ -224,6 +238,11 @@ Clips of each on the Mac and on the iPhone are in
   local network), `DecisionQueue` (one decision at a time over a shared model), and
   `SystemOneMCPServer` + `SystemOneMCP` (the same decisions as Model Context Protocol tools
   over stdio, and the message forms).
+- `Sources/CoreAIKit/Decide/Encoder*.swift` — an encoder-type model (laya): `EncoderPrompt` (the
+  publisher's row builder; recent questions' tokens are kept), `EncoderReadout` (its host decoder:
+  marker logits, act features, the temperature by question type and option count) and
+  `EncoderDecider` (the bundle's `main` and `act` functions; `decideRow` gives the raw numbers).
+  `TypedDecisions` is the API over them.
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op.
 - `Sources/systemone` — the `systemone` binary (`serve | ask | models | mcp`), built, signed and
   notarized per tag by `.github/workflows/release.yml`; the Homebrew formula lives in

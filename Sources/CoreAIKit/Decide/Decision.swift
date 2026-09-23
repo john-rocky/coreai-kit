@@ -67,6 +67,14 @@ public enum Decision {
         /// lists `yes` / `no` with what each means and is calibrated the helper's way.
         /// `LetterListPrompt.swift`.
         case letterList
+        /// The encoder form (laya): one forward pass over `[CLS] <type> question: <instructions>
+        /// [SEP] [MASK] option [MASK] option … [SEP] <state> [SEP]`, the model giving every
+        /// position a logit and each option read at its mask marker, softmaxed within the
+        /// question at the temperature the bundle declares for its type and option count. No
+        /// chat template and no answer slot; the bundle is not a language bundle and declares
+        /// itself (`decision.head == "encoder"` in its metadata.json, with its window, head
+        /// budget, special ids and temperatures). `EncoderPrompt.swift`, `EncoderDecider.swift`.
+        case encoder
     }
 
     /// One listed answer for a `choice` question. `id` is what the answer reports;

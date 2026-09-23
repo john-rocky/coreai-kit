@@ -430,6 +430,44 @@ rows, 0 reused; over the fixture 9.3 s median per question (rows of 90–505 tok
 sequential engine, with the GPU shared with a conversion run while these were taken. Mac only:
 the int8 bundle is 28 GB and about 28 GB resident; nothing shared between questions.
 
+**An encoder instead of a language model.** `laya-multilingual` (`Decision.Format.encoder`;
+convaiinnovations' laya, the multilingual checkpoint — an mmBERT-base encoder with a typed decision
+head, Apache-2.0) reads a whole question in one forward pass: `[CLS] <type> question: <instructions>
+[SEP] [MASK] option [MASK] option … [SEP] <state> [SEP]`, one logit per position, each option read
+at its marker and softmaxed within the question. Nothing is generated and there is no KV cache: what
+the questions on one state share is its tokens (`prefill` tokenizes it once), and a recently asked
+question's tokens are reused as well. The bundle declares itself (`decision.head == "encoder"`) with
+its window, head budget, special ids and the calibration it ships (a temperature per question type
+and option count, fitted on 4,415 examples by the LiteRT port, choice 6–10 kept at T = 1). On the
+publisher's 201 multilingual fixture rows (`decide-cli parity`, 2026-09-23, the fp16-weight `wfp16`
+bundles, the fixture's own temperature, T = 1):
+
+| Window | Compute | Tokens / markers identical | Argmax (choice + score) | max \|Δp\| | Rows within 1e-3 |
+|---|---|---:|---:|---:|---:|
+| 256 | CPU | 201/201 | 81/81 | 9e-6 | 201/201 |
+| 512 | CPU | 201/201 | 81/81 | 9e-6 | 201/201 |
+| 256 | GPU | 201/201 | 81/81 | 5e-6 | 201/201 |
+| 512 | GPU | 201/201 | 81/81 | 5e-6 | 201/201 |
+| 256 | Neural Engine preference, three runs | 201/201 | 79–80 | 0.15–0.61 | 168–183 |
+
+On SemIf's 144 English rows, at the shipped calibration, the kit reproduces the official model's
+readout: 144/144 argmax, max |Δp| 2.9e-6, mean family balanced accuracy 0.611 (evidence 0.619, rule
+0.634, candidate 0.581), accuracy 0.590, macro-F1 0.592 — the official model's own 0.6114 / 0.5903 /
+0.5917 on the same rows (0.590 is this model's accuracy, not its balanced accuracy). Speed on the Mac
+GPU (`decide-cli bench`, the 109-token sample state and eight questions, warm, median of 3, nothing
+else on the GPU): 11.5 ms per decision at the 256 window and 18.9 ms at 512 with the state shared,
+12.1 / 19.4 ms from scratch; the state and its eight decisions 100 / 160 ms shared, 185 / 240 ms from
+scratch, which re-tokenizes the state and the question every time. Tokenizing a question's head and
+options costs 2.3 ms (median) here; kept, it takes a decision's wall clock from 14.2 to 11.7 ms over
+the 201 rows at 256. The bundle loads in about 1.1 s, most of it the tokenizer, whose 256k-token
+vocabulary is about 150 MB resident (145–162 MB over three loads); the process is 480–500 MB after its
+first decision. The shipped bundles run on the GPU: the Neural Engine takes only an fp16-compute
+graph, which misses the answer bar, and asking for the Neural Engine with the shipped graph (the last
+row) gives answers outside the bar that change from run to run. A structured `instructions` value is
+written with its non-ASCII text as is, where the publisher's client escapes it, so such a question
+can tokenize differently from the publisher's; plain-text instructions are unaffected. iPhone: not
+yet measured.
+
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
 a short text leans *yes*: "is this what the purpose needs?" says yes to a phone number, a

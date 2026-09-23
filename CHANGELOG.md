@@ -23,6 +23,16 @@ policy.
 - `decide-cli oracle --dump-prompts <path>` writes each row's token ids and answer-slot ids in
   the `--prompts` shape. A row whose prompt outgrows the model's context is skipped and listed
   instead of ending the run.
+- **Encoder-type decision models: `Decision.Format.encoder`.** A bundle whose `metadata.json`
+  declares `decision.head == "encoder"` (laya multilingual) is recognised by both `TypedDecisions`
+  initialisers before anything reads it as a language bundle, and answers in one forward pass per
+  question, read at the mask marker in front of each option, at the temperature the bundle declares
+  per question type and option count. `prefill` tokenizes the state once; recent questions' tokens
+  are reused. `TypedDecisions.Configuration.computeUnits` picks the graphs' compute units (the GPU
+  by default). `EncoderPrompt`, `EncoderReadout` and `EncoderDecider` are the low level
+  (`decideRow` for the raw numbers). `decide-cli parity` reads `coreai-encoder-fixtures/1` — tokens
+  and markers with only a tokenizer (`--tokens-only --tokenizer`), the raw logits with a bundle —
+  and `--compute` reaches every command.
 - `Examples/Decide/conformance/` — `check.py <base_url>`: 22 requests in the hosted System One
   forms and the shape each answer must come back in (types and keys), for this server or any
   other that speaks the route; `calibration.py`: accuracy, NLL, Brier, top-label ECE and a

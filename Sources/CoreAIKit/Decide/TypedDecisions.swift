@@ -43,6 +43,11 @@
 // with its temperature); otherwise the catalog entry's `format` decides, then the catalog
 // kind. `Configuration.format` overrides all of them.
 //
+// An encoder-type model (laya) is not a language bundle at all: one forward pass reads the
+// whole question and each option is read at its mask marker (`Decision.Format.encoder`,
+// `EncoderPrompt.swift`, `EncoderDecider.swift`). Its bundle declares `decision.head ==
+// "encoder"`, and both initialisers look for that before anything else.
+//
 // ## Which engine
 //
 // The answer needs the logits at the answer slot, which the default GPU-pipelined engine does
@@ -57,6 +62,7 @@
 // a phone the ceiling is what fits in 1024 tokens (about 60 short options in the chat form,
 // estimated from the Mac prompt sizes, not measured on a phone).
 
+import CoreAIKitVision
 import CoreAILanguageModels
 import Foundation
 import Tokenizers
@@ -83,11 +89,29 @@ public actor TypedDecisions {
         /// Prefill one token per step. `nil` detects a decode-only (S=1) graph from the bundle
         /// name; set it explicitly for a local bundle the heuristic cannot see.
         public var singleTokenPrefill: Bool? = nil
+        /// Compute units for an encoder bundle's graphs (`Format.encoder`); the language
+        /// formats load on their engine and ignore it. `.neuralEngine` is refused at load: the
+        /// shipped encoder graph's answers are wrong there.
+        public var computeUnits: GraphModel.ComputeUnits = .gpu
 
         public init() {}
     }
 
-    private let runtime: ModelRuntime
+    /// What answers: a language bundle's engine, or an encoder bundle's graphs.
+    enum Backend: Sendable {
+        case language(ModelRuntime)
+        case encoder(EncoderDecider)
+    }
+
+    private let backend: Backend
+    /// The language runtime. Every path that reads it belongs to a language format; an
+    /// encoder bundle (`format == .encoder`) branches off before reaching any of them.
+    nonisolated private var runtime: ModelRuntime {
+        guard case .language(let runtime) = backend else {
+            preconditionFailure("an encoder bundle has no language runtime")
+        }
+        return runtime
+    }
     private let configuration: Configuration
     /// The prompt form this model is scored with.
     nonisolated public let format: Decision.Format
@@ -115,12 +139,13 @@ public actor TypedDecisions {
     /// for a chat model whose tokenizer writes the numbers to 255 as single tokens (minicpm5-2b),
     /// 26 for another chat model (qwen3-0.6b), 16 for the `Shared state:` form, 26 for the
     /// decision-function form, 52 for the letter list, 255 rows for a scalar head, every slot
-    /// but the abstain one (255 for OpenThai-SystemOne) for a slot head. A score keeps 10
-    /// levels. `maxOptions(format:labels:numbers:slot:)` is the rule.
+    /// but the abstain one (255 for OpenThai-SystemOne) for a slot head, 20 for an encoder. A
+    /// score keeps 10 levels. `maxOptions(format:labels:numbers:slot:)` is the rule.
     nonisolated public let maxOptions: Int
     /// The catalog id, or the bundle directory name for a local bundle.
     public let id: String
-    /// The bundle's `max_context_length`; a prompt must leave one slot for the answer.
+    /// The bundle's `max_context_length`; a prompt must leave one slot for the answer. An
+    /// encoder bundle's window: the length every row is cut and padded to.
     public let maxContextLength: Int
     /// Exact token sequence the engine's KV cache holds (the last scored prompt).
     private var kvTokens: [Int32] = []
@@ -128,7 +153,12 @@ public actor TypedDecisions {
     public private(set) var lastTiming: Decision.Timing?
 
     /// Display name from the bundle metadata.
-    public var modelName: String { runtime.modelName }
+    public var modelName: String {
+        switch backend {
+        case .language(let runtime): runtime.modelName
+        case .encoder(let encoder): encoder.modelName
+        }
+    }
 
     /// Whether this catalog entry can answer typed questions here: a `chat` or `decision`
     /// model on a runtime that exposes logits. The Gemma 4 pairs and the raw-Metal pack sample
@@ -160,6 +190,10 @@ public actor TypedDecisions {
                 id: id, reason: "its runtime samples on the GPU and exposes no logits")
         }
         let url = try await store.download(model, progress: downloadProgress)
+        if let layout = try EncoderPrompt.Layout.read(bundleAt: url) {
+            try await self.init(encoderAt: url, layout: layout, configuration: configuration, id: id)
+            return
+        }
         Self.configureSingleTokenPrefill(
             bundleName: model.resolvedPath, override: configuration.singleTokenPrefill)
         let bundle = try LanguageBundle(at: url)
@@ -187,6 +221,10 @@ public actor TypedDecisions {
     /// Loads a local bundle directory (metadata.json + *.aimodel/ + tokenizer/). The prompt
     /// format follows the bundle name (`decider` → `.decider`) unless the configuration sets it.
     public init(bundleAt url: URL, configuration: Configuration = Configuration()) async throws {
+        if let layout = try EncoderPrompt.Layout.read(bundleAt: url) {
+            try await self.init(encoderAt: url, layout: layout, configuration: configuration, id: url.lastPathComponent)
+            return
+        }
         Self.configureSingleTokenPrefill(
             bundleName: url.lastPathComponent, override: configuration.singleTokenPrefill)
         let bundle = try LanguageBundle(at: url)
@@ -228,6 +266,9 @@ public actor TypedDecisions {
         var labels = LabelTable(names: [], ids: [])
         var numbers = LabelTable(names: [], ids: [])
         switch format {
+        case .encoder:
+            throw DecisionError.unsupportedModel(
+                id: id, reason: "its metadata.json declares no encoder head ('decision' block), which Format.encoder needs")
         case .chat:
             labels = try Self.labels(LabelTable.letters, .chat, tokenizer: runtime.tokenizer)
             numbers = LabelTable.build(LabelTable.numbers, rule: .chat, run: true, tokenizer: runtime.tokenizer)
@@ -259,7 +300,7 @@ public actor TypedDecisions {
         let temperatures = try Self.resolveTemperatures(
             id: id, configured: configuration.temperature, catalog: calibration, format: format,
             slot: layout, scalar: scalar, letters: letters)
-        self.runtime = runtime
+        self.backend = .language(runtime)
         self.configuration = configuration
         self.id = id
         self.maxContextLength = maxContextLength
@@ -277,9 +318,13 @@ public actor TypedDecisions {
 
     /// The temperature a question's logits are read at: the configured one when set, else the
     /// catalog's calibration, else the model's own — per question type for a slot-head model
-    /// or a calibration fitted per type, one value otherwise.
+    /// or a calibration fitted per type, by type and option count for an encoder, one value
+    /// otherwise.
     nonisolated public func temperature(for question: Decision.Question) -> Double {
-        temperatures.temperature(for: question.kind)
+        if case .encoder(let encoder) = backend {
+            return configuration.temperature ?? encoder.layout.temperatures.temperature(for: question)
+        }
+        return temperatures.temperature(for: question.kind)
     }
 
     /// `.auto` → the static-shape engine for a chunked static bundle, else the sequential
@@ -302,8 +347,8 @@ public actor TypedDecisions {
 
     /// The options a choice may list on a model read in `format`: the decider's label table's
     /// count, a chat model's number run where it reaches past its letters (else the letters'),
-    /// a slot head's slot count, the form's own letter set otherwise (16, 26, 52), and the
-    /// hosted API's 255 rows for a scalar head.
+    /// a slot head's slot count, the form's own letter set otherwise (16, 26, 52), the hosted
+    /// API's 255 rows for a scalar head, and an encoder's 20.
     static func maxOptions(
         format: Decision.Format, labels: LabelTable, numbers: LabelTable, slot: SlotPrompt.Layout?
     ) -> Int {
@@ -315,6 +360,7 @@ public actor TypedDecisions {
         case .letterList: return LetterListPrompt.maxOptions
         case .scalar: return ScalarPrompt.maxOptions
         case .slot: return slot?.maxOptions ?? DecisionPrompt.maxOptions
+        case .encoder: return EncoderPrompt.maxOptions
         }
     }
 
@@ -326,6 +372,43 @@ public actor TypedDecisions {
             throw DecisionError.answerSlotNotSingleToken(letter: names.first { !table.names.contains($0) } ?? names[0])
         }
         return table
+    }
+
+    /// An encoder bundle (`Format.encoder`): its graphs, its tokenizer and the contract its
+    /// metadata declares, no language runtime. It reads as `.encoder` only.
+    private init(
+        encoderAt url: URL, layout: EncoderPrompt.Layout, configuration: Configuration, id: String
+    ) async throws {
+        if let requested = configuration.format, requested != .encoder {
+            throw DecisionError.unsupportedModel(
+                id: id, reason: "it is an encoder bundle, which reads as Format.encoder, not .\(requested.rawValue)")
+        }
+        // `EncoderDecider` itself still takes the Neural Engine, for measuring it.
+        if configuration.computeUnits == .neuralEngine {
+            throw DecisionError.unsupportedModel(
+                id: id,
+                reason: "with a Neural Engine preference this graph's answers fall outside the 1e-3 bar and change "
+                    + "from run to run (2026-09-23, Mac GPU exact); use the GPU")
+        }
+        self.backend = .encoder(
+            try await EncoderDecider(bundleAt: url, layout: layout, computeUnits: configuration.computeUnits))
+        self.configuration = configuration
+        self.id = id
+        self.maxContextLength = layout.window
+        self.format = .encoder
+        // One per type for `temperature` and the calibration tools; `temperature(for:)` reads the
+        // bundle's table by type and option count.
+        let byType = layout.temperatures.byType
+        self.temperatures = configuration.temperature.map { DecisionTemperatures(choice: $0, score: $0, noul: $0) }
+            ?? DecisionTemperatures(choice: byType[0], score: byType[1], noul: byType[2])
+        self.temperature = temperatures.choice
+        self.slotLayout = nil
+        self.scalarLayout = nil
+        self.letterLayout = nil
+        self.slotEncoder = nil
+        self.labels = LabelTable(names: [], ids: [])
+        self.numbers = LabelTable(names: [], ids: [])
+        self.maxOptions = EncoderPrompt.maxOptions
     }
 
     // MARK: - Decide
@@ -409,6 +492,13 @@ public actor TypedDecisions {
                     for: question, probabilities: DeciderPrompt.combine(fit: fit), timing: total, fit: fit)
             }
             return DecisionPrompt.answer(for: question, probabilities: last, timing: total)
+        case .encoder:
+            // One forward pass per question; the options read at their markers.
+            guard case .encoder(let encoder) = backend else { throw DecisionError.noLogits }
+            let answer = try await encoder.decide(
+                state, question, temperature: temperature(for: question), sharePrefix: configuration.sharePrefix)
+            lastTiming = answer.timing
+            return answer
         }
     }
 
@@ -460,6 +550,12 @@ public actor TypedDecisions {
             guard let layout = scalarLayout else { throw DecisionError.noLogits }
             prefix = ScalarPrompt.statePrefix(state: state, layout: layout, tokenizer: runtime.tokenizer)
         case .letterList: prefix = try LetterListPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
+        case .encoder:
+            // An encoder shares only the state's tokens between questions: tokenized once here.
+            guard case .encoder(let encoder) = backend else { throw DecisionError.noLogits }
+            let (tokens, timing) = await encoder.prefill(state, sharePrefix: configuration.sharePrefix)
+            lastTiming = timing
+            return PrefilledState(state: state, tokens: tokens, timing: timing, decider: self)
         }
         let (_, timing) = try await score(prefix, includeLogits: false)
         return PrefilledState(state: state, tokens: prefix.count, timing: timing, decider: self)
@@ -500,13 +596,21 @@ public actor TypedDecisions {
         case .letterList:
             let rendered = try LetterListPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
             return [(rendered.tokens, rendered.slots)]
+        case .encoder:
+            // One row; the slots are the option markers' positions in it.
+            guard case .encoder(let encoder) = backend else { throw DecisionError.noLogits }
+            let rendered = try encoder.prompt.render(state: state, question: question)
+            return [(rendered.tokens, rendered.markers)]
         }
     }
 
     /// Drops the cached prompt: the next decision prefills from scratch.
     public func reset() async throws {
         kvTokens = []
-        try await runtime.engine.reset()
+        switch backend {
+        case .language(let runtime): try await runtime.engine.reset()
+        case .encoder(let encoder): await encoder.reset()
+        }
     }
 
     // MARK: - Engine

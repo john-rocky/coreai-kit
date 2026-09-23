@@ -71,6 +71,11 @@ extension TypedDecisions {
             return DecisionTemperatures(choice: t, score: t, noul: t)
         case .chat, .sharedState, .decisionFunction:
             return DecisionTemperatures(choice: 1, score: 1, noul: 1)
+        case .encoder:
+            // An encoder bundle loads through `init(encoderAt:)`, which reads its bundle's own
+            // table by question type and option count; a language bundle is refused as `.encoder`
+            // before it gets here.
+            return DecisionTemperatures(choice: 1, score: 1, noul: 1)
         }
     }
 }

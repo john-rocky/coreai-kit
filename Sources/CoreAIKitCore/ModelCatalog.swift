@@ -93,8 +93,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// For a `decision` entry: the prompt form its readout needs, by the raw value of
     /// `Decision.Format` — `decider` (plain `Context:` / `Options:` rows), `slot` (a slot head
     /// read at a control token; the bundle's metadata declares it too), `sharedState` (a
-    /// `Shared state:` + JSON task user turn read at the option letters). nil = the kind's
-    /// default (`decider` for a decision entry).
+    /// `Shared state:` + JSON task user turn read at the option letters), `encoder` (an
+    /// encoder-type model read at a mask marker per option in one forward pass; the bundle's
+    /// metadata declares it too). nil = the kind's default (`decider` for a decision entry).
     public let format: String?
     /// The weights' license when it restricts what an app may do with them — the SPDX
     /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
@@ -462,6 +463,21 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "gpu-pipelined/openjev_27b_decode_int8hu_block32_sym", sizeMB: 28423),
                 ],
                 engine: "pipelined", format: "letterList", license: "CC-BY-NC-4.0"),
+            // ── laya multilingual: an encoder-type decision model (mmBERT-base with a typed
+            //    decision head, Apache-2.0) — one forward pass per question, each option read at
+            //    its mask marker (`format: encoder`; the bundle's metadata declares it, with its
+            //    window and the calibration it ships). The fp16-weight graph at the 256-token
+            //    window, the same portable bundle on both platforms (0.68 GB), on the GPU: a
+            //    Neural Engine preference is refused (its answers change from run to run there).
+            //    No iPhone number yet. ──
+            CatalogEntry(
+                id: "laya-multilingual", name: "laya multilingual",
+                repo: "mlboydaisuke/Laya-Multilingual-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(path: "macos/wfp16-s256", sizeMB: 681),
+                    "ios": .init(path: "ios/wfp16-s256", sizeMB: 680),
+                ],
+                format: "encoder"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,
