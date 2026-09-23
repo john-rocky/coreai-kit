@@ -100,10 +100,14 @@ MCP server itself.
 | Reading a 565-token contract once, then 12 answers | 316 ms + 532 ms | 508 ms + 1,134 ms |
 | Twenty tickets × three columns, 60 decisions | 3,963 ms | 7,420 ms |
 | A `/v1/systemone` request, 2 questions on a 59-token state, end to end | 204 ms | — |
-| One decision, `laya-multilingual` (an encoder, 256-token window, GPU, state shared) | 11.5 ms | not yet measured |
+| One decision, `laya-multilingual` (an encoder, 256-token window, GPU, state shared) | 11.5 ms | 47 ms |
+| One decision, `openthai-systemone` (0.8B, its own answer head; a recurrent hybrid, so every question re-prefills its ~150-token row) | 688 ms† | 1,527 ms |
+| One decision, `qwen3.5-2b-decision` (2B, the same S = 1 prefill of ~190 tokens) | 1,275 ms† | 6,063 ms |
 
-Measured 2026-09-22/23 on the runs in `Examples/Decide/README.md`, which says what each
-number is and what else was running.
+Measured 2026-09-22/24 on the runs in `Examples/Decide/README.md`, which says what each
+number is and what else was running; the phone at thermal state "nominal" for the last three rows.
+† `decide-cli bench --repeat 3` with the Mac's GPU shared with three model conversions (2026-09-24);
+the two models' quiet-Mac figures are their fixture medians, 354 ms and 986 ms per question.
 
 ## What it gets right, and what it does not
 
@@ -118,15 +122,19 @@ fp32 assembly (max 0.016, on a five-level fit mass).
 `openthai-systemone`, a Thai +
 English decision model with a 256-way answer head of its own (up to 255 options, an abstain
 probability), is token-identical and argmax-identical to its author's readout on all 50 of its
-fixture rows (int8 max |Δp| 0.023) and scores 0.725 on SemIf's 144 English rows through the kit.
+fixture rows (int8 max |Δp| 0.023; on the iPhone 17 Pro the same 50/50 at 0.021) and scores 0.725 on
+SemIf's 144 English rows through the kit, at 0.35 s per fixture question on the Mac and 1.5 s per
+decision on the phone (1.9 s per fixture question when the phone was hot).
 `apus-decision-v1-4b`, a Qwen3.5-4B decision model for browser and workflow steps read at the
 letters A–P under its chat template, is token-identical to its author's compiled prompts on the
 40 choice and yes/no fixture rows (max |Δp| 0.0055) and scores 0.906 on the same 144 rows, at
 about 2 s per decision on the Mac.
 `qwen3.5-2b-decision`, a Qwen3.5-2B decision model with its calibration folded into the weights and
 read at space-prefixed letters after a plain-text prompt, is token-identical to its author's rows and
-argmax-identical to its fp32 reference on all 58 fixture rows (int8 max |Δp| 0.0079) and scores 0.798
-on the same 144 rows, at about 1 s per decision on the Mac.
+argmax-identical to its fp32 reference on all 58 fixture rows (int8 max |Δp| 0.0079; on the iPhone 17
+Pro the same 58/58 at 0.0070) and scores 0.798 on the same 144 rows, at about 1 s per decision on the
+Mac and about 6 s on the phone (11 s when the phone is hot), where its S = 1 prefill runs at the
+phone's rate.
 `system-one-scorer-4b`, a Qwen3.5-4B scoring head that reads one row per option at its author's
 temperature (CC BY-NC 4.0), is token-identical to its author's 280 fixture rows and argmax-identical
 on all 48 questions (int8 max |Δp| 0.011) and scores 0.844 on the same 144 rows, at about 2 s per
@@ -139,10 +147,12 @@ all 201 multilingual fixture rows at both of its windows (256 and 512 tokens), a
 bundle is argmax-identical to the official model on all 81 choice and score rows (max |Δp| 5e-6 on
 the Mac GPU, 9e-6 on the CPU, at T = 1). On the same 144 rows it answers as the official model does
 (144/144 argmax; family-balanced accuracy 0.611 and accuracy 0.590, the model's own figures), at
-11.5 ms per decision on the Mac GPU, read at the calibration its bundle declares. The shipped
+11.5 ms per decision on the Mac GPU and 47 ms on the iPhone 17 Pro's (53–55 ms per fixture row),
+read at the calibration its bundle declares; on the phone the same 201 rows pass (argmax 81/81,
+max |Δp| 8e-6). The shipped
 bundles run on the GPU: the Neural Engine takes only an fp16-compute graph, which misses the answer
-bar, and with a Neural Engine preference the shipped graph misses it too, its answers changing from
-run to run.
+bar, and with a Neural Engine preference the shipped graph misses it too, on the Mac and on the
+phone, its answers changing from run to run.
 
 What the probabilities are worth, on the same 144 rows (top-label ECE over 10 equal-width bins,
 multi-class Brier): read raw, `minicpm5-2b` is over-confident — ECE 0.167, Brier 0.455 at
@@ -209,11 +219,15 @@ the same option on every row. `decider-0.8b` picked it on all 60 rows that fit i
 context. A question past 26 options reads its own system line, so it prefills the state again
 instead of reusing it.
 
-On an iPhone a prompt must stay under 1,024 tokens, and a 255-option choice does not: its prompt
-is 1,965 tokens on `decider-0.8b`'s fixture row and 3,100–4,200 in the chat form with short
-options. A choice that wide is a Mac call. On a phone the ceiling is what fits in 1,024 tokens
-beside the state: about 60 short options in the chat form, estimated from the prompt sizes above
-(not measured on a phone).
+On an iPhone a chat model's prompt must stay under 1,024 tokens (the growing cache of the
+pipelined engine the chat models run on there), and a 255-option choice in the chat form does
+not: 3,100–4,200 tokens with short options, so on a chat model a choice that wide is a Mac
+call; the phone's ceiling there is what fits in 1,024 tokens beside the state, about 60 short
+options, estimated from the prompt sizes above (not measured on a phone). A decision model, read
+on the logits engine, takes a longer row on the phone: `decider-0.8b`'s 255-option fixture row,
+1,965 tokens, answered on the iPhone 17 Pro in 70 s with the fp32 readout's argmax
+(2026-09-23, all 44 rows argmax-identical there, max |Δp| 0.009), and `qwen3.5-2b-decision`'s
+1,743-token rows in 155 s — on a decision model a wide choice is a slow call, not a Mac-only one.
 
 ## What runs
 
