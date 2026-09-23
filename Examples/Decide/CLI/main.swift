@@ -20,6 +20,7 @@
 //   swift run -c release decide-cli mcp --preload      # a Model Context Protocol server on stdio (SystemOneMCPServer in the kit)
 //   swift run -c release decide-cli --list-models
 
+import CoreAILanguageModels
 import CoreAIOps
 import CryptoKit
 import Foundation
@@ -35,6 +36,7 @@ let usage = """
                             [--fit-name <text>] [--report-name <text>] [--verbose]
                             (a temperature fitted on --fit, before / after on --report; the record is a catalog.json `calibration`)
            decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
+                            [--dump-probs <rows.jsonl>] (per row: probabilities, argmax, prompt and reused tokens, ms)
                             (--bundle <dir> loads a local bundle directory instead of a catalog id, for any command)
                             (an encoder fixture: [--tokens-only] [--tokenizer <dir> --head-max-len <n>]
                              [--compute gpu|ane|cpu|cpuonly] [--act-compute gpu|ane|cpu|cpuonly])
@@ -45,6 +47,8 @@ let usage = """
            decide-cli mcp   [--model <catalog-id>] [--preload]
                             (a Model Context Protocol server on stdin/stdout — tools decide, models — for Claude Code, Codex, Cursor)
            decide-cli --list-models
+    (--no-share: every command re-prefills each prompt whole, TypedDecisions.Configuration.sharePrefix = false;
+     --engine-log: the inference engine's own log lines on stdout)
     """
 
 func stderrPrint(_ message: String, terminator: String = "\n") {
@@ -119,6 +123,11 @@ var headMaxLength: Int?
 /// Compute units for an encoder bundle's graphs, and for its act head when it differs.
 var computeUnits: GraphModel.ComputeUnits = .gpu
 var actComputeUnits: GraphModel.ComputeUnits?
+/// Every command without prefix reuse: each prompt re-prefilled whole (the fresh side of a
+/// shared-vs-fresh comparison).
+var noShare = false
+/// `parity`: where to write each row's probabilities, argmax, and prompt and reused tokens.
+var dumpProbsPath: String?
 
 func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
     switch name {
@@ -135,6 +144,7 @@ func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
 @MainActor func loadDecider(configuration: TypedDecisions.Configuration = .init()) async throws -> TypedDecisions {
     var configuration = configuration
     configuration.computeUnits = computeUnits
+    if noShare { configuration.sharePrefix = false }
     if let bundlePath {
         return try await TypedDecisions(bundleAt: URL(fileURLWithPath: bundlePath), configuration: configuration)
     }
@@ -191,6 +201,9 @@ while let arg = args.popFirst() {
     case "--head-max-len": headMaxLength = Int(args.popFirst() ?? "")
     case "--compute": computeUnits = parseComputeUnits(args.popFirst())
     case "--act-compute": actComputeUnits = parseComputeUnits(args.popFirst())
+    case "--no-share": noShare = true
+    case "--dump-probs": dumpProbsPath = args.popFirst()
+    case "--engine-log": CLILogger.level = 1
     default: fail(usage)
     }
 }
@@ -217,9 +230,10 @@ let id = modelID
 @MainActor func runAsk() async throws {
     guard let state, !questions.isEmpty else { fail(usage) }
     let asked = Dictionary(uniqueKeysWithValues: questions)
-    // `--bundle` must reach every command: the QuickStart snippet only knows catalog ids.
+    // `--bundle` and `--no-share` must reach every command: the QuickStart snippet only knows
+    // catalog ids and the default configuration.
     let answers: [String: Decision.Answer]
-    if bundlePath != nil {
+    if bundlePath != nil || noShare {
         let decider = try await loadDecider()
         stderrPrint("model: \(id) (\(await decider.modelName))   format: \(decider.format.rawValue)")
         answers = try await decider.decide(state, asked)
@@ -684,6 +698,24 @@ func firstMax(_ p: [Double]) -> Int {
 
 // MARK: - parity (a decision model's own fixture: every row's token ids, slot and probabilities)
 
+/// One `--dump-probs` line: a row's probabilities at full precision, its argmax, and where its
+/// tokens went (the rows of a score question share its answer's timing).
+func probsLine(id: String, probabilities: [Double], argmax: Int, timing: Decision.Timing) -> String {
+    JSONValue.object([
+        .init("id", .string(id)),
+        .init("probabilities", .array(probabilities.map { .number("\($0)") })),
+        .init("argmax", .int(argmax)),
+        .init("prompt_tokens", .int(timing.promptTokens)),
+        .init("reused_tokens", .int(timing.reusedTokens)),
+        .init("ms", .number("\(timing.milliseconds)")),
+    ]).dumps()
+}
+
+@MainActor func writeProbsDump(_ lines: [String]) throws {
+    guard let dumpProbsPath else { return }
+    try lines.joined(separator: "\n").appending("\n").write(toFile: dumpProbsPath, atomically: true, encoding: .utf8)
+}
+
 /// The fixture a decision-model port ships (`coreai-decider-fixtures/1`): requests in the
 /// model's wire shape, and the rows they were planned into with the author's fp32 readout.
 struct DeciderFixture: Decodable {
@@ -865,6 +897,7 @@ struct LetterFixture: Decodable {
     var deltas: [Double] = []
     var milliseconds: [Double] = []
     var lines: [String] = []
+    var dumped: [String] = []
     for row in fx.rows {
         guard let request = row.shape else {
             skipped.append("\(row.id) (no request or state/question/options)")
@@ -916,6 +949,7 @@ struct LetterFixture: Decodable {
         if best == refBest { argmaxAgree += 1 }
         let delta = zip(p, reference).map { abs($0 - $1) }.max() ?? 0
         deltas.append(delta)
+        dumped.append(probsLine(id: row.id, probabilities: p, argmax: best, timing: answer.timing))
         let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
         lines.append("| \(row.id) | \(request.primitive) | \(request.criteria.count) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
         if verbose || flag == "DIFF" {
@@ -934,6 +968,7 @@ struct LetterFixture: Decodable {
     print("|Δp| vs the fp32 readout: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(max(1, deltas.count)), 4))")
     print("ms per question: median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
     if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
+    try writeProbsDump(dumped)
 }
 
 /// A scalar-head fixture (`coreai-scalar-fixtures/1`, the System One scorer): the author's
@@ -1307,6 +1342,7 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
     var abstainDeltas: [Double] = []
     var milliseconds: [Double] = []
     var lines: [String] = []
+    var dumped: [String] = []
     for group in groups {
         let rows = group.rows.sorted { ($0.level_index ?? 0) < ($1.level_index ?? 0) }
         guard let state = stateByRequest[rows[0].request_id] else {
@@ -1348,6 +1384,7 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
             if best == refBest { argmaxAgree += 1 }
             let delta = zip(p, row.p_oracle).map { abs($0 - $1) }.max() ?? 0
             deltas.append(delta)
+            dumped.append(probsLine(id: row.id, probabilities: p, argmax: best, timing: answer.timing))
             if let reference = row.abstain, let abstain = answer.abstain { abstainDeltas.append(abs(abstain - reference)) }
             let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
             lines.append("| \(row.id) | \(row.type) | \(row.nopts) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
@@ -1371,6 +1408,7 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
     }
     print("ms per question (all rows of a score question summed): median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
     if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
+    try writeProbsDump(dumped)
 }
 
 // MARK: - filter (a semantic `grep`: one decision per stdin line)
