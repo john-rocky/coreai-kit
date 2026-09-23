@@ -64,9 +64,10 @@ import Tokenizers
 /// A loaded decision model. One decision at a time; calls on the same instance serialize.
 public actor TypedDecisions {
     public struct Configuration: Sendable {
-        /// Softmax temperature over the answer-slot logits. `nil` uses the model's own: 1 for
-        /// a chat model (its raw distribution), the card's calibration temperature for a
-        /// decision model (1.03 for `decider-0.8b`).
+        /// Softmax temperature over the answer-slot logits, for every question type. `nil` uses
+        /// the catalog entry's calibration when it has one (`CatalogEntry.calibration`, fitted by
+        /// the maintainer), else the model's own: 1 for a chat model (its raw distribution), the
+        /// card's calibration temperature for a decision model (1.03 for `decider-0.8b`).
         public var temperature: Double? = nil
         /// How the prompt is rendered. `nil` follows the bundle — `.slot` when its
         /// metadata.json declares a slot head — then the catalog kind (`.decider` for a
@@ -93,6 +94,8 @@ public actor TypedDecisions {
     /// The temperature applied to the answer-slot logits. A slot-head model carries one per
     /// question type; this is its choice temperature, and `temperature(for:)` has the rest.
     nonisolated public let temperature: Double
+    /// The temperature per question type (`DecisionCalibration.swift` has the order).
+    nonisolated let temperatures: DecisionTemperatures
     /// What a slot-head bundle declares about its head (`Format.slot`); nil otherwise.
     nonisolated let slotLayout: SlotPrompt.Layout?
     /// What a scalar-head bundle declares about its head (`Format.scalar`); nil otherwise.
@@ -178,7 +181,7 @@ public actor TypedDecisions {
                             ? .letterList
                             : entry.format.flatMap(Decision.Format.init(rawValue:))
                                 ?? (entry.kind == .decision ? .decider : .chat)),
-            layout: layout, scalar: scalar, letters: letters)
+            layout: layout, scalar: scalar, letters: letters, calibration: entry.calibration)
     }
 
     /// Loads a local bundle directory (metadata.json + *.aimodel/ + tokenizer/). The prompt
@@ -206,13 +209,13 @@ public actor TypedDecisions {
                             : name.contains("decider")
                                 ? .decider
                                 : name.contains("openjev") ? .sharedState : name.contains("decision") ? .decisionFunction : .chat),
-            layout: layout, scalar: scalar, letters: letters)
+            layout: layout, scalar: scalar, letters: letters, calibration: nil)
     }
 
     private init(
         runtime: ModelRuntime, configuration: Configuration, id: String, maxContextLength: Int,
         format: Decision.Format, layout: SlotPrompt.Layout?, scalar: ScalarPrompt.Layout?,
-        letters: LetterListPrompt.Layout?
+        letters: LetterListPrompt.Layout?, calibration: CatalogEntry.Calibration?
     ) throws {
         guard runtime.engine.supportsLogits else {
             throw DecisionError.engineWithoutLogits(model: id)
@@ -253,6 +256,9 @@ public actor TypedDecisions {
             }
             encoder = try SlotPrompt.Encoder(tokenizer: runtime.tokenizer, layout: layout)
         }
+        let temperatures = try Self.resolveTemperatures(
+            id: id, configured: configuration.temperature, catalog: calibration, format: format,
+            slot: layout, scalar: scalar, letters: letters)
         self.runtime = runtime
         self.configuration = configuration
         self.id = id
@@ -265,21 +271,15 @@ public actor TypedDecisions {
         self.labels = labels
         self.numbers = numbers
         self.maxOptions = Self.maxOptions(format: format, labels: labels, numbers: numbers, slot: layout)
-        switch format {
-        case .chat, .sharedState, .decisionFunction: self.temperature = configuration.temperature ?? 1
-        case .decider: self.temperature = configuration.temperature ?? DeciderPrompt.defaultTemperature
-        case .slot: self.temperature = configuration.temperature ?? layout?.choiceTemperature ?? 1
-        case .scalar: self.temperature = configuration.temperature ?? scalar?.temperature ?? 1
-        case .letterList: self.temperature = configuration.temperature ?? letters?.temperature ?? 1
-        }
+        self.temperatures = temperatures
+        self.temperature = temperatures.choice
     }
 
-    /// The temperature a question's logits are read at: the configured one when set, else
-    /// the model's own — per question type for a slot-head model, one value otherwise.
+    /// The temperature a question's logits are read at: the configured one when set, else the
+    /// catalog's calibration, else the model's own — per question type for a slot-head model
+    /// or a calibration fitted per type, one value otherwise.
     nonisolated public func temperature(for question: Decision.Question) -> Double {
-        if let configured = configuration.temperature { return configured }
-        if let layout = slotLayout { return layout.temperature(for: question.kind) }
-        return temperature
+        temperatures.temperature(for: question.kind)
     }
 
     /// `.auto` → the static-shape engine for a chunked static bundle, else the sequential
@@ -339,26 +339,26 @@ public actor TypedDecisions {
         case .chat:
             let rendered = try DecisionPrompt.render(
                 state: state, question: question, letters: labels, numbers: numbers, tokenizer: runtime.tokenizer)
-            let (probabilities, timing) = try await readout(rendered)
+            let (probabilities, timing) = try await readout(rendered, temperature: temperature(for: question))
             return DecisionPrompt.answer(for: question, probabilities: probabilities, timing: timing)
         case .sharedState:
             let rendered = try SharedStatePrompt.render(
                 state: state, question: question, tokenizer: runtime.tokenizer)
-            let (letterOrder, timing) = try await readout(rendered)
+            let (letterOrder, timing) = try await readout(rendered, temperature: temperature(for: question))
             return DecisionPrompt.answer(
                 for: question, probabilities: SharedStatePrompt.probabilities(kitOrder: letterOrder, for: question),
                 timing: timing)
         case .decisionFunction:
             let rendered = try DecisionFunctionPrompt.render(
                 state: state, question: question, tokenizer: runtime.tokenizer)
-            let (letterOrder, timing) = try await readout(rendered)
+            let (letterOrder, timing) = try await readout(rendered, temperature: temperature(for: question))
             return DecisionPrompt.answer(
                 for: question, probabilities: DecisionFunctionPrompt.probabilities(kitOrder: letterOrder, for: question),
                 timing: timing)
         case .letterList:
             guard let layout = letterLayout else { throw DecisionError.noLogits }
             let rendered = try LetterListPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
-            let (letterOrder, timing) = try await readout(rendered)
+            let (letterOrder, timing) = try await readout(rendered, temperature: temperature(for: question))
             return DecisionPrompt.answer(
                 for: question,
                 probabilities: LetterListPrompt.probabilities(kitOrder: letterOrder, for: question, layout: layout),
@@ -396,7 +396,7 @@ public actor TypedDecisions {
             var total = Decision.Timing(promptTokens: 0, reusedTokens: 0, seconds: 0)
             for row in DeciderPrompt.rows(for: question) {
                 let rendered = try DeciderPrompt.render(state: state, row: row, labels: labels, tokenizer: runtime.tokenizer)
-                let (probabilities, timing) = try await readout(rendered)
+                let (probabilities, timing) = try await readout(rendered, temperature: temperature(for: question))
                 last = probabilities
                 fit.append(probabilities[1])
                 total = Decision.Timing(
@@ -412,8 +412,11 @@ public actor TypedDecisions {
         }
     }
 
-    /// Scores one rendered row and reads the option probabilities at its answer slot.
-    private func readout(_ rendered: DecisionPrompt.Rendered) async throws -> ([Double], Decision.Timing) {
+    /// Scores one rendered row and reads the option probabilities at its answer slot, at the
+    /// question type's temperature.
+    private func readout(
+        _ rendered: DecisionPrompt.Rendered, temperature: Double
+    ) async throws -> ([Double], Decision.Timing) {
         let (logits, timing) = try await score(rendered.tokens)
         let slotLogits = rendered.slots.map { Double(logits[Int($0)]) }
         return (DecisionPrompt.probabilities(logits: slotLogits, temperature: temperature), timing)

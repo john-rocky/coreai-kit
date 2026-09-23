@@ -101,11 +101,15 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// (Apache-2.0, MIT, the Gemma terms); the exact terms of every model are on its card in
     /// the model zoo. Shown by `systemone models` and in `/v1/models` so a client sees it.
     public let license: String?
+    /// For a model that answers typed decisions: the temperature its answer-slot logits are read
+    /// at by default, fitted by the maintainer on labelled rows (`decide-cli calibrate`). nil =
+    /// the model's own temperature — its bundle's declaration, or its prompt form's default.
+    public let calibration: Calibration?
 
     public init(
         id: String, name: String, repo: String, revision: String? = nil, kind: Kind,
         variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil,
-        format: String? = nil, license: String? = nil
+        format: String? = nil, license: String? = nil, calibration: Calibration? = nil
     ) {
         self.id = id
         self.name = name
@@ -117,6 +121,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.engine = engine
         self.format = format
         self.license = license
+        self.calibration = calibration
     }
 
     static var platformKey: String {
@@ -140,6 +145,31 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// sibling paths through this so every part downloads from the same pinned revision.
     public func modelID(path: String) -> ModelID {
         ModelID(repo, path: path, revision: revision ?? "main")
+    }
+}
+
+extension CatalogEntry {
+    /// The calibration the kit applies to a model's answer-slot logits by default: a softmax
+    /// temperature, fitted by the maintainer on one labelled fixture and reported on another
+    /// (`decide-cli calibrate`). catalog.json keeps the record's provenance in the same object —
+    /// what it was fitted on (`fit`) and the before/after numbers where it was checked
+    /// (`report`) — which the kit does not read. Only a model without a temperature of its own
+    /// carries one: a bundle whose author fitted or folded in a temperature keeps that.
+    public struct Calibration: Sendable, Codable, Hashable {
+        /// Temperature for every question type `byType` does not name.
+        public let temperature: Double
+        /// Per question type — "choice", "score", "noul" — when the types were fitted apart.
+        public let byType: [String: Double]?
+
+        public init(temperature: Double, byType: [String: Double]? = nil) {
+            self.temperature = temperature
+            self.byType = byType
+        }
+
+        /// The temperature for a question type: its own when fitted apart, else `temperature`.
+        public func temperature(forType type: String) -> Double {
+            byType?[type] ?? temperature
+        }
     }
 }
 
@@ -213,7 +243,7 @@ public struct ModelCatalog: Sendable, Codable {
                 return CatalogEntry(
                     id: e.id, name: e.name, repo: e.repo, revision: rev, kind: e.kind,
                     variants: e.variants, thinking: e.thinking, engine: e.engine, format: e.format,
-                    license: e.license)
+                    license: e.license, calibration: e.calibration)
             })
     }
 
