@@ -51,6 +51,13 @@ public enum Decision {
         /// weights. A bool is the choice `yes` / `no`, a score the choice over its levels.
         /// `DecisionFunctionPrompt.swift`.
         case decisionFunction
+        /// The per-option scalar form (pngwn's System One scorer): one row per option —
+        /// `State:`, the state cut to fit, `Question:`, `Option:` — read by a scalar head at
+        /// the row's last token, the rows softmaxed together at the calibration temperature
+        /// the bundle declares (`decision.head == "scalar"` with `temperature` and `max_len`
+        /// in its metadata.json). No chat template. A yes/no is the rows `yes` / `no`, a score
+        /// one row per level. `ScalarPrompt.swift`.
+        case scalar
     }
 
     /// One listed answer for a `choice` question. `id` is what the answer reports;

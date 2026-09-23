@@ -276,6 +276,64 @@ struct DecisionFunctionPromptTests {
     }
 }
 
+/// The per-option scalar form (the System One scorer): the rows, the author's truncation rule,
+/// the bundle declaration and the readout order, checkable without a tokenizer or weights.
+struct ScalarPromptTests {
+    @Test func aQuestionIsOneRowPerOptionInTheAuthorsForm() {
+        let question = Decision.Question.choice(
+            "Which work is needed?",
+            options: [.init("electrical repair"), .init(id: "clean", description: "surface cleaning"),
+                      .init(id: "paint", description: "paint: repainting")])
+        let row = ScalarPrompt.row(for: question)
+        #expect(row.question == "Which work is needed?")
+        #expect(row.options == ["electrical repair", "clean: surface cleaning", "paint: repainting"])
+        let noul = ScalarPrompt.row(for: .noul("Does this describe a plant?", yes: "A plant is described", no: nil))
+        #expect(noul.options == ["yes", "no"])
+        #expect(noul.question == "Does this describe a plant?\nyes: A plant is described")
+        #expect(ScalarPrompt.probabilities(kitOrder: [0.936, 0.064], for: .noul("x")) == [0.064, 0.936])
+        let score = ScalarPrompt.row(for: .score("Rate the evidence from 1 to 3.", levels: ["level 1", "level 2", "level 3"]))
+        #expect(score.options == ["level 1", "level 2", "level 3"])
+        #expect(ScalarPrompt.maxOptions == 64)
+        #expect(Decision.Format(rawValue: "scalar") == .scalar)
+    }
+
+    @Test func theTailStaysWholeAndTheStateIsCutFromItsEnd() {
+        let head: [Int32] = Array(1...10)
+        let tail: [Int32] = [101, 102, 103, 104]
+        // Room for six head tokens before the four-token tail.
+        #expect(ScalarPrompt.fit(head: head, tail: tail, maxLength: 10) == [1, 2, 3, 4, 5, 6, 101, 102, 103, 104])
+        // A short row keeps everything.
+        #expect(ScalarPrompt.fit(head: head, tail: tail, maxLength: 384) == head + tail)
+        // A tail as long as the limit or longer keeps its last tokens and no state at all.
+        #expect(ScalarPrompt.fit(head: head, tail: tail, maxLength: 4) == tail)
+        #expect(ScalarPrompt.fit(head: head, tail: tail, maxLength: 3) == [102, 103, 104])
+    }
+
+    @Test func theBundleDeclaresItsHead() throws {
+        let layout = try ScalarPrompt.Layout(
+            block: ["head": "scalar", "temperature": 1.75, "max_len": 384, "layout": "state-question-option"],
+            bundle: "scorer")
+        #expect(layout.temperature == 1.75)
+        #expect(layout.maxLength == 384)
+        let integers = try ScalarPrompt.Layout(block: ["head": "scalar", "temperature": 2, "max_len": 512], bundle: "s")
+        #expect(integers.temperature == 2 && integers.maxLength == 512)
+        #expect(try ScalarPrompt.Layout(block: ["head": "scalar", "max_len": 384], bundle: "s").temperature == 1)
+        #expect(throws: DecisionError.self) {
+            try ScalarPrompt.Layout(block: ["head": "scalar", "temperature": 1.75], bundle: "s")
+        }
+        #expect(throws: DecisionError.self) {
+            try ScalarPrompt.Layout(block: ["head": "scalar", "temperature": 0, "max_len": 384], bundle: "s")
+        }
+    }
+
+    @Test func aScalarHeadReadoutIsASoftmaxOverTheRows() {
+        // The author's fixture: scalars 4.314 / −8.208 at T = 1.75 → 0.99922 / 0.00078.
+        let p = DecisionPrompt.probabilities(logits: [4.314197540283203, -8.208293914794922], temperature: 1.75)
+        #expect(abs(p[0] - 0.9992202127986584) < 1e-9)
+        #expect(abs(p[1] - 0.000779787201341569) < 1e-9)
+    }
+}
+
 /// The slot-head form (OpenThai-SystemOne): the control-token text, the readout arithmetic
 /// and the bundle declaration, checkable without a tokenizer or weights.
 struct SlotPromptTests {
