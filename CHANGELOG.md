@@ -9,6 +9,15 @@ policy.
 
 ### Added
 
+- **Deploys to macOS 26 / iOS 26.** The package floor is macOS 26 / iOS 26 (was 27), so an
+  app or package with a 26 floor can depend on the kit and use Core AI behind
+  `#available(macOS 27, iOS 27, *)`. Everything that touches Core AI, plus `SystemTranscriber`,
+  `FoundationModelDecisions`, `TranscriptRenderer` and `VLPromptRenderer` (27-only Speech and
+  Foundation Models APIs), is `@available(macOS 27, iOS 27, *)`; `CoreAIKitCore`, the `Decision`
+  types, `SystemOneServer` and `CoreAI.Op` stay at 26. `systemone` and `coreai-doctor` exit with
+  a message below 27. On x86_64 macOS the Float16 paths are compiled out, the same guard as
+  coreai-models 0.2.8-zoo. Models still run on 27 only. (#56, Mattt Zmuda)
+
 - **Apple's on-device foundation model as a decision backend.** `FoundationModelDecisions`
   (`Sources/CoreAIKit/Decide`) answers typed questions on the FoundationModels framework's
   `SystemLanguageModel.default` by guided generation: a choice is an enumeration of its option
