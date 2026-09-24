@@ -175,6 +175,7 @@ author fitted or folded in a temperature keeps it and has no record — `decider
 card's 1.03 (accuracy 0.771, balanced 0.753, ECE 0.061, Brier 0.296), the bundles that declare
 one, `qwen3.5-2b-decision` at 1. `TypedDecisions.Configuration.temperature` overrides every one
 of them; the tables are in [`Examples/Decide/README.md`](../Examples/Decide/README.md#measured).
+JevBench's 231 public items on eight catalog models, through `decide-cli serve`: [the table](../Examples/Decide/README.md#jevbench-public-231-mac-2026-09-24).
 
 The shape of the question decides more than the model. On MiniCPM5 2B, measured on the
 screens' samples:

@@ -11,7 +11,7 @@ Releases follow [SemVer](https://semver.org). Pre-1.0:
 - **Minor** (`0.X.0`): may change or remove API. Anything breaking is called out in
   [`CHANGELOG.md`](../CHANGELOG.md) with a migration note.
 
-The reproducible quickstart uses `exact: "0.7.0"`. Use `from: "0.7.0"` if you want
+The reproducible quickstart uses `exact: "0.7.1"`. Use `from: "0.7.1"` if you want
 SwiftPM to select later compatible versions, and retain your app’s `Package.resolved`.
 Every release is a tag on this repo.
 

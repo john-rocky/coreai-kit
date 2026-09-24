@@ -553,6 +553,41 @@ percent (Drive 80 ticks in 25 s at a 63 ms median). The same bundle on both mach
 the same decisions; the phone takes about twice the Mac's time per decision. Clips:
 coreai-assets `kit/decide/{drive,columns,guard,context,typing}-iphone.mp4`.
 
+### JevBench public 231 (Mac, 2026-09-24)
+
+The benchmark's own harness ([fstandhartinger/jevbench](https://github.com/fstandhartinger/jevbench)
+`2fa63fa`, v1.4.0, `typesafe` adapter) sent the 231 public items to `decide-cli serve` at coreai-kit
+`adbc755`, one question per request, on the M4 Max; accuracy per tier and the hard tier's ECE are
+JevBench's own scoring (argmax of the returned probabilities). Latency is per request (p50 and p95
+over all 231, the maximum over the hard tier), taken on a shared GPU and before the checkpoint: at
+that commit a recurrent hybrid prefilled the state again for every question.
+
+| model | easy 48 | standard 72 | hard 111 | ECE hard | p50 | p95 | hard max | bundle on disk | note |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `apus-decision-v1-4b` | 1.000 | 0.986 | 0.559 | 0.347 | 5.94 s | 142.09 s | 217.6 s | 5.4G | two other model servers on the GPU⁴ |
+| `decider-0.8b` | 1.000 | 0.833 | 0.414 | 0.320 | 1.69 s | 29.10 s | 90.6 s | 1.2G | server alone |
+| `laya-multilingual` | 0.896 | 0.403 | 0.342 | 0.273 | 0.02 s | 0.20 s | 0.3 s | 649M | 256-token window¹; server alone |
+| `minicpm5-2b` | 0.979 | 0.708 | 0.459 | 0.241 | 0.14 s | 1.19 s | 1.8 s | 2.5G | zero-shot chat model³; server alone |
+| `openthai-systemone` | 1.000 | 0.819 | 0.324 | 0.449 | 0.62 s | 25.93 s | 39.0 s | 1.0G | server alone |
+| `qwen3.5-2b` | 1.000 | 0.750 | 0.441 | 0.245 | 2.74 s | 50.22 s | 62.3 s | 2.8G | zero-shot chat model³; server alone |
+| `qwen3.5-2b-decision` | 1.000 | 0.778 | 0.405 | 0.235 | 3.24 s | 92.89 s | 138.5 s | 2.8G | two other model servers on the GPU⁴ |
+| `system-one-scorer-4b` | 1.000 | 0.861 | 0.505 | 0.164 | 8.96 s | 61.61 s | 72.0 s | 4.7G | 384-token rows²; two other model servers on the GPU⁴ |
+
+¹ The bundle (`macos/wfp16-s256`) reads a 256-token window: 95 of the 111 hard items were
+truncated to it (hard states run to 3,677 tokens); no easy or standard item was (the longest is
+107 tokens).
+² The kit follows the author's encode, which cuts the state from its end so that each row (state +
+question + option) fits 384 tokens; on 70 of the 111 hard items the state was cut.
+³ A chat model asked zero-shot under the kit's JSON decision prompt: `minicpm5-2b` at its catalog
+calibration temperature 2.93 (fit on SemIf perturbations108), `qwen3.5-2b` with no calibration
+(temperature 1).
+⁴ Three model servers ran on the same GPU at once. A solo re-check of 30 items per model returned
+bit-identical probabilities, in about half the time.
+
+JevBench's published scores (Intelligence and the rest) are chance-corrected over 534 items, sealed
+ones included, and are not comparable to these accuracies. Every request and answer is in
+[mlboydaisuke/coreai-decision-models-public231](https://huggingface.co/datasets/mlboydaisuke/coreai-decision-models-public231).
+
 ## Where the code is
 
 - `Sources/QuickStart.swift` — the take-home: one typed function, no UI. The GUI and the CLI

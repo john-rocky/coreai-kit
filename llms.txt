@@ -5,7 +5,7 @@
 > depth, embeddings, OCR and forecasting. Models download from Hugging Face on first use and are
 > pinned to immutable revisions. Community package, not affiliated with Apple.
 
-Start with **CoreAIKit 0.7.0**, `exact: "0.7.0"`, and catalog ID `qwen3-0.6b`
+Start with **CoreAIKit 0.7.1**, `exact: "0.7.1"`, and catalog ID `qwen3-0.6b`
 (approximately 352 MB on Mac / 456 MB on iPhone). Validated entry: Mac, Xcode 27 `27A266a`
 on macOS 27 `26A428`, the release builds; see the README for exact OS/SDK builds and limits.
 

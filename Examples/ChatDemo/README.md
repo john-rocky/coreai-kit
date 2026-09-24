@@ -17,9 +17,9 @@ let reply = try await chat.respond(to: "What is the capital of Japan?")
 
 ## Run it
 
-Start with the [0.4.1 installation and tested environment](../../README.md#quickstart).
-Run commands below from `Examples/ChatDemo` in the **0.4.1** checkout. Both the
-CLI and Xcode app depend on the public **exact 0.4.1** package. Qwen3 0.6B downloads
+Start with the [0.7.1 installation and tested environment](../../README.md#quickstart).
+Run commands below from `Examples/ChatDemo` in the **0.7.1** checkout. Both the
+CLI and Xcode app depend on the public **exact 0.7.1** package. Qwen3 0.6B downloads
 approximately 352 MB on Mac (456 MB for the iPhone variant).
 
 The initial reply should mention Tokyo. Later requests can vary because sampling is
@@ -59,7 +59,7 @@ swift run -c release entry-check japanese "$ENTRY_CACHE"
 swift run -c release entry-check japanese-fm "$ENTRY_CACHE"
 ```
 
-`chat`, FM and Japanese modes use **0.4.1's built-in Qwen pin**, so a future live-catalog update cannot change that bundle. `fm` checks ORCHID recall on the second turn; the Japanese modes check
+`chat`, FM and Japanese modes use **the built-in Qwen pin** (the same revision since 0.4.1), so a future live-catalog update cannot change that bundle. `fm` checks ORCHID recall on the second turn; the Japanese modes check
 streaming output. Results and exact revisions are in the
 [release validation record](../../docs/GETTING_STARTED.md#release-041-validation).
 `hybrid` is the maintainer's two-turn runtime regression check and downloads a
