@@ -58,3 +58,21 @@ jobs:
         run: ./scripts/test-check-xcode-pin.sh
       - name: llms.txt lists every example
         run: python3 scripts/gen_llms_txt.py --check
+
+  example-app-release:
+    # `swift build` above compiles for this machine's architecture only. A Release build of an
+    # app compiles every package for all of ARCHS_STANDARD, x86_64 included: what Archive does,
+    # and what Run does in the examples, whose schemes run Release. A dependency whose floor
+    # admits Intel is then compiled for x86_64 too, and 0.7.0 shipped with coreai-models
+    # failing there ('Float16' is unavailable in macOS) while every check here was green.
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: The pinned Xcode is the one being used
+        run: ./scripts/check-xcode-pin.sh
+      - name: Transcribe builds in Release for every macOS architecture
+        run: >-
+          python3 scripts/with-gpu-lock.py --
+          xcodebuild build -project Examples/Transcribe/Transcribe.xcodeproj -scheme Transcribe
+          -configuration Release -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO -quiet
