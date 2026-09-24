@@ -41,6 +41,7 @@
 
 import CoreAILanguageModels
 import Foundation
+import Synchronization
 import Tokenizers
 
 /// A loaded decision model. One decision at a time; calls on the same instance serialize.
@@ -71,6 +72,10 @@ public actor TypedDecisions {
     public let maxContextLength: Int
     /// Exact token sequence the engine's KV cache holds (the last scored prompt).
     private var kvTokens: [Int32] = []
+    /// Held from the rewind to the end of the stream. The actor alone does not serialize a
+    /// call: each engine `await` lets another call in, and two calls then drive one engine
+    /// and one `kvTokens`.
+    private let engineLock = AsyncMutex()
     /// Timing of the last decision or prefill.
     public private(set) var lastTiming: Decision.Timing?
 
@@ -210,8 +215,10 @@ public actor TypedDecisions {
 
     /// Drops the cached prompt: the next decision prefills from scratch.
     public func reset() async throws {
-        kvTokens = []
-        try await runtime.engine.reset()
+        try await engineLock.withLock {
+            kvTokens = []
+            try await runtime.engine.reset()
+        }
     }
 
     // MARK: - Your own readout
@@ -243,7 +250,8 @@ public actor TypedDecisions {
 
     /// Feeds `tokens` and returns the logits at the last position. Rewinds to the longest
     /// prefix shared with the previous prompt first (unless sharing is off), so only the
-    /// tail is processed.
+    /// tail is processed. Waits for any call already on the engine; a task cancelled while
+    /// it waits throws `CancellationError`.
     private func score(
         _ tokens: [Int32], includeLogits: Bool = true
     ) async throws -> ([LogitsScalarType], Decision.Timing) {
@@ -251,6 +259,15 @@ public actor TypedDecisions {
         guard tokens.count < maxContextLength else {
             throw DecisionError.promptTooLong(tokens: tokens.count, max: maxContextLength - 1)
         }
+        return try await engineLock.withLock {
+            try await drive(tokens, includeLogits: includeLogits)
+        }
+    }
+
+    /// `score` with the engine lock held.
+    private func drive(
+        _ tokens: [Int32], includeLogits: Bool
+    ) async throws -> ([LogitsScalarType], Decision.Timing) {
         let engine = runtime.engine
         let start = SuspendingClock.now
         let wanted = configuration.sharePrefix
@@ -314,5 +331,79 @@ extension Decision.Logits {
     /// precision on Apple silicon, `Float` on Intel).
     init(engine logits: [LogitsScalarType], timing: Decision.Timing) {
         self.init(values: logits.map { Float($0) }, timing: timing)
+    }
+}
+
+// MARK: - Engine lock
+
+/// A lock held across `await`s, granted in the order it was asked for. The waiter queue is
+/// guarded by a `Mutex`, which is never held across a suspension. A task cancelled while it
+/// waits leaves the queue and throws `CancellationError`; so does one that asks already
+/// cancelled.
+final class AsyncMutex: Sendable {
+    private struct State {
+        var held = false
+        var nextTicket = 0
+        var waiters: [(ticket: Int, continuation: CheckedContinuation<Void, any Error>)] = []
+    }
+
+    private let state = Mutex(State())
+
+    /// Runs `body` with the lock held and releases it however `body` exits.
+    func withLock<T>(
+        isolation: isolated (any Actor)? = #isolation, _ body: () async throws -> T
+    ) async throws -> T {
+        try await lock()
+        defer { unlock() }
+        return try await body()
+    }
+
+    /// Tasks waiting for the lock.
+    var waiting: Int { state.withLock { $0.waiters.count } }
+
+    private func lock() async throws {
+        let ticket = state.withLock {
+            defer { $0.nextTicket += 1 }
+            return $0.nextTicket
+        }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                // Checked under the mutex: a cancellation either lands before this, and is
+                // seen here, or after the waiter is queued, and `onCancel` finds it.
+                let granted: Bool? = state.withLock {
+                    if Task.isCancelled { return nil }
+                    if !$0.held {
+                        $0.held = true
+                        return true
+                    }
+                    $0.waiters.append((ticket, continuation))
+                    return false
+                }
+                switch granted {
+                case nil: continuation.resume(throwing: CancellationError())
+                case true?: continuation.resume()
+                case false?: break
+                }
+            }
+        } onCancel: {
+            // A waiter `unlock` already handed the lock to is not in the queue; it keeps it.
+            let cancelled = state.withLock { state in
+                state.waiters.firstIndex { $0.ticket == ticket }
+                    .map { state.waiters.remove(at: $0).continuation }
+            }
+            cancelled?.resume(throwing: CancellationError())
+        }
+    }
+
+    /// Hands the lock to the first waiter in the queue, or frees it.
+    private func unlock() {
+        let next = state.withLock { state -> CheckedContinuation<Void, any Error>? in
+            guard !state.waiters.isEmpty else {
+                state.held = false
+                return nil
+            }
+            return state.waiters.removeFirst().continuation
+        }
+        next?.resume()
     }
 }
