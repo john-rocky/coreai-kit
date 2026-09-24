@@ -6,6 +6,7 @@
 
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 enum N3DError: Error, CustomStringConvertible, Sendable {
     case missingFile(String)
     case badSize(file: String, expectedFloats: Int, gotBytes: Int)
@@ -29,6 +30,7 @@ enum N3DError: Error, CustomStringConvertible, Sendable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 struct N3DAssets: Sendable {
     static let hidden = 512
     static let stackedWidth = N3DMel.nMels * N3DMel.stack      // 1024

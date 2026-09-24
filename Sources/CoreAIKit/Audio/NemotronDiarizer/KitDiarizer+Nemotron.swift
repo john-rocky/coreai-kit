@@ -7,6 +7,7 @@
 import CoreAIKitVision
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 extension KitDiarizer {
     /// The repo subtree beside the graph holding the host constants: the 8-frame projection and
     /// the silence row (weights), the mel filterbank, the Hann window and metadata.json.
@@ -69,6 +70,7 @@ extension KitDiarizer {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 extension N3DComputeUnits {
     /// The kit's compute-unit choice, lowered to the same `SpecializationOptions` as in
     /// `GraphModel`.
@@ -82,6 +84,7 @@ extension N3DComputeUnits {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 extension N3DError: LocalizedError {
     var errorDescription: String? { "Nemotron-3-Diarization: \(description)" }
 }

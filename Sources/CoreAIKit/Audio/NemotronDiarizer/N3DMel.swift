@@ -8,6 +8,7 @@ import Foundation
 
 /// One streaming chunk of the audio (mel_frontend.stream_chunks): samples [start, end), center-padded
 /// when it is the first chunk. `end` of the last chunk is the audio length.
+@available(macOS 27, iOS 27, *)
 struct N3DChunk: Sendable, Equatable {
     let start: Int
     let end: Int
@@ -27,6 +28,7 @@ struct N3DChunk: Sendable, Equatable {
 /// returns up to its own rounding (a float32 sum put the log-mel up to 1.2e-4 away from NumPy's in
 /// near-silent cells). Only the 400 window taps enter the sum (the other 112 frame samples are zero).
 /// Frames go through in blocks of 256 so a long recording needs no frame-sized Double buffers.
+@available(macOS 27, iOS 27, *)
 struct N3DMel: Sendable {
     static let sampleRate = 16_000
     static let nFFT = 512, winLength = 400, hop = 160, nMels = 128, stack = 8
@@ -140,6 +142,7 @@ struct N3DMel: Sendable {
 
 /// embed(mel, projection) -> [ceil(F/8), 512]: zero-pad the frame count to a multiple of 8 (zeros in the
 /// log-mel domain, as transformers does), stack 8 frames -> 1024, @ projection.T (float32).
+@available(macOS 27, iOS 27, *)
 struct N3DEmbedder: Sendable {
     static let hidden = 512
     static let width = N3DMel.nMels * N3DMel.stack             // 1024

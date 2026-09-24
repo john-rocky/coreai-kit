@@ -12,6 +12,7 @@
 import Foundation
 
 /// The processor's streaming modes: (chunk, look-ahead) in encoder frames of 80 ms.
+@available(macOS 27, iOS 27, *)
 enum N3DStreamingMode: String, Sendable, CaseIterable {
     case lowLatency = "ll"            // 9 + 4
     case veryLowLatency = "vll"       // 6 + 2
@@ -27,6 +28,7 @@ enum N3DStreamingMode: String, Sendable, CaseIterable {
 
 /// A host profile: how audio becomes steps, and the FIFO policy. Its graph length T must match the
 /// loaded bundle (541 for the three streaming modes, 684 offline).
+@available(macOS 27, iOS 27, *)
 struct N3DProfile: Sendable, Equatable {
     enum Kind: String, Sendable { case streaming, offline }
 
@@ -52,6 +54,7 @@ struct N3DProfile: Sendable, Equatable {
 }
 
 /// One step's chunk rows (incl. look-ahead) and how many 10 ms frames it emits.
+@available(macOS 27, iOS 27, *)
 struct N3DStepInput: Sendable {
     let rows: [Float]          // [rowCount, 512]
     let lookahead: Int
@@ -67,6 +70,7 @@ struct N3DStepInput: Sendable {
 }
 
 /// What one step did (for self-tests and tracing). `rows` is the packed input's real part [L, 512].
+@available(macOS 27, iOS 27, *)
 struct N3DStepInfo: Sendable {
     let step: Int
     let rows: [Float]
@@ -81,6 +85,7 @@ struct N3DStepInfo: Sendable {
     let graphSeconds: Double
 }
 
+@available(macOS 27, iOS 27, *)
 struct N3DOutput: Sendable {
     /// Emitted 10 ms frames.
     let frames: Int
@@ -100,6 +105,7 @@ struct N3DOutput: Sendable {
 }
 
 /// One speaker turn: `speaker` is active over frames [startFrame, endFrame) (10 ms each).
+@available(macOS 27, iOS 27, *)
 struct N3DSegment: Sendable, Hashable {
     let speaker: Int
     let startFrame: Int
@@ -115,6 +121,7 @@ struct N3DSegment: Sendable, Hashable {
     var end: Double { Double(endFrame) / 100 }
 }
 
+@available(macOS 27, iOS 27, *)
 actor N3DDiarizer {
     static let frameSeconds = 0.01
 

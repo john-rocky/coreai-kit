@@ -23,13 +23,16 @@ import Testing
 @testable import CoreAIKit
 
 struct NemotronDiarizerTests {
+    @available(macOS 27, iOS 27, *)
     static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("Fixtures/N3D")
 
+    @available(macOS 27, iOS 27, *)
     static func f32(_ name: String, in dir: URL = NemotronDiarizerTests.fixtures) throws -> [Float] {
         N3DAssets.readF32LE(try Data(contentsOf: dir.appendingPathComponent(name)))
     }
 
+    @available(macOS 27, iOS 27, *)
     static func f64(_ name: String, in dir: URL = NemotronDiarizerTests.fixtures) throws -> [Double] {
         let data = try Data(contentsOf: dir.appendingPathComponent(name))
         return data.withUnsafeBytes { raw in
@@ -40,16 +43,19 @@ struct NemotronDiarizerTests {
     }
 
     /// A distinct 512-d row per class id, exact in float32.
+    @available(macOS 27, iOS 27, *)
     static func row(_ c: Int) -> [Float] {
         (0..<N3DSpeakerCache.hidden).map { Float(c * N3DSpeakerCache.hidden + $0) }
     }
 
     /// The kit's librosa-slaney filterbank: the same bytes as the repo's host/mel_filters_128x257.f32le.
+    @available(macOS 27, iOS 27, *)
     static func bundledMelFilters() throws -> [Float] {
         let url = try #require(Bundle.module.url(forResource: "parakeet_mel_filters_128x257", withExtension: "f32"))
         return N3DAssets.readF32LE(try Data(contentsOf: url))
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func speakerCacheUpdateIsBitExactWithTheZooHost() throws {
         let data = try Data(contentsOf: Self.fixtures.appendingPathComponent("cache_unit.json"))
         let meta = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -101,6 +107,7 @@ struct NemotronDiarizerTests {
         #expect(cut.embeds != embedsAfter)
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func melChunk0IsBitExactWithTheZooHost() throws {
         let pcm = try Data(contentsOf: Self.fixtures.appendingPathComponent("mel_chunk0_input.pcm16"))
         let samples: [Float] = pcm.withUnsafeBytes { raw in
@@ -119,6 +126,7 @@ struct NemotronDiarizerTests {
 
     /// The turn rule on 8-speaker rows at 10 ms: the strongest speaker above 0.5, same-speaker runs,
     /// gaps of up to 48 frames (0.48 s) bridged; a segment carries its frame length.
+    @available(macOS 27, iOS 27, *)
     @Test func turnsFromEightSpeakerRows() {
         var rows = [[Float]](repeating: [Float](repeating: 0, count: 8), count: 300)
         for f in 0..<100 { rows[f][6] = 0.9 }
@@ -139,6 +147,7 @@ struct NemotronDiarizerTests {
 
     /// A local bundle is Nemotron-3 when its host constants sit in `host/` beside the graph (the Hub
     /// layout) or next to it (an export directory); a Sortformer bundle has none.
+    @available(macOS 27, iOS 27, *)
     @Test func localBundleLayouts() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("n3d-layout-\(UUID().uuidString)")
@@ -170,11 +179,16 @@ struct NemotronDiarizerTests {
 /// file header): 35 teacher-forced cache updates, and chunks 0, 1 and the last of both clips'
 /// low-latency mel plus their embeddings.
 struct NemotronDiarizerGoldenTests {
+    @available(macOS 27, iOS 27, *)
     static let environment = ProcessInfo.processInfo.environment
+    @available(macOS 27, iOS 27, *)
     static let enabled = ["N3D_GOLDEN_DIR", "N3D_HOST_DIR", "N3D_AUDIO_DIR"].allSatisfy { environment[$0] != nil }
+    @available(macOS 27, iOS 27, *)
     static func dir(_ key: String) -> URL { URL(fileURLWithPath: environment[key]!) }
 
+    @available(macOS 27, iOS 27, *)
     @Test(.enabled(if: enabled, "set N3D_GOLDEN_DIR, N3D_HOST_DIR and N3D_AUDIO_DIR to run the zoo's golden"))
+    @available(macOS 27, iOS 27, *)
     func everyCacheUnit() throws {
         let golden = Self.dir("N3D_GOLDEN_DIR")
         let assets = try N3DAssets(directory: Self.dir("N3D_HOST_DIR"))
@@ -184,6 +198,7 @@ struct NemotronDiarizerGoldenTests {
         var compressions = 0
         for u in units {
             let prefix = try #require(u["prefix"] as? String)
+            @available(macOS 27, iOS 27, *)
             func f(_ suffix: String) throws -> [Float] { try NemotronDiarizerTests.f32("\(prefix)_\(suffix).f32le", in: golden) }
             let L = try #require(u["L"] as? Int), nChunk = try #require(u["n_chunk"] as? Int)
             let nCache = try #require(u["n_cache"] as? Int), nFifo = try #require(u["n_fifo"] as? Int)
@@ -215,7 +230,9 @@ struct NemotronDiarizerGoldenTests {
         #expect(units.count == 35 && compressions == 17)
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test(.enabled(if: enabled, "set N3D_GOLDEN_DIR, N3D_HOST_DIR and N3D_AUDIO_DIR to run the zoo's golden"))
+    @available(macOS 27, iOS 27, *)
     func melChunksOfBothClips() throws {
         let golden = Self.dir("N3D_GOLDEN_DIR")
         let assets = try N3DAssets(directory: Self.dir("N3D_HOST_DIR"))
@@ -240,9 +257,12 @@ struct NemotronDiarizerGoldenTests {
     }
 
     /// 16 kHz mono PCM16 WAV -> samples / 32768 (how the zoo's gates read their fixtures).
+    @available(macOS 27, iOS 27, *)
     static func pcm16Wav(_ url: URL) throws -> [Float] {
         let data = try Data(contentsOf: url)
+        @available(macOS 27, iOS 27, *)
         func u32(_ o: Int) -> Int { Int(data.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt32.self)) }) }
+        @available(macOS 27, iOS 27, *)
         func u16(_ o: Int) -> Int { Int(data.withUnsafeBytes { UInt16(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt16.self)) }) }
         var off = 12, format = 0, channels = 0, rate = 0, bits = 0
         while off + 8 <= data.count {

@@ -7,6 +7,7 @@
 import CoreAI
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 enum N3DComputeUnits: String, Sendable, CaseIterable {
     /// Preferred GPU over the full allowed set (the ship configuration on Mac).
     case gpu
@@ -31,6 +32,7 @@ enum N3DComputeUnits: String, Sendable, CaseIterable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 struct N3DGraph: Sendable {
     static let functionName = "main"
     let function: InferenceFunction

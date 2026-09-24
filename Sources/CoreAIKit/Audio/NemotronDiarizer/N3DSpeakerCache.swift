@@ -26,6 +26,7 @@
 
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 struct N3DSpeakerCache: Sendable {
     static let length = 264
     static let numSpeakers = 8
