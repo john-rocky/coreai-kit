@@ -15,7 +15,9 @@ import Foundation
 final class VoxCPM2Glue {
     private struct Spec: Decodable { let dtype: String; let shape: [Int]; let bytes: Int }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     private let embed: [Float16]          // [V, 2048] row-major token embedding table
+    #endif
     private let vocab: Int
     private let hidden: Int               // 2048
     private let ditDim: Int               // 1024 (each of lm_to_dit / res_to_dit outputs)
@@ -39,6 +41,7 @@ final class VoxCPM2Glue {
             let d = try Data(contentsOf: dir.appendingPathComponent("\(name).bin"))
             return d.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         }
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         func f16(_ name: String) throws -> ([Float16], [Int]) {
             guard let s = manifest[name] else { throw VoxCPMError.glueMissing(name) }
             let d = try Data(contentsOf: dir.appendingPathComponent("\(name).bin"))
@@ -58,6 +61,9 @@ final class VoxCPM2Glue {
         self.stopHeadW = try f32("stop_head_w")
         self.ditDim = manifest["lm_to_dit_w"]!.shape[0]  // 1024
         self.fsqLatent = manifest["fsq_in_w"]!.shape[0]  // 512
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     var hiddenSize: Int { hidden }
@@ -65,8 +71,12 @@ final class VoxCPM2Glue {
     /// Token-embedding row (fp16, length 2048) for prefill.
     func embedRow(_ id: Int) -> [Float] {
         precondition(id >= 0 && id < vocab, "token id \(id) out of range \(vocab)")
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let base = id * hidden
         return (0..<hidden).map { Float(embed[base + $0]) }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// dit_hidden = cat(lm_to_dit(lm_h), res_to_dit(res_h))  -> [2048] (the feat_decoder `mu`, two tokens).

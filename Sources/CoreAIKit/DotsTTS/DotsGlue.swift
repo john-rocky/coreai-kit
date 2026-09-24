@@ -17,7 +17,9 @@ import Foundation
 final class DotsGlue {
     private struct Spec: Decodable { let dtype: String; let shape: [Int]; let bytes: Int }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     private let embed: [Float16]                 // [V,1536] row-major
+    #endif
     let vocab: Int
     let hidden: Int                              // 1536
     let ditDim = 1024
@@ -40,6 +42,7 @@ final class DotsGlue {
             return try Data(contentsOf: dir.appendingPathComponent("\(n).bin"))
                 .withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
         }
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         func f16(_ n: String) throws -> ([Float16], [Int]) {
             guard let s = manifest[n] else { throw DotsError.glueMissing(n) }
             let d = try Data(contentsOf: dir.appendingPathComponent("\(n).bin"))
@@ -53,13 +56,20 @@ final class DotsGlue {
         self.eos0W = try f32("eos_proj0_w"); self.eos0B = try f32("eos_proj0_b")
         self.eos2W = try f32("eos_proj2_w"); self.eos2B = try f32("eos_proj2_b")
         self.mean = try f32("latent_mean"); self.std = try f32("latent_std")
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// Token embedding row (fp16 -> fp32, length 1536).
     func embedRow(_ id: Int) -> [Float] {
         precondition(id >= 0 && id < vocab, "token id \(id) out of range \(vocab)")
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let base = id * hidden
         return (0..<hidden).map { Float(embed[base + $0]) }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     func hiddenProj(_ h: [Float]) -> [Float] { matvec(hiddenPW, h, rows: ditDim, cols: hidden, bias: hiddenPB) }

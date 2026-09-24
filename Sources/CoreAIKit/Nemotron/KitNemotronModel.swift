@@ -475,6 +475,7 @@ public final class NemotronStreamSession: @unchecked Sendable {
     /// Additive attention mask [1,1,4,60]: -inf over the cache slots not yet filled (the KV
     /// window fills over the first 14 chunks; afterwards a constant all-zeros mask).
     private func negMask() -> TensorValue {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let M = KitNemotronModel.self
         let q = M.encFramesPerChunk, kv = M.kvKeys
         let valid = min(M.kvWindow, q * chunkIndex)
@@ -486,10 +487,17 @@ public final class NemotronStreamSession: @unchecked Sendable {
             }
         }
         return .float16(mask, shape: [1, 1, q, kv])
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     private static func zeros16(_ shape: [Int]) -> TensorValue {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         .float16([Float16](repeating: 0, count: shape.reduce(1, *)), shape: shape)
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     private func value(_ d: [String: TensorValue], _ name: String) throws -> TensorValue {

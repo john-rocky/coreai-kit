@@ -78,6 +78,7 @@ public final class AudioRuntime: @unchecked Sendable {
         }
         self.arch = arch
 
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw KitAudioError.noMetalDevice
         }
@@ -115,6 +116,9 @@ public final class AudioRuntime: @unchecked Sendable {
             contentsOf: try GraphBundle.resolve(in: encoderURL),
             computeUnits: encoderComputeUnits)
         self.mel = try AudioMelPreprocessor.qwen2_5Omni()
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// Whether any audio embeds are currently resident in the buffer.
@@ -125,6 +129,7 @@ public final class AudioRuntime: @unchecked Sendable {
 
     // MARK: - Audio attach
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// Encode `inputFeatures`/`attnBias` (host-prepared mel padded to whole chunks) through the
     /// audio encoder and write its first `audioTokenCount` rows into the decoder's static buffer.
     /// `audioTokenCount` is the clip's real audio-token count `N` (the rest of the buffer is
@@ -144,19 +149,25 @@ public final class AudioRuntime: @unchecked Sendable {
         }
         writeEmbeds(embeds.floats(), audioTokenCount: n)
     }
+    #endif
 
     /// Encode a raw 16 kHz mono waveform: Swift vDSP log-mel (bit-exact with the HF extractor) →
     /// encoder → static buffer. The clip is trimmed to the bundle's max duration (≈30 s). This is
     /// the production app path (the gate paths feed host-prepared tensors instead).
     public func attach(samples: [Float], sampleRate: Int = 16000) async throws {
         guard sampleRate == 16000 else { throw KitAudioError.unsupportedSampleRate(sampleRate) }
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let maxSamples = arch.melFrames * 160  // melFrames * hop(160) = ≈30 s @ 16 kHz
         let clip = samples.count > maxSamples ? Array(samples[0..<maxSamples]) : samples
         let (logmel, frames) = mel.logMel(clip)
         let (feats, bias, n) = arch.encoderInputs(fromMel: logmel, frames: frames)
         try await attach(inputFeatures: feats, attnBias: bias, audioTokenCount: n)
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// Write a precomputed `[maxAudioTokens, hidden]` embeds buffer directly (isolates the decoder
     /// + static-input wiring from the encoder; the values are taken as-is).
     public func attachEmbeds(_ embeds: [Float16], audioTokenCount n: Int) {
@@ -165,6 +176,7 @@ public final class AudioRuntime: @unchecked Sendable {
         for i in 0..<count { pointer[i] = embeds[i] }
         attachedTokenCount.withLock { $0 = n }
     }
+    #endif
 
     /// Clears the resident audio embeds.
     public func detach() {
@@ -174,10 +186,14 @@ public final class AudioRuntime: @unchecked Sendable {
 
     private func writeEmbeds(_ values: [Float], audioTokenCount n: Int) {
         memset(audioBuffer.contents(), 0, audioBuffer.length)
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let pointer = audioBuffer.contents().assumingMemoryBound(to: Float16.self)
         let valid = min(n * arch.hidden, values.count, arch.audioEmbedsCount)
         for i in 0..<valid { pointer[i] = Float16(values[i]) }
         attachedTokenCount.withLock { $0 = n }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     // MARK: - Generate (low-level)

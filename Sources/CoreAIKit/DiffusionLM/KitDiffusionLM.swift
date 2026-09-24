@@ -218,6 +218,7 @@ public final class KitDiffusionLM: @unchecked Sendable {
             }
             return out
         default:
+            #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
             var out = [Float16](repeating: 0, count: count)
             produced.view(as: Float16.self).withUnsafePointer { pointer, _, _ in
                 out.withUnsafeMutableBufferPointer {
@@ -225,6 +226,9 @@ public final class KitDiffusionLM: @unchecked Sendable {
                 }
             }
             return out.map { Float($0) }
+            #else
+            fatalError("Float16 is not supported on this platform")
+            #endif
         }
     }
 
