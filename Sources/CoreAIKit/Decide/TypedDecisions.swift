@@ -719,7 +719,9 @@ public actor TypedDecisions {
     /// the previous call, whether a decision, a prefill or another `logits(for:)`, is rewound
     /// to and only the tail is processed; `timing.reusedTokens` says how much was kept. An
     /// engine that cannot rewind mid-sequence (the recurrent hybrids: Qwen3.5, LFM2.5,
-    /// Granite 4) re-prefills the whole prompt and reports 0. One instance holds one cache,
+    /// Granite 4) keeps less: a call that extends the previous one continues from it, one that
+    /// starts with the state prefix a decision or `prefill(_:)` checkpointed returns there, and
+    /// anything else is prefilled whole and reports 0. One instance holds one cache,
     /// so alternating between two states rewinds to their common prefix on every call.
     /// Calls on one instance serialize.
     public func logits(for tokens: [Int32]) async throws -> Decision.Logits {
@@ -730,7 +732,8 @@ public actor TypedDecisions {
     /// Runs `tokens` into the engine's cache without reading logits, so a following
     /// `logits(for:)` on a prompt that starts with them processes the rest only: the
     /// token-level `prefill(_:)`. Returns what the prefill cost. On an engine that cannot
-    /// rewind it saves nothing.
+    /// rewind it takes no checkpoint, so it saves only the call right after it, when that call
+    /// starts with `tokens`.
     public func prefill(tokens: [Int32]) async throws -> Decision.Timing {
         try await score(tokens, includeLogits: false).1
     }

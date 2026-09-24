@@ -17,6 +17,29 @@ policy.
 - **`apus-openjev-v1-4b` → `apus-decision-v1-4b`** — the catalog id, display name and Hub repo
   (`mlboydaisuke/APUS-Decision-v1-4B-CoreAI`; the old URL redirects) no longer carry the source
   model's product name. The source attribution stays on the card and in `base_model`.
+- **Decisions on a recurrent hybrid reuse the state** — a hybrid (Qwen3.5, LFM2.5, Granite 4) on
+  the sequential engine cannot rewind its recurrent state, and every decision used to re-prefill
+  its whole prompt; the catalog's `decider-0.8b`, `openthai-systemone`, `qwen3.5-2b-decision`,
+  `apus-decision-v1-4b` and `system-one-scorer-4b` are such hybrids. `TypedDecisions` now
+  checkpoints the state after a state's prefix — `prefill(_:)`, or the first question on a new
+  state — with coreai-models 0.2.7-zoo's `InferenceEngine.checkpoint()`, and each later question
+  on the state restores it and prefills only its own tokens. Eight questions on one state on an M4
+  Max (2026-09-24), per decision, checkpointed vs every prompt from scratch: 186 vs 825 ms
+  (`decider-0.8b`), 120 vs 696 ms (`openthai-systemone`), 220 vs 1,297 ms (`qwen3.5-2b-decision`),
+  1,211 vs 3,081 ms (`apus-decision-v1-4b`), 719 vs 5,851 ms (`system-one-scorer-4b`). The answers
+  are bit-identical to the from-scratch path on the fixtures of the first three (44, 50 and 58
+  rows) and, for the two 4B models, on eight questions over two states with one revisited;
+  `minicpm5-2b`, an attention model, reads its rows as before, bit for bit. The first question on
+  a new state carries the prefix pass in its timing and reports what that pass reused.
+  `logits(for:)` returns to the checkpoint the same way; `prefill(tokens:)` takes none. The
+  internal `rewind(to:)` reports the engine's own count after the reset, which on a checkpointed
+  hybrid can be the checkpoint's position below the index asked for.
+- **coreai-models pinned to `0.2.7-zoo`** (was `0.2.4-zoo`) for the checkpoint above. The bump
+  also brings `0.2.5-zoo` — the engine stops at a stop sequence instead of decoding to
+  `maxTokens`, so a chat turn on the pipelined engine ends with its answer (a 14-token LFM2.5
+  1.2B answer under a 2,048-token cap: 8.3 s → 0.2 s on an M4 Max, the fork's measurement) — and
+  `0.2.6-zoo`, which declares a macOS 26 / iOS 26 floor with `@available(macOS 27, iOS 27, *)` on
+  everything that touches Core AI; this package's floor stays 27. All lockfiles follow.
 
 ### Added
 
@@ -81,6 +104,11 @@ policy.
   one labelled fixture and read on another, before and after, per family. It refuses a row id in
   both sets and prints what else they share (situations, source rows, states); `--record`
   writes the catalog record, `--out` / `--out-raw` the rows `calibration.py` reads.
+- **`decide-cli --no-share`, `--engine-log` and `parity --dump-probs`** — `--no-share` prefills every
+  prompt whole (`TypedDecisions.Configuration.sharePrefix = false`) for any command, the
+  from-scratch side of a comparison; `--engine-log` prints the inference engine's own log lines (a
+  checkpoint's size and copy time among them); `parity --dump-probs <rows.jsonl>` writes each
+  row's probabilities, argmax, prompt and reused tokens, and time.
 
 ### Changed
 
