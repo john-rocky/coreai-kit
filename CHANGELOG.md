@@ -7,6 +7,18 @@ policy.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A macOS app that links `CoreAIKit` failed its Release build.** A Release build compiles every
+  package for all of ARCHS_STANDARD, x86_64 included: Archive does, and so does Run in the
+  examples, whose schemes run Release. coreai-models 0.2.7-zoo declares a macOS 26 floor, so
+  Xcode compiled it for x86_64 as well. Three of its files use `Float16`, which x86_64 macOS does
+  not have: 39 errors in `CoreAILanguageModels`, for the examples that link `CoreAIKit` and for
+  any app on 0.7.0. `swift build` compiles for the host's architecture only and passed.
+  coreai-models is pinned to `0.2.8-zoo`, which adds upstream's own x86_64 guard to those files.
+  The arm64 code is unchanged: `decider-0.8b`'s fixture reads bit-identical, 44 of 44 rows. CI now
+  builds `Examples/Transcribe` that way (`example-app-release`).
+
 ## [0.7.0] — 2026-09-24
 
 Decisions on a recurrent hybrid reuse the state: the catalog's five hybrid decision models

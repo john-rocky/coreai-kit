@@ -372,7 +372,7 @@ decides when to search.
 
 ### Known beta caveats
 
-- The pinned `0.2.7-zoo` engine stops promptly after the consumer stops. The executor
+- The pinned `0.2.8-zoo` engine stops promptly after the consumer stops. The executor
   settles the previous generation and rewinds to the shared token prefix on the next
   turn. Hybrid engines that cannot partially rewind fall back to full re-prefill.
   Set `COREAI_KIT_DEBUG=1` to inspect cache decisions.

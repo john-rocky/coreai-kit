@@ -33,7 +33,11 @@ let package = Package(
         .trait(name: "Xet", description: "Enable Xet transport for model downloads.")
     ],
     dependencies: [
-        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.7-zoo adds a
+        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.8-zoo is
+        // 0.2.7-zoo with upstream's x86_64 guard on the Float16 code of three files: 0.2.6-zoo's
+        // macOS 26 floor makes a Release (universal) app build compile the fork for x86_64,
+        // which has no Float16, and those files failed there (the arm64 code is unchanged).
+        // 0.2.7-zoo adds a
         // checkpoint of a hybrid model's recurrent state to the sequential engine
         // (InferenceEngine.checkpoint()): TypedDecisions checkpoints after a state's prefix
         // and each later question restores it instead of re-prefilling the whole prompt
@@ -55,7 +59,7 @@ let package = Package(
         // descriptor; garbled text at temperature > 0 under pipelined decode).
         // For local engine work swap in .package(path: "../coreai-models") — branch
         // zoo-0.4 matches this tag.
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.7-zoo"),
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.8-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
         .package(
             url: "https://github.com/huggingface/swift-huggingface.git",
