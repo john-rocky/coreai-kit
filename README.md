@@ -18,22 +18,22 @@ The entry below uses **Qwen3 0.6B** (`qwen3-0.6b`): approximately **352 MB on Ma
 use and cached. Keep at least 1 GB of free disk for the starter. No Python, conversion,
 API key or bundled model weights are needed.
 
-**0.7.2 targets Xcode 27 (`27A266a`) on macOS 27 (`26A428`), the release builds.** See the
+**0.7.3 targets Xcode 27 (`27A266a`) on macOS 27 (`26A428`), the release builds.** See the
 [validation record](docs/GETTING_STARTED.md#release-041-validation) for the tested Mac,
-OS/SDK builds and model revisions of the 0.4.1 train; 0.4.2, 0.5.0, 0.6.0, 0.7.0, 0.7.1 and 0.7.2 re-ran the same gates on the release
+OS/SDK builds and model revisions of the 0.4.1 train; 0.4.2, 0.5.0, 0.6.0, 0.7.0, 0.7.1, 0.7.2 and 0.7.3 re-ran the same gates on the release
 toolchain (CHANGELOG). Device rows were measured on the iOS 27 RC (24A435).
 
 ## Quickstart
 
 In Xcode, use **File → Add Package Dependencies…**, paste
-`https://github.com/john-rocky/coreai-kit`, choose **Exact Version: 0.7.2**, and add the
+`https://github.com/john-rocky/coreai-kit`, choose **Exact Version: 0.7.3**, and add the
 **CoreAIKit** product to your app target. If App Sandbox is enabled on your macOS
 target, enable **Signing & Capabilities → App Sandbox → Outgoing Connections (Client)**
 for first-use model downloads ([network client entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.client)).
 For a Swift package:
 
 ```swift
-.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.2")
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.3")
 // In your target's dependencies:
 .product(name: "CoreAIKit", package: "coreai-kit")
 ```
@@ -60,7 +60,7 @@ response deltas to your view state. Keep the session for follow-up questions.
 **Run the same release on your Mac:**
 
 ```bash
-git clone --branch 0.7.2 --depth 1 https://github.com/john-rocky/coreai-kit.git
+git clone --branch 0.7.3 --depth 1 https://github.com/john-rocky/coreai-kit.git
 cd coreai-kit
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # Xcode 27 (27A266a)
 swift run -c release --package-path Examples/ChatDemo chat-cli \

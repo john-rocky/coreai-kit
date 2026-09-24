@@ -7,6 +7,16 @@ policy.
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-09-25
+
+A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a
+26 floor can depend on the kit and use Core AI behind `#available(macOS 27, iOS 27, *)`; models
+still run on 27 only (#56, Mattt Zmuda). Apple's on-device foundation model is a decision backend
+(`FoundationModelDecisions`, `systemone serve --backend fm`). Catalog sizes are measured decimal MB,
+and the MinerU, GLM-OCR and Nemotron loaders download their pinned revision. `exact: "0.7.2"`
+resolvers move to `0.7.3`; `from:` resolvers pick it up. Built and gated on macOS 27.0 (26A428) and
+Xcode 27 (27A266a).
+
 ### Added
 
 - **Deploys to macOS 26 / iOS 26.** The package floor is macOS 26 / iOS 26 (was 27), so an

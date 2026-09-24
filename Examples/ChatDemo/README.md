@@ -17,9 +17,9 @@ let reply = try await chat.respond(to: "What is the capital of Japan?")
 
 ## Run it
 
-Start with the [0.7.2 installation and tested environment](../../README.md#quickstart).
-Run commands below from `Examples/ChatDemo` in the **0.7.2** checkout. Both the
-CLI and Xcode app depend on the public **exact 0.7.2** package. Qwen3 0.6B downloads
+Start with the [0.7.3 installation and tested environment](../../README.md#quickstart).
+Run commands below from `Examples/ChatDemo` in the **0.7.3** checkout. Both the
+CLI and Xcode app depend on the public **exact 0.7.3** package. Qwen3 0.6B downloads
 approximately 352 MB on Mac (456 MB for the iPhone variant).
 
 The initial reply should mention Tokyo. Later requests can vary because sampling is

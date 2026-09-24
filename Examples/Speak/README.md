@@ -17,8 +17,8 @@ let audio = try await speaker.synthesize("Hello from Core AI.")
 
 ## Build & run
 
-Start with the [0.7.2 installation and tested environment](../../README.md#quickstart).
-Use the **0.7.2** checkout: the CLI and Xcode app depend on the public exact **0.7.2**
+Start with the [0.7.3 installation and tested environment](../../README.md#quickstart).
+Use the **0.7.3** checkout: the CLI and Xcode app depend on the public exact **0.7.3**
 package. The release demo uses VoxCPM 0.5B and a fixed voice on Mac.
 
 ```bash

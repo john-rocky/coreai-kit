@@ -6,7 +6,7 @@ options:
 packages:
   coreai-kit:
     url: https://github.com/john-rocky/coreai-kit
-    exactVersion: 0.7.2
+    exactVersion: 0.7.3
 
 # Run config Release: the engine's per-token host work is ~3x slower unoptimized.
 schemes:

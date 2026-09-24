@@ -352,7 +352,7 @@
 			repositoryURL = "https://github.com/john-rocky/coreai-kit";
 			requirement = {
 				kind = exactVersion;
-				version = 0.7.2;
+				version = 0.7.3;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
