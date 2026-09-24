@@ -19,9 +19,10 @@ import CoreAIKit
 import Foundation
 
 extension CoreAI {
-    /// Default decision model. MiniCPM5 2B is the smallest catalog chat model whose zero-shot
-    /// decisions clear chance on the published fixtures; `options: .model("qwen3-0.6b")`
-    /// trades accuracy for a 352 MB download.
+    /// Default decision model, the same on every platform. MiniCPM5 2B is the smallest catalog
+    /// chat model whose zero-shot decisions clear chance on the published fixtures;
+    /// `options: .model("qwen3-0.6b")` trades accuracy for a 352 MB download. docs/SYSTEM_ONE.md
+    /// ("Which model") compares the other catalog models on JevBench's items, Mac and iPhone.
     public static let defaultDecisionModel = "minicpm5-2b"
 
     /// One typed question about a state.

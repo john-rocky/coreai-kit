@@ -203,6 +203,16 @@ struct DecisionReadoutTests {
         #expect(ModelCatalog.builtin.entry(id: CoreAI.defaultDecisionModel)?.kind == .chat)
         #expect(!CoreAI.Op.decide.summary.isEmpty)
     }
+
+    /// `CoreAI.decide` with no model option must resolve on a Mac and on an iPhone alike, so the
+    /// default is a catalog model published for both. A Mac-only model (no `ios` variant) as the
+    /// default would fail every call on the phone.
+    @Test func defaultDecisionModelIsPublishedForBothPlatforms() throws {
+        let entry = try #require(ModelCatalog.builtin.entry(id: CoreAI.defaultDecisionModel))
+        #expect(entry.variants["macos"] != nil)
+        #expect(entry.variants["ios"] != nil)
+        #expect(TypedDecisions.supports(entry))
+    }
 }
 
 struct DecisionLogitsTests {

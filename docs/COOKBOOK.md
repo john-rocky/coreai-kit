@@ -157,7 +157,8 @@ decisions track its own full-precision readout on the published fixtures (141/14
 mean |Δp| 0.02; `Examples/Decide` has the tables). `options: .model("minicpm5-1b")` is twice
 as fast at lower accuracy. The probabilities are read at the temperature the model's catalog
 entry records (`CatalogEntry.calibration`, 2.93 for `minicpm5-2b`, fitted on labelled rows by
-`decide-cli calibrate`): the same answers, less over-confident.
+`decide-cli calibrate`): the same answers, less over-confident. [Which model](SYSTEM_ONE.md#which-model)
+compares the other catalog models on JevBench's items, on a Mac and on an iPhone.
 `TypedDecisions.Configuration.temperature` overrides it; `nil` takes the catalog's, and a model
 without a record reads at its own. Decisions need the logits at the answer slot, so the model loads
 on the sequential engine (or the static-shape engine for a Neural Engine bundle) rather
@@ -203,8 +204,8 @@ the Model Context Protocol: `claude mcp add systemone -- "$(brew --prefix)/bin/s
 message forms `SystemOneMCP`, for an app that is the MCP server itself:
 
 ```swift
-let server = SystemOneMCPServer(defaultModel: "minicpm5-2b")   // stdin/stdout by default; any FileHandle pair
-try await server.run()                                          // returns when the input closes
+let server = SystemOneMCPServer(defaultModel: CoreAI.defaultDecisionModel)   // stdin/stdout by default; any FileHandle pair
+try await server.run()                                                        // returns when the input closes
 ```
 
 **A model trained for this.** `decider-0.8b` (catalog kind `decision`) is not a chat model:

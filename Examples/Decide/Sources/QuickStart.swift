@@ -8,10 +8,10 @@ import CoreAIOps
 import Foundation
 
 /// Score typed questions about one state with a catalog chat model
-/// (`ModelCatalog.builtin.available(.chat)`; MiniCPM5 2B is the default). Nothing is
-/// generated: each question is one prompt read at its answer slot, and the answers are the
-/// probabilities over the listed options. First use downloads the model (progress via
-/// `downloadProgress`), later runs load from the local cache.
+/// (`ModelCatalog.builtin.available(.chat)`; the kit's default, `CoreAI.defaultDecisionModel`,
+/// is MiniCPM5 2B). Nothing is generated: each question is one prompt read at its answer slot,
+/// and the answers are the probabilities over the listed options. First use downloads the model
+/// (progress via `downloadProgress`), later runs load from the local cache.
 ///
 /// The op form (`CoreAI.decide`) is the same call with the model resolved and cached behind
 /// it; this function holds the model-level `TypedDecisions` so an app that decides
@@ -19,7 +19,7 @@ import Foundation
 func decide(
     state: String,
     questions: [String: Decision.Question],
-    model id: String = "minicpm5-2b",
+    model id: String = CoreAI.defaultDecisionModel,
     downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
 ) async throws -> [String: Decision.Answer] {
     // CARD-SNIPPET-BEGIN
