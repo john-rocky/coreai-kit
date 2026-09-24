@@ -77,7 +77,7 @@ In Xcode: File ▸ Add Package Dependencies… ▸ `https://github.com/john-rock
 then add the `CoreAIKit` product to your target. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.1"),
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.2"),
 // target dependency:
 .product(name: "CoreAIKit", package: "coreai-kit"),
 ```
