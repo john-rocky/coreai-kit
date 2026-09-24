@@ -52,6 +52,15 @@
 // `EncoderPrompt.swift`, `EncoderDecider.swift`). Its bundle declares `decision.head ==
 // "encoder"`, and both initialisers look for that before anything else.
 //
+// ## Your own readout
+//
+// `decide` reads the answer as a softmax over one letter token per option. A caller with a
+// different readout — one that sums the case and space variants of each label, measures how
+// much probability landed on the allowed answers, then calibrates — renders its own prompt
+// with `tokenizer` (the bundle's own) and calls `logits(for:)`: the same engine drive as a
+// decision, the whole vocabulary back, the prefix reuse above included. `prefill(tokens:)` is
+// the token-level `prefill(_:)`.
+//
 // ## Which engine
 //
 // The answer needs the logits at the answer slot, which the default GPU-pipelined engine does
@@ -69,6 +78,7 @@
 import CoreAIKitVision
 import CoreAILanguageModels
 import Foundation
+import Synchronization
 import Tokenizers
 
 /// A loaded decision model. One decision at a time; calls on the same instance serialize.
@@ -156,6 +166,10 @@ public actor TypedDecisions {
     /// The state prefix the engine's checkpoint holds (`InferenceEngine.checkpoint()`, taken
     /// after a prefix pass on an engine that cannot rewind into a state); empty when none.
     private var checkpointed: [Int32] = []
+    /// Held from the rewind to the end of the stream, and from a prefix pass to its
+    /// checkpoint. The actor alone does not serialize a call: each engine `await` lets another
+    /// call in, and two calls then drive one engine, one `kvTokens` and one `checkpointed`.
+    private let engineLock = AsyncMutex()
     /// Timing of the last decision or prefill.
     public private(set) var lastTiming: Decision.Timing?
 
@@ -164,6 +178,14 @@ public actor TypedDecisions {
         switch backend {
         case .language(let runtime): runtime.modelName
         case .encoder(let encoder): encoder.modelName
+        }
+    }
+    /// The bundle's tokenizer, the one `decide` renders with. Render your own prompt with it
+    /// before `logits(for:)`, so the tokens are the ones the model was trained on.
+    public nonisolated var tokenizer: any Tokenizer {
+        switch backend {
+        case .language(let runtime): runtime.tokenizer
+        case .encoder(let encoder): encoder.prompt.tokenizer
         }
     }
 
@@ -601,22 +623,27 @@ public actor TypedDecisions {
     /// covers both. A prefix the checkpoint already holds costs nothing.
     private func scorePrefix(_ prefix: [Int32]) async throws -> Decision.Timing {
         let engine = runtime.engine
-        let checkpoints = configuration.sharePrefix && engine.supportsCheckpoint
-        if checkpoints, !prefix.isEmpty, prefix == checkpointed {
-            let timing = Decision.Timing(promptTokens: prefix.count, reusedTokens: prefix.count, seconds: 0)
-            lastTiming = timing
-            return timing
+        guard configuration.sharePrefix, engine.supportsCheckpoint else {
+            return try await score(prefix, includeLogits: false).1
         }
-        let (_, timing) = try await score(prefix, includeLogits: false)
-        guard checkpoints else { return timing }
-        let start = SuspendingClock.now
-        try await engine.checkpoint()
-        checkpointed = prefix
-        let total = Decision.Timing(
-            promptTokens: timing.promptTokens, reusedTokens: timing.reusedTokens,
-            seconds: timing.seconds + ProcessStats.seconds(from: start, to: .now))
-        lastTiming = total
-        return total
+        try checkPrompt(prefix)
+        // One hold from the pass to the checkpoint: a call in between would move the state.
+        return try await engineLock.withLock {
+            if prefix == checkpointed {
+                let timing = Decision.Timing(promptTokens: prefix.count, reusedTokens: prefix.count, seconds: 0)
+                lastTiming = timing
+                return timing
+            }
+            let (_, timing) = try await drive(prefix, includeLogits: false)
+            let start = SuspendingClock.now
+            try await engine.checkpoint()
+            checkpointed = prefix
+            let total = Decision.Timing(
+                promptTokens: timing.promptTokens, reusedTokens: timing.reusedTokens,
+                seconds: timing.seconds + ProcessStats.seconds(from: start, to: .now))
+            lastTiming = total
+            return total
+        }
     }
 
     /// Before the first question on a new state, on an engine that checkpoints: runs the
@@ -673,25 +700,72 @@ public actor TypedDecisions {
 
     /// Drops the cached prompt: the next decision prefills from scratch.
     public func reset() async throws {
-        kvTokens = []
-        checkpointed = []
-        switch backend {
-        case .language(let runtime): try await runtime.engine.reset()
-        case .encoder(let encoder): await encoder.reset()
+        try await engineLock.withLock {
+            kvTokens = []
+            checkpointed = []
+            switch backend {
+            case .language(let runtime): try await runtime.engine.reset()
+            case .encoder(let encoder): await encoder.reset()
+            }
         }
+    }
+
+    // MARK: - Your own readout
+
+    /// Feeds `tokens` and returns the logits at the position after the last one, for the
+    /// whole vocabulary. The prompt is the caller's: render it with `tokenizer`.
+    ///
+    /// The engine keeps its KV cache between calls. The longest prefix `tokens` shares with
+    /// the previous call, whether a decision, a prefill or another `logits(for:)`, is rewound
+    /// to and only the tail is processed; `timing.reusedTokens` says how much was kept. An
+    /// engine that cannot rewind mid-sequence (the recurrent hybrids: Qwen3.5, LFM2.5,
+    /// Granite 4) re-prefills the whole prompt and reports 0. One instance holds one cache,
+    /// so alternating between two states rewinds to their common prefix on every call.
+    /// Calls on one instance serialize.
+    public func logits(for tokens: [Int32]) async throws -> Decision.Logits {
+        let (logits, timing) = try await score(tokens)
+        return Decision.Logits(engine: logits, timing: timing)
+    }
+
+    /// Runs `tokens` into the engine's cache without reading logits, so a following
+    /// `logits(for:)` on a prompt that starts with them processes the rest only: the
+    /// token-level `prefill(_:)`. Returns what the prefill cost. On an engine that cannot
+    /// rewind it saves nothing.
+    public func prefill(tokens: [Int32]) async throws -> Decision.Timing {
+        try await score(tokens, includeLogits: false).1
     }
 
     // MARK: - Engine
 
     /// Feeds `tokens` and returns the logits at the last position. Rewinds to the longest
     /// prefix shared with the previous prompt first (unless sharing is off), so only the
-    /// tail is processed.
+    /// tail is processed. Waits for any call already on the engine; a task cancelled while
+    /// it waits throws `CancellationError`.
     private func score(
         _ tokens: [Int32], includeLogits: Bool = true
     ) async throws -> ([LogitsScalarType], Decision.Timing) {
+        try checkPrompt(tokens)
+        return try await engineLock.withLock {
+            try await drive(tokens, includeLogits: includeLogits)
+        }
+    }
+
+    /// What `score` checks before it waits for the engine.
+    private func checkPrompt(_ tokens: [Int32]) throws {
+        guard case .language = backend else {
+            throw DecisionError.unsupportedModel(
+                id: id, reason: "an encoder bundle has no token-level logits; it answers through decide")
+        }
+        guard !tokens.isEmpty else { throw DecisionError.emptyPrompt }
         guard tokens.count < maxContextLength else {
             throw DecisionError.promptTooLong(tokens: tokens.count, max: maxContextLength - 1)
         }
+    }
+
+    /// `score` with the engine lock held (and the prefix pass of `scorePrefix`).
+    private func drive(
+        _ tokens: [Int32], includeLogits: Bool
+    ) async throws -> ([LogitsScalarType], Decision.Timing) {
         let engine = runtime.engine
         let start = SuspendingClock.now
         let wanted = configuration.sharePrefix
@@ -752,5 +826,87 @@ public struct PrefilledState: Sendable {
 
     public func decide(_ questions: [String: Decision.Question]) async throws -> [String: Decision.Answer] {
         try await decider.decide(state, questions)
+    }
+}
+
+extension Decision.Logits {
+    /// The engine's logits widened to `Float` without change (`LogitsScalarType` is half
+    /// precision on Apple silicon, `Float` on Intel).
+    init(engine logits: [LogitsScalarType], timing: Decision.Timing) {
+        self.init(values: logits.map { Float($0) }, timing: timing)
+    }
+}
+
+// MARK: - Engine lock
+
+/// A lock held across `await`s, granted in the order it was asked for. The waiter queue is
+/// guarded by a `Mutex`, which is never held across a suspension. A task cancelled while it
+/// waits leaves the queue and throws `CancellationError`; so does one that asks already
+/// cancelled.
+final class AsyncMutex: Sendable {
+    private struct State {
+        var held = false
+        var nextTicket = 0
+        var waiters: [(ticket: Int, continuation: CheckedContinuation<Void, any Error>)] = []
+    }
+
+    private let state = Mutex(State())
+
+    /// Runs `body` with the lock held and releases it however `body` exits.
+    func withLock<T>(
+        isolation: isolated (any Actor)? = #isolation, _ body: () async throws -> T
+    ) async throws -> T {
+        try await lock()
+        defer { unlock() }
+        return try await body()
+    }
+
+    /// Tasks waiting for the lock.
+    var waiting: Int { state.withLock { $0.waiters.count } }
+
+    private func lock() async throws {
+        let ticket = state.withLock {
+            defer { $0.nextTicket += 1 }
+            return $0.nextTicket
+        }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                // Checked under the mutex: a cancellation either lands before this, and is
+                // seen here, or after the waiter is queued, and `onCancel` finds it.
+                let granted: Bool? = state.withLock {
+                    if Task.isCancelled { return nil }
+                    if !$0.held {
+                        $0.held = true
+                        return true
+                    }
+                    $0.waiters.append((ticket, continuation))
+                    return false
+                }
+                switch granted {
+                case nil: continuation.resume(throwing: CancellationError())
+                case true?: continuation.resume()
+                case false?: break
+                }
+            }
+        } onCancel: {
+            // A waiter `unlock` already handed the lock to is not in the queue; it keeps it.
+            let cancelled = state.withLock { state in
+                state.waiters.firstIndex { $0.ticket == ticket }
+                    .map { state.waiters.remove(at: $0).continuation }
+            }
+            cancelled?.resume(throwing: CancellationError())
+        }
+    }
+
+    /// Hands the lock to the first waiter in the queue, or frees it.
+    private func unlock() {
+        let next = state.withLock { state -> CheckedContinuation<Void, any Error>? in
+            guard !state.waiters.isEmpty else {
+                state.held = false
+                return nil
+            }
+            return state.waiters.removeFirst().continuation
+        }
+        next?.resume()
     }
 }

@@ -1,8 +1,11 @@
 // TypedDecisionsTests.swift — the parts of a typed decision that are checkable without
 // weights: the request rendering (byte-for-byte the reference form), the answer-shape
-// validation, and the readout arithmetic from logits to an answer.
+// validation, the readout arithmetic from logits to an answer, and the lock that keeps two
+// calls off one engine.
 
+import CoreAILanguageModels
 import Foundation
+import Synchronization
 import Testing
 
 @testable import CoreAIKit
@@ -199,6 +202,102 @@ struct DecisionReadoutTests {
         #expect(CoreAI.Op.decide.defaultModelID == CoreAI.defaultDecisionModel)
         #expect(ModelCatalog.builtin.entry(id: CoreAI.defaultDecisionModel)?.kind == .chat)
         #expect(!CoreAI.Op.decide.summary.isEmpty)
+    }
+}
+
+struct DecisionLogitsTests {
+    private let timing = Decision.Timing(promptTokens: 10, reusedTokens: 4, seconds: 0.5)
+
+    /// The public logits are the engine's values widened, not rounded or rescaled: a caller
+    /// reading them its own way gets exactly what `decide` reads.
+    @Test func engineLogitsWidenUnchanged() {
+        let engine: [LogitsScalarType] = [0, 1.5, -2.25, 1024, -.infinity]
+        let logits = Decision.Logits(engine: engine, timing: timing)
+        #expect(logits.values == [0, 1.5, -2.25, 1024, -.infinity])
+        #expect(logits.values == engine.map { Float($0) })
+        #expect(logits.timing == timing)
+    }
+
+    /// The readout `decide` applies to its letter slots, applied to the public logits, is the
+    /// same arithmetic; the smoke test checks the two agree on a real bundle.
+    @Test func letterReadoutOverPublicLogits() {
+        let logits = Decision.Logits(values: [0.5, 3, -1, 2, 0], timing: timing)
+        let slots: [Int32] = [1, 3]
+        let p = DecisionPrompt.probabilities(
+            logits: slots.map { Double(logits.values[Int($0)]) }, temperature: 1)
+        #expect(abs(p[0] - 1 / (1 + exp(-1.0))) < 1e-12)
+        #expect(abs(p.reduce(0, +) - 1) < 1e-12)
+    }
+
+    @Test func emptyPromptIsRefusedWithAMessage() {
+        #expect(DecisionError.emptyPrompt.errorDescription?.isEmpty == false)
+        #expect(DecisionError.emptyPrompt == DecisionError.emptyPrompt)
+    }
+}
+
+@Suite(.timeLimit(.minutes(1)))
+struct AsyncMutexTests {
+    /// Waits until `count` tasks are queued behind the holder.
+    private func waitUntil(_ mutex: AsyncMutex, queues count: Int) async throws {
+        while mutex.waiting < count { try await Task.sleep(for: .milliseconds(1)) }
+    }
+
+    /// Waiters get the lock one at a time, in the order they asked for it.
+    @Test func grantsInArrivalOrder() async throws {
+        let mutex = AsyncMutex()
+        let order = Mutex<[Int]>([])
+        var waiters: [Task<Void, any Error>] = []
+        try await mutex.withLock {
+            for index in 0..<5 {
+                waiters.append(Task {
+                    try await mutex.withLock { order.withLock { $0.append(index) } }
+                })
+                try await waitUntil(mutex, queues: index + 1)
+            }
+            #expect(order.withLock { $0.isEmpty })
+        }
+        for waiter in waiters { try await waiter.value }
+        #expect(order.withLock { $0 } == [0, 1, 2, 3, 4])
+    }
+
+    /// A waiter cancelled in the queue throws and leaves; the one behind it still gets the
+    /// lock, and the lock is free afterwards.
+    @Test func cancelledWaiterLeavesTheQueue() async throws {
+        let mutex = AsyncMutex()
+        let (cancelled, next) = try await mutex.withLock {
+            let cancelled = Task { try await mutex.withLock {} }
+            try await waitUntil(mutex, queues: 1)
+            let next = Task { try await mutex.withLock { 42 } }
+            try await waitUntil(mutex, queues: 2)
+            cancelled.cancel()
+            await #expect(throws: CancellationError.self) { try await cancelled.value }
+            #expect(mutex.waiting == 1)
+            return (cancelled, next)
+        }
+        #expect(cancelled.isCancelled)
+        #expect(try await next.value == 42)
+        #expect(mutex.waiting == 0)
+        try await mutex.withLock {}
+    }
+
+    /// A task that asks already cancelled throws without taking the lock.
+    @Test func cancelledTaskDoesNotTakeTheLock() async throws {
+        let mutex = AsyncMutex()
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await mutex.withLock {}
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        try await mutex.withLock {}
+    }
+
+    /// A body that throws releases the lock.
+    @Test func throwingBodyReleasesTheLock() async throws {
+        let mutex = AsyncMutex()
+        await #expect(throws: DecisionError.emptyPrompt) {
+            try await mutex.withLock { throw DecisionError.emptyPrompt }
+        }
+        #expect(try await mutex.withLock { 1 } == 1)
     }
 }
 
