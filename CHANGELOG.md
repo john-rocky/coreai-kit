@@ -7,26 +7,7 @@ policy.
 
 ## [Unreleased]
 
-## [0.7.3] — 2026-09-25
-
-A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a
-26 floor can depend on the kit and use Core AI behind `#available(macOS 27, iOS 27, *)`; models
-still run on 27 only (#56, Mattt Zmuda). Apple's on-device foundation model is a decision backend
-(`FoundationModelDecisions`, `systemone serve --backend fm`). Catalog sizes are measured decimal MB,
-and the MinerU, GLM-OCR and Nemotron loaders download their pinned revision. `exact: "0.7.2"`
-resolvers move to `0.7.3`; `from:` resolvers pick it up. Built and gated on macOS 27.0 (26A428) and
-Xcode 27 (27A266a).
-
 ### Added
-
-- **Deploys to macOS 26 / iOS 26.** The package floor is macOS 26 / iOS 26 (was 27), so an
-  app or package with a 26 floor can depend on the kit and use Core AI behind
-  `#available(macOS 27, iOS 27, *)`. Everything that touches Core AI, plus `SystemTranscriber`,
-  `FoundationModelDecisions`, `TranscriptRenderer` and `VLPromptRenderer` (27-only Speech and
-  Foundation Models APIs), is `@available(macOS 27, iOS 27, *)`; `CoreAIKitCore`, the `Decision`
-  types, `SystemOneServer` and `CoreAI.Op` stay at 26. `systemone` and `coreai-doctor` exit with
-  a message below 27. On x86_64 macOS the Float16 paths are compiled out, the same guard as
-  coreai-models 0.2.8-zoo. Models still run on 27 only. (#56, Mattt Zmuda)
 
 - **8-speaker diarization: `nemotron-3-diarization`.** NVIDIA's Nemotron-3-Diarization
   (OpenMDW-1.1) tracks up to 8 speakers at 10 ms. It runs behind the same `KitDiarizer` as
@@ -49,6 +30,27 @@ Xcode 27 (27A266a).
   activity and the same turns on both clips. `Examples/Meeting` gains `--diarizer`,
   `--asr system` and `diarize-gate`, which checks a diarizer against a reference's per-frame
   probabilities.
+
+## [0.7.3] — 2026-09-25
+
+A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a
+26 floor can depend on the kit and use Core AI behind `#available(macOS 27, iOS 27, *)`; models
+still run on 27 only (#56, Mattt Zmuda). Apple's on-device foundation model is a decision backend
+(`FoundationModelDecisions`, `systemone serve --backend fm`). Catalog sizes are measured decimal MB,
+and the MinerU, GLM-OCR and Nemotron loaders download their pinned revision. `exact: "0.7.2"`
+resolvers move to `0.7.3`; `from:` resolvers pick it up. Built and gated on macOS 27.0 (26A428) and
+Xcode 27 (27A266a).
+
+### Added
+
+- **Deploys to macOS 26 / iOS 26.** The package floor is macOS 26 / iOS 26 (was 27), so an
+  app or package with a 26 floor can depend on the kit and use Core AI behind
+  `#available(macOS 27, iOS 27, *)`. Everything that touches Core AI, plus `SystemTranscriber`,
+  `FoundationModelDecisions`, `TranscriptRenderer` and `VLPromptRenderer` (27-only Speech and
+  Foundation Models APIs), is `@available(macOS 27, iOS 27, *)`; `CoreAIKitCore`, the `Decision`
+  types, `SystemOneServer` and `CoreAI.Op` stay at 26. `systemone` and `coreai-doctor` exit with
+  a message below 27. On x86_64 macOS the Float16 paths are compiled out, the same guard as
+  coreai-models 0.2.8-zoo. Models still run on 27 only. (#56, Mattt Zmuda)
 
 - **Apple's on-device foundation model as a decision backend.** `FoundationModelDecisions`
   (`Sources/CoreAIKit/Decide`) answers typed questions on the FoundationModels framework's
