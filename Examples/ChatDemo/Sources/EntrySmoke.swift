@@ -33,7 +33,7 @@ struct EntrySmokeView: View {
             }
             let cache = documents.appendingPathComponent("EntryChecks/\(UUID().uuidString)")
             let store = ModelStore(directory: cache)
-            log("CoreAIKit 0.7.1 · qwen3-0.6b")
+            log("CoreAIKit 0.7.2 · qwen3-0.6b")
             log("OS \(ProcessInfo.processInfo.operatingSystemVersionString)")
             log("MODEL \(model.repo) @ \(model.revision) / \(model.resolvedPath)")
             log("EMPTY_CACHE \(store.localURL(for: model) == nil)")
