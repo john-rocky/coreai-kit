@@ -13,7 +13,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case superResolution
         /// Speech-to-text (Whisper / Qwen3-ASR / Parakeet).
         case asr
-        /// Speaker diarization (Streaming Sortformer): clip → who spoke when.
+        /// Speaker diarization (Streaming Sortformer 4-spk, Nemotron-3-Diarization 8-spk): clip →
+        /// who spoke when.
         case diarization
         /// Object detection (RF-DETR / YOLOX).
         case detection
@@ -816,6 +817,18 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(path: "sortformer_float16.aimodel", sizeMB: 226),
                     "ios": .init(path: "sortformer_float16.h18p.aimodelc", sizeMB: 238),
+                ]),
+            // Up to 8 speakers at 10 ms (NVIDIA Nemotron-3-Diarization, a streaming Sortformer):
+            // the same flat layout — the variant path names the platform's graph (T = 541, low
+            // latency) — plus the `host/` subtree `KitDiarizer` downloads beside it: the 8-frame
+            // projection and silence row (weights), the mel filterbank, the Hann window and
+            // metadata.json. sizeMB covers both downloads.
+            CatalogEntry(
+                id: "nemotron-3-diarization", name: "Nemotron-3-Diarization (8-spk, streaming)",
+                repo: "mlboydaisuke/Nemotron-3-Diarization-CoreAI", kind: .diarization,
+                variants: [
+                    "macos": .init(path: "n3d_streaming_float16.aimodel", sizeMB: 200),
+                    "ios": .init(path: "n3d_streaming_float16.h18p.aimodelc", sizeMB: 200),
                 ]),
             // ── Multi-speaker / dialogue TTS (VibeVoice-Realtime-0.5B): five fp16 graphs in the
             //    platform dir + `coreai_host/` (voice prefill caches, glue, tokenizer) + the fp16

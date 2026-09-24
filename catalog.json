@@ -988,6 +988,23 @@
       }
     },
     {
+      "id": "nemotron-3-diarization",
+      "name": "Nemotron-3-Diarization (8-spk, streaming)",
+      "repo": "mlboydaisuke/Nemotron-3-Diarization-CoreAI",
+      "revision": "8dc6258987e69fc7addadd240df0998b6ae131c0",
+      "kind": "diarization",
+      "variants": {
+        "macos": {
+          "path": "n3d_streaming_float16.aimodel",
+          "sizeMB": 200
+        },
+        "ios": {
+          "path": "n3d_streaming_float16.h18p.aimodelc",
+          "sizeMB": 200
+        }
+      }
+    },
+    {
       "id": "vibevoice-realtime-0.5b",
       "name": "VibeVoice-Realtime 0.5B (multi-speaker)",
       "repo": "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI",

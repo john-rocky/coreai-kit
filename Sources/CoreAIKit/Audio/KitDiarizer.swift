@@ -17,23 +17,39 @@
 // Fixed-buffer graph contract (see the bundle's metadata.json):
 //   chunk_mel[1,1520,128] (host zero-pads each mel chunk) · spkcache[1,188,512] · valid[1,378]
 //     -> preds[1,378,4] (sigmoid activity) · chunk_pe[1,190,512] (pre-encode embeddings)
+//
+// The same actor drives NVIDIA Nemotron-3-Diarization (OpenMDW-1.1): up to 8 speakers at 10 ms,
+// its host in NemotronDiarizer/ (the zoo's Swift host, bit-identical to its Python host). The
+// catalog id picks the engine; `diarize(samples:)` and `SpeakerSegment` are the same for both.
+//
+// ```swift
+// let diarizer = try await KitDiarizer(catalog: "nemotron-3-diarization")
+// let turns = try await diarizer.diarize(samples: pcm16kMono)   // speakers 0..<8, 10 ms frames
+// ```
 
 import Accelerate
 import CoreAIKitVision
 import Foundation
 
-/// One speaker turn: `speaker` (0..<4) is active over `[startSec, endSec)` (frames are 80 ms).
+/// One speaker turn: `speaker` is active over `[startSec, endSec)`. Frames are `frameSec` long:
+/// 80 ms with speakers 0..<4 (Streaming Sortformer), 10 ms with speakers 0..<8
+/// (Nemotron-3-Diarization).
 public struct SpeakerSegment: Sendable, Hashable {
     public let speaker: Int
     public let startFrame: Int
     public let endFrame: Int          // exclusive
-    public var startSec: Double { Double(startFrame) * KitDiarizer.frameSec }
-    public var endSec: Double { Double(endFrame) * KitDiarizer.frameSec }
+    /// Seconds per frame, the diarizer's (`KitDiarizer.frameSec` on the instance that made it).
+    public let frameSec: Double
+    public var startSec: Double { Double(startFrame) * frameSec }
+    public var endSec: Double { Double(endFrame) * frameSec }
 
-    public init(speaker: Int, startFrame: Int, endFrame: Int) {
+    public init(
+        speaker: Int, startFrame: Int, endFrame: Int, frameSec: Double = KitDiarizer.frameSec
+    ) {
         self.speaker = speaker
         self.startFrame = startFrame
         self.endFrame = endFrame
+        self.frameSec = frameSec
     }
 }
 
@@ -175,23 +191,39 @@ public actor KitDiarizer {
     // fixed-buffer graph shapes
     static let tfMax = 1520, spk = 188, peMax = 190, tDim = 378
 
-    /// The maximum number of concurrent speakers the model tracks.
+    /// The maximum number of concurrent speakers the Streaming Sortformer tracks. A loaded
+    /// diarizer's own count is its `nSpk` (8 for `nemotron-3-diarization`).
     public static let nSpk = 4
-    /// Seconds per activity frame (8 subsample × 10 ms hop).
+    /// Seconds per activity frame of the Streaming Sortformer (8 subsample × 10 ms hop). A loaded
+    /// diarizer's own is its `frameSec` (0.01 for `nemotron-3-diarization`).
     public static let frameSec = 0.08
     /// Expected input sample rate.
     public static let sampleRate = 16000
 
-    private let model: GraphModel
-    private let melFront: SortformerMel
+    /// What runs a clip: the Sortformer graph and its mel front end, or the Nemotron-3 host.
+    private enum Engine {
+        case sortformer(model: GraphModel, mel: SortformerMel)
+        case nemotron(N3DDiarizer)
+    }
+
+    private let engine: Engine
 
     /// The catalog id this diarizer was loaded from ("" when loaded from a local bundle).
     public let id: String
+    /// The maximum number of concurrent speakers this model tracks: 4 (Streaming Sortformer) or
+    /// 8 (Nemotron-3-Diarization). `framePreds` rows are this wide.
+    public nonisolated let nSpk: Int
+    /// Seconds per activity frame of this model: 0.08 (Streaming Sortformer) or 0.01
+    /// (Nemotron-3-Diarization).
+    public nonisolated let frameSec: Double
+    /// The turn bridge `diarize(samples:)` uses by default: 0.48 s in this model's frames.
+    private nonisolated let defaultBridgeFrames: Int
 
     // MARK: - Init
 
     /// Loads a diarization model by its catalog id — the id shown on the model's card.
     /// Downloads on first use (progress via `downloadProgress`), then loads from the local cache.
+    /// `nemotron-3-diarization` downloads its graph and the `host/` constants beside it.
     public init(
         catalog id: String = "sortformer-diar-v2",
         store: ModelStore = .default,
@@ -199,26 +231,58 @@ public actor KitDiarizer {
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
         let entry = try await ModelCatalog.entry(forID: id, expecting: .diarization)
-        guard entry.id == "sortformer-diar-v2", let variant = entry.variant else {
+        guard let variant = entry.variant else { throw CoreAIKitError.modelNotInCatalog(id: id) }
+        switch entry.id {
+        case "sortformer-diar-v2":
+            let root = try await store.download(
+                entry.modelID(path: variant.path), progress: downloadProgress)
+            try await self.init(bundleAt: root, computeUnits: computeUnits, id: entry.id)
+        case "nemotron-3-diarization":
+            let graph = try await store.download(
+                entry.modelID(path: variant.path), progress: downloadProgress)
+            let host = try await store.download(
+                entry.modelID(path: Self.nemotronHostPath), progress: downloadProgress)
+            let n3d = try await Self.loadNemotron(graph: graph, host: host, computeUnits: computeUnits)
+            self.init(engine: .nemotron(n3d), id: entry.id)
+        default:
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
-        let root = try await store.download(
-            entry.modelID(path: variant.path), progress: downloadProgress)
-        try await self.init(bundleAt: root, computeUnits: computeUnits, id: entry.id)
     }
 
-    /// Loads a local Sortformer bundle — either the `.aimodel`/`.aimodelc` directory itself or a
-    /// directory containing one (a JIT `.aimodel` and an AOT `.aimodelc` side by side resolve to
-    /// the platform-native form). The mel filterbank ships inside CoreAIKit, so the bundle needs
-    /// no extra asset.
+    /// Loads a local bundle — either the `.aimodel`/`.aimodelc` directory itself or a directory
+    /// containing one (a JIT `.aimodel` and an AOT `.aimodelc` side by side resolve to the
+    /// platform-native form). A Sortformer bundle needs no extra asset: its mel filterbank ships
+    /// inside CoreAIKit. A Nemotron-3-Diarization bundle is recognized by its host constants,
+    /// in `host/` beside the graph (the Hub layout) or next to it (an export directory).
     public init(
         bundleAt root: URL,
         computeUnits: GraphModel.ComputeUnits = .gpu,
         id: String = ""
     ) async throws {
-        model = try await GraphModel(contentsOf: Self.resolveGraph(in: root), computeUnits: computeUnits)
-        melFront = try SortformerMel.bundled()
+        if let host = Self.nemotronHost(near: root) {
+            let n3d = try await Self.loadNemotron(
+                graph: Self.nemotronGraph(in: root), host: host, computeUnits: computeUnits)
+            self.init(engine: .nemotron(n3d), id: id)
+        } else {
+            let model = try await GraphModel(
+                contentsOf: Self.resolveGraph(in: root), computeUnits: computeUnits)
+            self.init(engine: .sortformer(model: model, mel: try SortformerMel.bundled()), id: id)
+        }
+    }
+
+    private init(engine: Engine, id: String) {
+        self.engine = engine
         self.id = id
+        switch engine {
+        case .sortformer:
+            nSpk = Self.nSpk
+            frameSec = Self.frameSec
+            defaultBridgeFrames = 6
+        case .nemotron:
+            nSpk = N3DSpeakerCache.numSpeakers
+            frameSec = N3DDiarizer.frameSeconds
+            defaultBridgeFrames = 48
+        }
     }
 
     /// The graph inside `root` (or `root` itself). With both forms present the platform-native
@@ -255,21 +319,35 @@ public actor KitDiarizer {
 
     /// Diarize a 16 kHz mono clip into speaker turns (dominant speaker per frame, contiguous runs
     /// merged; gaps ≤ `bridgeFrames` within one speaker bridged so a brief pause doesn't split a
-    /// turn). Speakers are indexed 0..<4 in no particular order — stable within a clip.
-    public func diarize(samples: [Float], bridgeFrames: Int = 6) async throws -> [SpeakerSegment] {
-        Self.segments(from: try await framePreds(fromSamples: samples), bridgeFrames: bridgeFrames)
+    /// turn). `bridgeFrames` is in this model's frames; nil = 0.48 s (6 frames of 80 ms, 48 of
+    /// 10 ms). Speakers are indexed 0..<`nSpk` in no particular order — stable within a clip.
+    public func diarize(samples: [Float], bridgeFrames: Int? = nil) async throws -> [SpeakerSegment] {
+        Self.segments(
+            from: try await framePreds(fromSamples: samples),
+            bridgeFrames: bridgeFrames ?? defaultBridgeFrames, frameSec: frameSec)
     }
 
-    /// Full pipeline: 16 kHz mono -> per-frame speaker activity `[nOut][4]` (sigmoid). frame =
-    /// 80 ms. Use this for a raw activity timeline; `diarize(samples:)` for speaker turns.
+    /// Full pipeline: 16 kHz mono -> per-frame speaker activity `[nOut][nSpk]` (sigmoid), one row
+    /// per `frameSec` (80 ms Sortformer, 10 ms Nemotron-3). Use this for a raw activity
+    /// timeline; `diarize(samples:)` for speaker turns.
     public func framePreds(fromSamples samples: [Float]) async throws -> [[Float]] {
-        let (m, frames) = melFront.logMel(samples)
-        return try await framePreds(mel: m, melFrames: frames)
+        switch engine {
+        case .sortformer(_, let melFront):
+            let (m, frames) = melFront.logMel(samples)
+            return try await framePreds(mel: m, melFrames: frames)
+        case .nemotron(let n3d):
+            return try await Self.nemotronFramePreds(n3d, samples: samples)
+        }
     }
 
     /// Drive the streaming loop over a mel-major `[128, melFrames]` buffer. This is the gated core
     /// (the self-gate feeds the golden mel here). Returns per-output-frame activity `[nOut][4]`.
+    /// Sortformer only: Nemotron-3-Diarization takes each chunk's mel from its own audio, so it
+    /// has no whole-clip mel to feed (`framePreds(fromSamples:)` runs it).
     public func framePreds(mel: [Float], melFrames: Int) async throws -> [[Float]] {
+        guard case .sortformer = engine else {
+            throw N3DError.contract("framePreds(mel:melFrames:) takes a Sortformer mel; use framePreds(fromSamples:)")
+        }
         let E = Self.emb, S = Self.nSpk
         var spkcache = [Float]()          // [spkFrames * 512]
         var spkFrames = 0
@@ -343,6 +421,7 @@ public actor KitDiarizer {
     private func engineForward(chunkFeat: [Float], tf: Int, spkcache: [Float], spkLen: Int)
         async throws -> (predsConcat: [Float], chunkPe: [Float], peLen: Int)
     {
+        guard case .sortformer(let model, _) = engine else { throw KitDiarizerError.graphMissing }
         let S = Self.nSpk, E = Self.emb
         let peLen = Self.preEncodeLen(tf)
 
@@ -517,8 +596,11 @@ public actor KitDiarizer {
 
     /// Per-frame -> speaker turns. A frame is assigned to the strongest active speaker (activity>0.5,
     /// else silence); contiguous same-speaker frames merge into a turn, and gaps ≤ `bridgeFrames`
-    /// within one speaker are bridged so a brief pause doesn't split a turn.
-    public static func segments(from frames: [[Float]], bridgeFrames: Int = 6) -> [SpeakerSegment] {
+    /// within one speaker are bridged so a brief pause doesn't split a turn. Rows may be any width
+    /// (4 or 8 speakers); `frameSec` is their frame length, carried by every segment.
+    public static func segments(
+        from frames: [[Float]], bridgeFrames: Int = 6, frameSec: Double = KitDiarizer.frameSec
+    ) -> [SpeakerSegment] {
         var lab = [Int](repeating: -1, count: frames.count)      // -1 = silence
         for (f, act) in frames.enumerated() {
             var best = -1; var bestV: Float = 0.5
@@ -533,7 +615,7 @@ public actor KitDiarizer {
             if s < 0 { i += 1; continue }
             var j = i + 1
             while j < lab.count && lab[j] == s { j += 1 }
-            segs.append(SpeakerSegment(speaker: s, startFrame: i, endFrame: j))
+            segs.append(SpeakerSegment(speaker: s, startFrame: i, endFrame: j, frameSec: frameSec))
             i = j
         }
         // bridge short gaps between same-speaker turns
@@ -542,7 +624,8 @@ public actor KitDiarizer {
             if let last = merged.last, last.speaker == seg.speaker,
                seg.startFrame - last.endFrame <= bridgeFrames {
                 merged[merged.count - 1] = SpeakerSegment(
-                    speaker: seg.speaker, startFrame: last.startFrame, endFrame: seg.endFrame)
+                    speaker: seg.speaker, startFrame: last.startFrame, endFrame: seg.endFrame,
+                    frameSec: frameSec)
             } else {
                 merged.append(seg)
             }

@@ -9,6 +9,28 @@ policy.
 
 ### Added
 
+- **8-speaker diarization: `nemotron-3-diarization`.** NVIDIA's Nemotron-3-Diarization
+  (OpenMDW-1.1) tracks up to 8 speakers at 10 ms. It runs behind the same `KitDiarizer` as
+  `sortformer-diar-v2` (4 speakers at 80 ms): `KitDiarizer(catalog: "nemotron-3-diarization")`,
+  or `MeetingTranscriber(diarizer: "nemotron-3-diarization")`. `CoreAI.transcribeMeeting` and
+  `MeetingTranscriber`'s default stay on `sortformer-diar-v2`.
+
+  The download is 200 MB on either platform: the GPU graph, run in low latency (0.72 s chunks,
+  0.32 s look-ahead), and a `host/` folder beside it with the projection, the silence row, the mel
+  filterbank and the Hann window. The host code is the model zoo's Swift port, copied into
+  `Sources/CoreAIKit/Audio/NemotronDiarizer`. Against transformers' fp32 reference, speaker
+  activity agrees on 99.9987 % of a 97.6 s clip and 100 % of a 21.5 s clip. A chunk takes
+  15.4–15.9 ms on an M4 Max GPU, measured with another job on the GPU, and 30.1 ms on an iPhone
+  17 Pro GPU. `NemotronDiarizerTests` checks one speaker-cache update and one mel chunk bit for
+  bit against the zoo's host, with no weights and no audio.
+
+  `SpeakerSegment` now carries its `frameSec`, 0.08 unless given. Each diarizer reports its own
+  `nSpk` and `frameSec`. `diarize(samples:bridgeFrames:)` defaults to `nil`, which means 0.48 s
+  in the model's frames. The Sortformer path gives the same results as before: bit-identical
+  activity and the same turns on both clips. `Examples/Meeting` gains `--diarizer`,
+  `--asr system` and `diarize-gate`, which checks a diarizer against a reference's per-frame
+  probabilities.
+
 - **Apple's on-device foundation model as a decision backend.** `FoundationModelDecisions`
   (`Sources/CoreAIKit/Decide`) answers typed questions on the FoundationModels framework's
   `SystemLanguageModel.default` by guided generation: a choice is an enumeration of its option

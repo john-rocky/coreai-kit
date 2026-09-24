@@ -24,7 +24,7 @@
 import Foundation
 
 /// One transcribed speaker turn. `speaker` is a 1-based display label in order of first
-/// appearance (the diarizer's raw 0..<4 speaker index is not meaningful to a reader).
+/// appearance (the diarizer's raw speaker index, 0..<4 or 0..<8, is not meaningful to a reader).
 public struct MeetingTurn: Sendable, Hashable {
     public let speaker: Int
     public let startSec: Double
