@@ -8,6 +8,7 @@
 import Foundation
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 public final class TextEmbedder: @unchecked Sendable {
     /// Task prefixes prepended before tokenization — embedding models are trained with
     /// asymmetric query/document prompts.

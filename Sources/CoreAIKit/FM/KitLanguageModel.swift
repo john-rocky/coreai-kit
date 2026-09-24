@@ -29,6 +29,7 @@ import Tokenizers
 ///
 /// One model instance assumes serial use (one `LanguageModelSession` at a time) — the
 /// underlying engine traps on concurrent generate calls, same as Apple's adapter.
+@available(macOS 27, iOS 27, *)
 public struct KitLanguageModel: LanguageModel {
     public typealias Executor = KitExecutor
 

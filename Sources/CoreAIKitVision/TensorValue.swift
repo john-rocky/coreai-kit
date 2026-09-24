@@ -44,6 +44,7 @@ public struct TensorValue: Sendable, Equatable {
 
 // MARK: - NDArray bridge (internal)
 
+@available(macOS 27, iOS 27, *)
 extension TensorValue {
     /// Fills a fresh NDArray for the (resolved) descriptor, converting scalar type as needed.
     func makeNDArray(descriptor: NDArrayDescriptor, inputName: String) throws -> NDArray {
@@ -78,11 +79,13 @@ extension TensorValue {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 private func fill<T: BitwiseCopyable>(_ array: inout NDArray, with values: [T]) {
     var view = array.mutableView(as: T.self)
     view.copyElements(fromContentsOf: values)
 }
 
+@available(macOS 27, iOS 27, *)
 private func read<T: BitwiseCopyable>(_ array: NDArray, _ type: T.Type, _ count: Int) -> [T] {
     array.view(as: T.self).withUnsafePointer { ptr, _, _ in
         Array(UnsafeBufferPointer(start: ptr, count: count))

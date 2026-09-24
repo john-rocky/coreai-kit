@@ -20,6 +20,7 @@ import CoreAIKitVision
 import Foundation
 
 /// Kokoro-82M text-to-speech: non-autoregressive, 24 kHz, English-first.
+@available(macOS 27, iOS 27, *)
 public final class KokoroTTS: Sendable {
     public static let sampleRate = 24000
 

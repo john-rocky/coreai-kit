@@ -13,6 +13,7 @@ import Foundation
 import FoundationModels
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 public struct KitAudioExecutor: LanguageModelExecutor {
     public typealias Model = KitAudioModel
 

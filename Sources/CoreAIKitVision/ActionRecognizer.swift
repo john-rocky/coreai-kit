@@ -9,6 +9,7 @@ import Accelerate
 import CoreGraphics
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 public final class ActionRecognizer: @unchecked Sendable {
     /// One ranked class prediction for a clip.
     public struct Prediction: Sendable, Identifiable {

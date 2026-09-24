@@ -13,6 +13,7 @@ import CoreAIKitVision
 import Foundation
 
 /// Short local name for the marshalling namespace defined at the bottom of this file.
+@available(macOS 27, iOS 27, *)
 private typealias ND = PocketTTSND
 
 enum PocketTTSError: Error, CustomStringConvertible {
@@ -26,6 +27,7 @@ enum PocketTTSError: Error, CustomStringConvertible {
 /// KV cache through host-owned `NDArray`s handed over as `MutableViews`, so it is the buffers
 /// that carry the state, not the `AIModel` identity. What a second load would duplicate is
 /// the weights.
+@available(macOS 27, iOS 27, *)
 final class PocketTTSAsset {
     let url: URL
     let unit: GraphModel.ComputeUnits
@@ -60,6 +62,7 @@ final class PocketTTSAsset {
 /// cannot be instantiated, and it exists only to qualify the members inside it. Consumers
 /// shorten it back with a file-private `typealias ND = PocketTTSND`, which keeps call sites
 /// as readable as they were while leaving the bare names free for everyone else.
+@available(macOS 27, iOS 27, *)
 enum PocketTTSND {
     @inline(__always) static func nowNanos() -> UInt64 {
         clock_gettime_nsec_np(CLOCK_UPTIME_RAW)

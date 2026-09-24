@@ -78,6 +78,7 @@ extension CoreAI {
     /// Video file → a time-stamped detection timeline, in order.
     ///
     /// Boxes are normalized to the frame, exactly as `detect` and `watch` return them.
+    @available(macOS 27, iOS 27, *)
     public static func scan(
         videoAt url: URL, sampling: ScanSampling = .everySecond, scoreThreshold: Float = 0.5,
         options: OpOptions = OpOptions()
@@ -116,6 +117,7 @@ extension CoreAI {
     ///
     /// The cooldown is in *video* time, not wall time: a person on screen for ten seconds
     /// yields one moment per cooldown of footage, however fast the scan happens to run.
+    @available(macOS 27, iOS 27, *)
     public static func scan(
         videoAt url: URL, for trigger: WatchTrigger,
         sampling: ScanSampling = .everySecond, scoreThreshold: Float = 0.5,

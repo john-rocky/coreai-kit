@@ -95,6 +95,7 @@ extension CoreAI {
     /// behind your loading UI (progress lands on the `onDownload` observer) and the
     /// first real call starts instantly. Already-cached models just load. `options.model`
     /// applies to every listed op; prepare ops with different overrides in separate calls.
+    @available(macOS 27, iOS 27, *)
     public static func prepare(_ ops: Op..., options: OpOptions = OpOptions()) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for op in Set(ops) {
@@ -104,6 +105,7 @@ extension CoreAI {
         }
     }
 
+    @available(macOS 27, iOS 27, *)
     private static func prepare(_ op: Op, options: OpOptions) async throws {
         switch op {
         case .summarize, .extract, .translate, .proofread:

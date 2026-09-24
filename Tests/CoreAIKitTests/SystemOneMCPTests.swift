@@ -146,6 +146,7 @@ struct SystemOneMCPTests {
         #expect(!value.dumps().contains("\n"))
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func modelsListsWhatTypedDecisionsLoads() throws {
         let value = SystemOneMCP.modelsResult(default: "minicpm5-2b", loaded: "decider-0.8b")
         let models = try #require(value["models"]?.elements)

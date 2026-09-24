@@ -48,10 +48,12 @@ extension SpeechToText {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 extension KitTranscriber: SpeechToText {}
 
 /// Apple's on-device speech-to-text (`SpeechAnalyzer` + `SpeechTranscriber`), at no download
 /// cost to the app.
+@available(macOS 27, iOS 27, *)
 public struct SystemTranscriber: SpeechToText {
     public enum TranscriberError: LocalizedError {
         case localeUnsupported(Locale)

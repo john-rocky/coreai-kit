@@ -13,6 +13,7 @@ import Foundation
 import FoundationModels
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 public struct KitVisionExecutor: LanguageModelExecutor {
     public typealias Model = KitVisionModel
 

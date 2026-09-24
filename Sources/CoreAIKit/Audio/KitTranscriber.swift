@@ -16,6 +16,7 @@ import Foundation
 /// Any speech-to-text model in the catalog (`ModelCatalog.builtin.available(.asr)`) behind one
 /// `transcribe(samples:)` call. Use the concrete types (`KitWhisperModel`, `KitASRModel`,
 /// `KitParakeetModel`) when you need family-specific control (translate, compute units, …).
+@available(macOS 27, iOS 27, *)
 public struct KitTranscriber: Sendable {
     enum Engine: Sendable {
         case whisper(KitWhisperModel)

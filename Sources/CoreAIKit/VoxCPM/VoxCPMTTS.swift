@@ -106,6 +106,7 @@ public struct VoxCPMPaths: Sendable {
 /// Default = all `.gpu` (the shipped, device-validated placement). Note: on iOS the AOT `.aimodelc`
 /// bakes its compute unit at `coreai-build compile` time, so to *change* a bundle's unit on device you
 /// must re-AOT it with that `--preferred-compute`; on macOS the JIT `.aimodel` honours this at load.
+@available(macOS 27, iOS 27, *)
 public struct ComputeConfig: Sendable {
     public var base: GraphModel.ComputeUnits
     public var res: GraphModel.ComputeUnits
@@ -128,6 +129,7 @@ public struct ComputeConfig: Sendable {
 
 /// Timing for a streaming synthesis: how soon the first audio chunk was ready (the metric that
 /// governs perceived latency) and the total generation time vs. the audio length (RTF).
+@available(macOS 27, iOS 27, *)
 public struct StreamStats: Sendable {
     public var samples: Int
     public var firstChunkSeconds: Double
@@ -139,6 +141,7 @@ public struct StreamStats: Sendable {
     public var realTimeFactor: Double { audioSeconds > 0 ? totalSeconds / audioSeconds : 0 }
 }
 
+@available(macOS 27, iOS 27, *)
 public final class VoxCPMTTS: @unchecked Sendable {
     public static let sampleRate = 16_000
     private static let audioStart = 101          // <|audio_start|>

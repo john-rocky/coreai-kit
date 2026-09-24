@@ -58,6 +58,7 @@ public enum KitNemotronError: Error, LocalizedError {
 /// A Core AI Nemotron 3.5 ASR streaming bundle: six graphs (pre_first / pre / conformer_a /
 /// conformer_b / predict / joint), the streaming mel frontend, and the tokenizer. One model
 /// serves any number of consecutive sessions; run one session at a time.
+@available(macOS 27, iOS 27, *)
 public final class KitNemotronModel: @unchecked Sendable {
     // Model constants (config.json + conversion/nemotron_asr).
     static let blank = 13087
@@ -237,6 +238,7 @@ public final class KitNemotronModel: @unchecked Sendable {
 /// One live transcription stream: owns the mel frontend state, the encoder caches, and the
 /// RNN-T decode state. Feed 16 kHz mono packets of any size; the transcript grows as complete
 /// 320 ms chunks decode. Not concurrency-safe — feed from one task at a time.
+@available(macOS 27, iOS 27, *)
 public final class NemotronStreamSession: @unchecked Sendable {
     private let model: KitNemotronModel
     private let oneHot: TensorValue

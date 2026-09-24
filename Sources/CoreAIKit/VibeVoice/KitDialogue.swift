@@ -32,6 +32,7 @@ public struct DialogueTurn: Sendable {
 }
 
 /// Multi-speaker TTS by catalog id.
+@available(macOS 27, iOS 27, *)
 public struct KitDialogue: Sendable {
     private let engine: VibeVoiceTTS
     /// The catalog id this was loaded from.

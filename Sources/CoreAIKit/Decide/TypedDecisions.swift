@@ -84,6 +84,7 @@ import Synchronization
 import Tokenizers
 
 /// A loaded decision model. One decision at a time; calls on the same instance serialize.
+@available(macOS 27, iOS 27, *)
 public actor TypedDecisions {
     public struct Configuration: Sendable {
         /// Softmax temperature over the answer-slot logits, for every question type. `nil` uses
@@ -813,6 +814,7 @@ public actor TypedDecisions {
 
 /// A state whose shared prompt prefix the engine already holds. Decisions made through it
 /// pay for their question only.
+@available(macOS 27, iOS 27, *)
 public struct PrefilledState: Sendable {
     public let state: String
     /// Tokens of the shared prefix the engine holds.

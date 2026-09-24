@@ -17,6 +17,7 @@ struct CapabilityTests {
     /// Every op must resolve to something the kit can answer for. An op absent from the
     /// mapping reports "nothing to download", which is the most expensive possible wrong
     /// answer — it is the number that goes into a shipping decision.
+    @available(macOS 27, iOS 27, *)
     @Test func everyOpAnswers() async {
         for op in CoreAI.Op.allCases {
             let capability = await CoreAI.capability(op)
@@ -94,6 +95,7 @@ struct CapabilityTests {
 /// skipped where the framework cannot answer — but the fallback *rules* are checkable, and
 /// they are what the en_JP bug was.
 struct SystemTranscriberLocaleTests {
+    @available(macOS 27, iOS 27, *)
     @Test func anExactlySupportedLocaleIsUsedAsIs() async throws {
         let supported = await SystemTranscriber.supportedLocales
         try #require(!supported.isEmpty, "no speech assets on this machine")
@@ -105,6 +107,7 @@ struct SystemTranscriberLocaleTests {
     /// The bug. A language that is supported, in a region that is not, must resolve rather
     /// than fail — and must land on the language's likely region, not on whichever entry the
     /// list happened to start with.
+    @available(macOS 27, iOS 27, *)
     @Test func aSupportedLanguageInAnUnsupportedRegionResolves() async throws {
         let supported = await SystemTranscriber.supportedLocales
         try #require(supported.contains { $0.language.languageCode?.identifier == "en" },
@@ -116,6 +119,7 @@ struct SystemTranscriberLocaleTests {
                 "expected the language's likely region, got \(resolved?.identifier ?? "nil")")
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func aBareLanguageResolvesToItsLikelyRegion() async throws {
         let supported = await SystemTranscriber.supportedLocales
         try #require(supported.contains { $0.language.languageCode?.identifier == "en" })
@@ -125,6 +129,7 @@ struct SystemTranscriberLocaleTests {
 
     /// A language Apple genuinely cannot do must still be refused. Resolving it to "some other
     /// language" would transcribe silently and wrongly, which is worse than an error.
+    @available(macOS 27, iOS 27, *)
     @Test func anUnsupportedLanguageIsRefused() async {
         let resolved = await SystemTranscriber.resolvedLocale(for: Locale(identifier: "tlh"))
         #expect(resolved == nil, "Klingon resolved to \(resolved?.identifier ?? "nil")")

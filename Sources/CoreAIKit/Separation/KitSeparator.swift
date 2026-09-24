@@ -39,6 +39,7 @@ public enum KitSeparatorError: Error, Sendable {
 /// let mix = try AudioFile.pcmStereo(songURL)
 /// let stems = try await separator.separate(mix)      // stems.vocals / stems.instrumental
 /// ```
+@available(macOS 27, iOS 27, *)
 public actor KitSeparator {
     /// Graph constants — fixed by the export, not tunable at run time.
     public static let sampleRate = 44_100

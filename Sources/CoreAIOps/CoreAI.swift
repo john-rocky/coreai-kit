@@ -92,6 +92,7 @@ public enum CoreAI {
 
     /// Text → short summary in the given style. First use downloads and loads the model
     /// (cached afterwards); later calls reuse the loaded engine.
+    @available(macOS 27, iOS 27, *)
     public static func summarize(
         _ text: String, style: SummaryStyle = .concise, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -110,6 +111,7 @@ public enum CoreAI {
     /// Text → typed value: the `@Generable` type's generation schema shapes the reply,
     /// and the framework parses it back into the type — same type, same `@Guide`
     /// descriptions as Apple's `respond(generating:)`.
+    @available(macOS 27, iOS 27, *)
     public static func extract<Value: Generable>(
         _ text: String, as type: Value.Type = Value.self, options: OpOptions = OpOptions()
     ) async throws -> Value {
@@ -168,6 +170,7 @@ public enum CoreAI {
     ///
     /// `language` picks Apple's locale (`"ja"`, `"en-US"`); nil uses the device locale. With a
     /// catalog model it is the model's own language hint, and nil means auto-detect.
+    @available(macOS 27, iOS 27, *)
     public static func transcribe(
         _ audioURL: URL, language: String? = nil, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -185,6 +188,7 @@ public enum CoreAI {
     }
 
     /// Text → translation into the target language, preserving meaning, tone, and formatting.
+    @available(macOS 27, iOS 27, *)
     public static func translate(
         _ text: String, to language: Language, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -202,6 +206,7 @@ public enum CoreAI {
 
     /// Text → corrected text: grammar, spelling, and punctuation fixed without changing
     /// meaning or language.
+    @available(macOS 27, iOS 27, *)
     public static func proofread(
         _ text: String, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -224,6 +229,7 @@ public enum CoreAI {
 /// calls share one load; a failed load is not cached (a later call retries); a model idle
 /// long enough to be the least-recently-used one is dropped when the next load needs the
 /// room (`ModelResidency`).
+@available(macOS 27, iOS 27, *)
 actor OpModels {
     static let shared = OpModels()
 

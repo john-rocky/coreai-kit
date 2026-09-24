@@ -11,6 +11,7 @@
 import CoreGraphics
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 public final class SuperResolver: @unchecked Sendable {
     public let scale: Int        // output_side / input_side (4 for AdcSR)
     /// Caps the input's long side before upscaling (output ≤ maxInputSide·scale). Full-resolution

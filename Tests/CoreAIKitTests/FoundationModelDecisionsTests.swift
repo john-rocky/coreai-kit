@@ -105,6 +105,7 @@ struct FoundationModelPromptTests {
         #expect(try FoundationModelPrompt.answer(question, generated: GeneratedContent(false), timing: Self.timing).probabilities == [1, 0])
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func theUnavailableReasonsAreNamed() {
         #expect(FoundationModelDecisions.describe(.deviceNotEligible).contains("not eligible"))
         #expect(FoundationModelDecisions.describe(.appleIntelligenceNotEnabled).contains("not enabled"))
@@ -158,6 +159,7 @@ struct DecisionBackendServerTests {
         HTTPRequest(method: "POST", path: SystemOne.path, headers: [:], body: Data(body.utf8))
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func aResponseCarriesTheBackendsMetadataLast() async throws {
         let server = SystemOneServer(modelID: "apple-foundation-model", backend: StubBackend(metadata: Self.metadata)) { _ in }
         #expect(server.decider == nil)
@@ -205,6 +207,7 @@ struct FoundationModelDecisionsSmokeTests {
 
     /// Three shapes on one state, shared then fresh: every answer is a listed value with all
     /// of the probability on it, and the response names the backend.
+    @available(macOS 27, iOS 27, *)
     @Test(.enabled(if: enabled)) func theSystemModelAnswersEveryShape() async throws {
         for share in [true, false] {
             var configuration = FoundationModelDecisions.Configuration()

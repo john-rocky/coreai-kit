@@ -16,6 +16,7 @@ import FoundationModels
 import ImageIO
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 enum VLPromptRenderer {
     /// The image chosen to occupy the embeds buffer this turn.
     struct ChosenImage {

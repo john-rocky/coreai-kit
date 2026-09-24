@@ -22,4 +22,5 @@ public protocol DecisionBackend: Sendable {
     func systemOne(_ request: SystemOne.Request) async throws -> SystemOne.Response
 }
 
+@available(macOS 27, iOS 27, *)
 extension TypedDecisions: DecisionBackend {}

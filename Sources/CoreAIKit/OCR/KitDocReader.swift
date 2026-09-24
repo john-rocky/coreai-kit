@@ -19,6 +19,7 @@ import Foundation
 import Tokenizers
 
 /// Unlimited-OCR document reader: one image → markdown.
+@available(macOS 27, iOS 27, *)
 public final class KitDocReader: @unchecked Sendable {
     // Locked spec from the verified conversion recipe (Base mode, 640px, 10×10 grid).
     private enum Spec {
@@ -237,6 +238,7 @@ public final class KitDocReader: @unchecked Sendable {
 /// `StatefulGraphModel` loads one function per instance; the OCR decoder is ONE bundle with
 /// `prefill` + `decode` sharing the KV cache, so this wrapper holds both functions and the
 /// two state buffers itself (loading the 3.4 GB bundle twice is not an option).
+@available(macOS 27, iOS 27, *)
 private final class DocDecoder: @unchecked Sendable {
     private let model: AIModel
     private let prefillFn: InferenceFunction
@@ -364,6 +366,7 @@ private final class DocDecoder: @unchecked Sendable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 private func zeroF16(_ array: inout NDArray) {
     let count = array.shape.reduce(1, *)
     var view = array.mutableView(as: Float16.self)

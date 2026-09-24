@@ -16,6 +16,7 @@ extension CoreAI {
 
     /// Video clip → ranked action labels: 16 frames are sampled uniformly and scored
     /// against the model's action classes, best first.
+    @available(macOS 27, iOS 27, *)
     public static func recognizeAction(
         videoAt url: URL, topK: Int = 3, options: OpOptions = OpOptions()
     ) async throws -> [ActionRecognizer.Prediction] {
@@ -27,6 +28,7 @@ extension CoreAI {
     }
 
     /// Frames → ranked action labels (any frame count; resampled to 16).
+    @available(macOS 27, iOS 27, *)
     public static func recognizeAction(
         frames: [CGImage], topK: Int = 3, options: OpOptions = OpOptions()
     ) async throws -> [ActionRecognizer.Prediction] {
@@ -45,6 +47,7 @@ extension CoreAI {
 
 /// Process-wide cache of loaded recognizers, keyed by catalog id — same contract as
 /// `OpModels`: concurrent first calls share one load, a failed load is not cached.
+@available(macOS 27, iOS 27, *)
 actor VideoOpModels {
     static let shared = VideoOpModels()
 

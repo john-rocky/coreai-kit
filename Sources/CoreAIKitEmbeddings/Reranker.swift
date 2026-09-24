@@ -12,6 +12,7 @@
 import Foundation
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 public final class Reranker: @unchecked Sendable {
     /// The prompt scaffolding the pair is wrapped in before scoring. Defaults to Qwen3-Reranker's
     /// official template; the instruction is task-tunable (the model is instruction-aware).

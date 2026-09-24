@@ -20,6 +20,7 @@ import Tokenizers
 
 /// A masked-diffusion language model (`dllm` catalog kind): prompt in, denoised reply out,
 /// with live canvas snapshots while it denoises. One generation at a time per instance.
+@available(macOS 27, iOS 27, *)
 public final class KitDiffusionLM: @unchecked Sendable {
     /// Diffusion geometry, read from the bundle's `metadata.json`.
     public struct Parameters: Sendable {

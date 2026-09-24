@@ -102,6 +102,7 @@ private func readF16(_ url: URL) throws -> [Float] {
 
 /// The VibeVoice engine. Prefer `KitDialogue` (scripts) or `KitSpeaker` (one line of text);
 /// this is the direct handle when you want per-voice control.
+@available(macOS 27, iOS 27, *)
 public actor VibeVoiceTTS {
     private let mainLM: StatefulGraphModel
     private let ttsLM: StatefulGraphModel

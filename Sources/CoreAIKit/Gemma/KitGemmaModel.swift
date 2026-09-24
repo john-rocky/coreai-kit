@@ -88,6 +88,7 @@ public struct GemmaModelID: Sendable, Hashable {
 }
 
 /// A Core AI Gemma 4 bundle as a `LanguageModelSession` provider.
+@available(macOS 27, iOS 27, *)
 public struct KitGemmaModel: LanguageModel {
     public typealias Executor = KitGemmaExecutor
 

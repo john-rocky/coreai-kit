@@ -26,6 +26,7 @@ extension CoreAI {
     public static let defaultDecisionModel = "minicpm5-2b"
 
     /// One typed question about a state.
+    @available(macOS 27, iOS 27, *)
     public static func decide(
         _ state: String, _ question: Decision.Question, options: OpOptions = OpOptions()
     ) async throws -> Decision.Answer {
@@ -36,6 +37,7 @@ extension CoreAI {
 
     /// Several typed questions about one state, keyed by ids of the caller's choosing. The
     /// state is prefilled once; each question reuses it.
+    @available(macOS 27, iOS 27, *)
     public static func decide(
         _ state: String, _ questions: [String: Decision.Question], options: OpOptions = OpOptions()
     ) async throws -> [String: Decision.Answer] {
@@ -45,6 +47,7 @@ extension CoreAI {
     }
 
     /// Several typed questions about one state, answered in order.
+    @available(macOS 27, iOS 27, *)
     public static func decide(
         _ state: String, _ questions: [Decision.Question], options: OpOptions = OpOptions()
     ) async throws -> [Decision.Answer] {
@@ -57,6 +60,7 @@ extension CoreAI {
 /// Process-wide cache of loaded decision models, keyed by catalog id — same contract as
 /// `OpModels`: concurrent first calls share one load, a failed load is not cached, and calls
 /// on one model serialize behind each other.
+@available(macOS 27, iOS 27, *)
 actor DecideOpModels {
     static let shared = DecideOpModels()
 

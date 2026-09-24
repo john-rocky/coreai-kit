@@ -147,6 +147,7 @@ struct SystemOneOpTests {
     }
 
     /// Bytes the wire refuses never reach a model: the op throws the wire's own error first.
+    @available(macOS 27, iOS 27, *)
     @Test func bytesTheWireRefusesThrowBeforeAnyModelLoads() async {
         await #expect(throws: SystemOne.WireError.self) {
             try await CoreAI.systemOne(json: Data("not json".utf8))

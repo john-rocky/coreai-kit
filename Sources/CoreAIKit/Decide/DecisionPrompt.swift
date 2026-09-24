@@ -101,6 +101,7 @@ enum DecisionPrompt {
 
     /// The prompt tokens for one question on one state: at the letters, or at the numbers
     /// under the wide system line past them.
+    @available(macOS 27, iOS 27, *)
     static func render(
         state: String, question: Decision.Question, letters: LabelTable, numbers: LabelTable, tokenizer: any Tokenizer
     ) throws -> Rendered {
@@ -122,6 +123,7 @@ enum DecisionPrompt {
     /// The longest token prefix every question on `state` shares: the system turn and the
     /// user turn up to the end of the state. Prefilling it once is what makes the second
     /// decision on the same state cheap.
+    @available(macOS 27, iOS 27, *)
     static func statePrefix(state: String, tokenizer: any Tokenizer) throws -> [Int32] {
         // Two renderings that differ from the first character after the state; their
         // common prefix is exactly the tokens that do not depend on the question.
@@ -139,6 +141,7 @@ enum DecisionPrompt {
     /// on token ids: a template may spell `<think>` in pieces that differ from the vocabulary's
     /// own token (MiniCPM5 does), and an id comparison then appends a second closed block —
     /// six tokens the reference rendering does not have.
+    @available(macOS 27, iOS 27, *)
     static func tokens(messages: [[String: any Sendable]], tokenizer: any Tokenizer) throws -> [Int32] {
         var ids = try tokenizer.applyChatTemplate(
             messages: messages, chatTemplate: nil, addGenerationPrompt: true,

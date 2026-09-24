@@ -13,6 +13,7 @@
 import CoreAI
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 public final class StatefulGraphModel: @unchecked Sendable {
     private let function: InferenceFunction
     private let descriptor: InferenceFunctionDescriptor
@@ -140,6 +141,7 @@ public final class StatefulGraphModel: @unchecked Sendable {
 }
 
 // Direct fp16->fp16 copy (no Float32 round-trip): read src into a buffer, write into dst's view.
+@available(macOS 27, iOS 27, *)
 private func copyF16(_ src: NDArray, _ dst: inout NDArray) {
     let n = dst.shape.reduce(1, *)
     var buf = [Float16](repeating: 0, count: n)
@@ -150,6 +152,7 @@ private func copyF16(_ src: NDArray, _ dst: inout NDArray) {
     v.copyElements(fromContentsOf: buf)
 }
 
+@available(macOS 27, iOS 27, *)
 private func zero(_ array: inout NDArray) {
     let n = array.shape.reduce(1, *)
     switch array.scalarType {
@@ -165,6 +168,7 @@ private func zero(_ array: inout NDArray) {
 }
 
 // Write a Float32 buffer into an fp16 NDArray (state seeding).
+@available(macOS 27, iOS 27, *)
 private func fillF16(_ array: inout NDArray, _ values: [Float]) {
     var v = array.mutableView(as: Float16.self)
     v.copyElements(fromContentsOf: values.map { Float16($0) })

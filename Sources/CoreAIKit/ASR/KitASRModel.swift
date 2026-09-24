@@ -57,6 +57,7 @@ public struct ASRModelID: Sendable, Hashable {
 
 /// A Core AI Qwen3-ASR bundle. Primary use is the direct `transcribe()`; `LanguageModel`
 /// conformance is for `LanguageModelSession` integration.
+@available(macOS 27, iOS 27, *)
 public struct KitASRModel: LanguageModel {
     public typealias Executor = KitASRExecutor
 

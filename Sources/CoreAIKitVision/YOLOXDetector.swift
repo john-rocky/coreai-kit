@@ -18,6 +18,7 @@ import CoreGraphics
 import CoreVideo
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 public final class YOLOXDetector: @unchecked Sendable {
     private let graph: GraphModel
     private let imageInput: String

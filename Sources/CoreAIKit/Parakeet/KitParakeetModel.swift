@@ -41,6 +41,7 @@ public enum KitParakeetError: Error, LocalizedError {
 
 /// A Core AI Parakeet-TDT bundle: encoder + predictor + joint graphs, the mel frontend, and the
 /// tokenizer. Serial use (one transcription at a time) — the host TDT loop owns the LSTM state.
+@available(macOS 27, iOS 27, *)
 public final class KitParakeetModel: @unchecked Sendable {
     // TDT / model constants (config + gate_e2e.py).
     // v3 has 8193 token logits with blank at 8192; the v2 checkpoint has 1025 with blank at

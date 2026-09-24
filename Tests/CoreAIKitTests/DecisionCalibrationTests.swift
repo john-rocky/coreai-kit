@@ -64,6 +64,7 @@ struct TemperatureOrderTests {
         DecisionTemperatures(choice: t, score: t, noul: t)
     }
 
+    @available(macOS 27, iOS 27, *)
     func resolve(
         _ configured: Double? = nil, _ catalog: CatalogEntry.Calibration? = nil, format: Decision.Format,
         slot: SlotPrompt.Layout? = nil, scalar: ScalarPrompt.Layout? = nil, letters: LetterListPrompt.Layout? = nil
@@ -73,11 +74,13 @@ struct TemperatureOrderTests {
             letters: letters)
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func theConfiguredTemperatureWinsForEveryType() throws {
         #expect(try resolve(0.5, .init(temperature: 2, byType: ["noul": 1.5]), format: .slot, slot: Self.slot) == Self.all(0.5))
         #expect(try resolve(1, .init(temperature: 2.34), format: .chat) == Self.all(1))
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func thenTheCatalogItsTypeBeforeItsOneValue() throws {
         let t = try resolve(nil, .init(temperature: 2, byType: ["noul": 1.5]), format: .slot, slot: Self.slot)
         #expect(t == DecisionTemperatures(choice: 2, score: 2, noul: 1.5))
@@ -88,6 +91,7 @@ struct TemperatureOrderTests {
         #expect(try resolve(nil, .init(temperature: 0.9), format: .decider) == Self.all(0.9))
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func thenTheBundleDeclarationThenTheFormDefault() throws {
         #expect(try resolve(format: .slot, slot: Self.slot) == DecisionTemperatures(choice: 1.055, score: 1.008, noul: 1.047))
         #expect(try resolve(format: .scalar, scalar: ScalarPrompt.Layout(temperature: 1.75, maxLength: 384)) == Self.all(1.75))
@@ -100,6 +104,7 @@ struct TemperatureOrderTests {
         #expect(try resolve(format: .chat, slot: Self.slot) == Self.all(1))
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func aCatalogTemperatureThatIsNotPositiveFailsTheLoad() throws {
         for bad in [0, -1, Double.nan, .infinity] {
             #expect(throws: DecisionError.self) { try resolve(nil, .init(temperature: bad), format: .chat) }

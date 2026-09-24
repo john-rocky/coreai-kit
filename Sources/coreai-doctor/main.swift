@@ -121,6 +121,10 @@ var total: Int64 = 0
 var counted: Set<String> = []
 print(String(format: "%-20@ %@", "op" as NSString, "first-run cost" as NSString))
 for op in ops {
+    guard #available(macOS 27, iOS 27, *) else {
+        stderrPrint("coreai-doctor requires macOS 27 or later")
+        exit(1)
+    }
     let capability = await CoreAI.capability(op)
     print(String(format: "%-20@ %@", "\(op)" as NSString, describe(capability) as NSString))
     if let files = sources[op], !files.isEmpty {

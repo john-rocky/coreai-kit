@@ -74,6 +74,7 @@ public struct VoxCPM2Paths: Sendable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 public final class VoxCPM2TTS: @unchecked Sendable {
     public static let sampleRate = 48_000
     private static let audioStart = 101

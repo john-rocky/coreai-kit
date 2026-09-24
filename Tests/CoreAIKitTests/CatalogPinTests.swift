@@ -6,6 +6,7 @@ import XCTest
 /// A `catalog:` initializer downloads the revision its catalog entry pins — the bytes that were
 /// gated — never the model repo's `main`. These three built their `ModelID`s without the pin
 /// until 2026-09-24, so they downloaded whatever `main` held.
+@available(macOS 27, iOS 27, *)
 final class CatalogPinTests: XCTestCase {
     private func pinnedEntry(_ id: String) throws -> (CatalogEntry, String) {
         let entry = try XCTUnwrap(ModelCatalog.builtin.entry(id: id))

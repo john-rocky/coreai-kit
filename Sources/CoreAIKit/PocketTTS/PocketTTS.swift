@@ -19,6 +19,7 @@ import CoreAI
 import CoreAIKitVision
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 private typealias ND = PocketTTSND
 
 public struct PocketTTSPaths: Sendable {
@@ -88,6 +89,7 @@ public struct PocketTTSChunkStat: Sendable {
     public var durationSeconds = 0.0
 }
 
+@available(macOS 27, iOS 27, *)
 public final class PocketTTS: @unchecked Sendable {
     public static let sampleRate = PocketTTSModel.sampleRate
 

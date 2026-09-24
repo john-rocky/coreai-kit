@@ -41,6 +41,7 @@ public enum KitVisionError: Error, LocalizedError {
 /// Owns a VL model's engine + vision tower + the static multimodal buffers, for the engine's
 /// lifetime. One runtime assumes serial use (one `LanguageModelSession` at a time) — the
 /// underlying engine traps on concurrent generate calls, same as the text path.
+@available(macOS 27, iOS 27, *)
 public final class VLRuntime: @unchecked Sendable {
     public let arch: VLArchitecture
     let engine: any InferenceEngine

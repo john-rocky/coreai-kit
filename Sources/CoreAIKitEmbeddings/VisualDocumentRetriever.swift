@@ -15,6 +15,7 @@ import CoreGraphics
 import Foundation
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 public final class VisualDocumentRetriever: @unchecked Sendable {
     /// A page's per-token multi-vector (`tokens[i]` is a 128-d unit vector). Encode your corpus
     /// once, keep these, and score many queries against them cheaply.

@@ -30,6 +30,7 @@ extension CoreAI {
 
     /// Query + strings → ranked matches, best first, by semantic similarity. First use
     /// downloads and loads the model (cached afterwards).
+    @available(macOS 27, iOS 27, *)
     public static func search(
         _ query: String, in documents: [String], topK: Int = 5,
         options: OpOptions = OpOptions()
@@ -56,6 +57,7 @@ extension CoreAI {
 
 /// Process-wide cache of loaded embedders, keyed by catalog id — same contract as
 /// `OpModels`: concurrent first calls share one load, a failed load is not cached.
+@available(macOS 27, iOS 27, *)
 actor SearchOpModels {
     static let shared = SearchOpModels()
 

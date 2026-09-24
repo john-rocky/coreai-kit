@@ -15,6 +15,7 @@ extension CoreAI {
     /// Number series → 128-step forecast (univariate, any length ≥ 1; the last 2048
     /// points are used). `Forecast.mean` is the point forecast; `quantiles` carry the
     /// uncertainty bands. Slice `mean.prefix(h)` for a shorter horizon.
+    @available(macOS 27, iOS 27, *)
     public static func forecast(
         _ series: [Float], options: OpOptions = OpOptions()
     ) async throws -> Forecast {
@@ -28,6 +29,7 @@ extension CoreAI {
 
 /// Process-wide cache of loaded forecasters, keyed by catalog id — same contract as
 /// `OpModels`: concurrent first calls share one load, a failed load is not cached.
+@available(macOS 27, iOS 27, *)
 actor ForecastOpModels {
     static let shared = ForecastOpModels()
 

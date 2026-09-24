@@ -72,6 +72,7 @@ public struct Detection: Sendable, Identifiable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 public final class ObjectDetector: @unchecked Sendable {
     private let graph: GraphModel
     /// Optional first stage (split deployment): image -> features, e.g. the ViT

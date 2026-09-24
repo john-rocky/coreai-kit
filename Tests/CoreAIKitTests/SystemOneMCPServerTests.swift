@@ -35,6 +35,7 @@ struct SystemOneMCPServerTests {
         return lines
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func answersOverPipesAndStopsWhenTheInputCloses() async throws {
         let input = Pipe()
         let output = Pipe()

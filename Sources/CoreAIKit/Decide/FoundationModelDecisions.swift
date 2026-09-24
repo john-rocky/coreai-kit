@@ -29,6 +29,7 @@
 import Foundation
 import FoundationModels
 
+@available(macOS 27, iOS 27, *)
 public actor FoundationModelDecisions: DecisionBackend {
     public struct Configuration: Sendable {
         /// Continue one session for consecutive questions on the same state (the transcript

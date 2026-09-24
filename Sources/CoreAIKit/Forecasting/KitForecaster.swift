@@ -30,6 +30,7 @@ public enum KitForecasterError: Error, Sendable {
     case emptySeries
 }
 
+@available(macOS 27, iOS 27, *)
 public final class KitForecaster: @unchecked Sendable {   // immutable (only `let graph`); matches KitParakeetModel
     // Model constants (TimesFM 2.5 200M).
     static let patch = 32

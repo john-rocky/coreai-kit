@@ -23,6 +23,7 @@ public struct SpokenAudio: Sendable {
 /// let speaker = try await KitSpeaker(catalog: "voxcpm-0.5b")
 /// let audio = try await speaker.synthesize("Hello from Core AI.")
 /// ```
+@available(macOS 27, iOS 27, *)
 public struct KitSpeaker: Sendable {
     enum Engine: Sendable {
         case voxcpm(VoxCPMTTS)

@@ -30,6 +30,7 @@ public enum KitWhisperError: Error, LocalizedError {
 }
 
 /// Owns a Whisper graph + mel frontend + tokenizer. Serial use (one transcription at a time).
+@available(macOS 27, iOS 27, *)
 public final class WhisperRuntime: @unchecked Sendable {
     public let arch: WhisperArchitecture
     private let graph: GraphModel

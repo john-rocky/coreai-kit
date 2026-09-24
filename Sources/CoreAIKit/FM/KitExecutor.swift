@@ -30,6 +30,7 @@ import Tokenizers
 /// engine) finishes promptly once the consumer stops; the next `respond` settles that
 /// bookkeeping before computing the shared prefix. A mirror in an unknown state (fresh
 /// executor, engine error) settles to nil → `reset(to: 0)` — correctness first.
+@available(macOS 27, iOS 27, *)
 public struct KitExecutor: LanguageModelExecutor {
     public typealias Model = KitLanguageModel
 

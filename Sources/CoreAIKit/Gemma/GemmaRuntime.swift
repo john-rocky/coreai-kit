@@ -40,6 +40,7 @@ public enum KitGemmaError: Error, LocalizedError {
 /// Owns a Gemma 4 model's engine + tokenizer + the two static PLE table buffers, for the
 /// engine's lifetime. One runtime assumes serial use (one `LanguageModelSession` at a time) —
 /// the underlying engine traps on concurrent generate calls, same as the text path.
+@available(macOS 27, iOS 27, *)
 public final class GemmaRuntime: @unchecked Sendable {
     public let arch: GemmaArchitecture
     let engine: any InferenceEngine

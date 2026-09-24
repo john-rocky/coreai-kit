@@ -4,6 +4,7 @@ import XCTest
 
 @testable import CoreAIKit
 
+@available(macOS 27, iOS 27, *)
 final class KitTextNormalizerTests: XCTestCase {
 
     // MARK: - Chunking

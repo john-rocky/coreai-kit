@@ -8,6 +8,7 @@
 import CoreGraphics
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 public final class ImageTextEncoder: @unchecked Sendable {
     private let graph: GraphModel
     private let tokenizer: CLIPTokenizer

@@ -112,6 +112,7 @@ extension SystemOne {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 extension TypedDecisions {
     /// Answers a whole request on this model: the state prefilled once, each question decided
     /// in request order against it. Every question is checked against this model's option

@@ -46,6 +46,7 @@ public struct Transcription: Sendable, Hashable {
 
 /// Owns an ASR model's engine + AuT encoder + the static `audio_embeds` buffer. Serial use (one
 /// transcription at a time) — the underlying engine traps on concurrent generate calls.
+@available(macOS 27, iOS 27, *)
 public final class ASRRuntime: @unchecked Sendable {
     public let arch: ASRArchitecture
     let engine: any InferenceEngine

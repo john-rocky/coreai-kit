@@ -13,6 +13,7 @@ import Foundation
 /// let detector = try await KitDetector(catalog: "rf-detr")
 /// let boxes = try await detector.detect(in: image)
 /// ```
+@available(macOS 27, iOS 27, *)
 public struct KitDetector: Sendable {
     enum Engine: Sendable {
         case detr(ObjectDetector)

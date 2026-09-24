@@ -11,6 +11,7 @@ import Foundation
 /// let musician = try await KitMusician(catalog: "stable-audio-open-small")
 /// let audio = try await musician.generate("128 BPM tech house drum loop", seconds: 11)
 /// ```
+@available(macOS 27, iOS 27, *)
 public struct KitMusician: Sendable {
     private let engine: StableAudioMusic
     /// The catalog id this musician was loaded from.

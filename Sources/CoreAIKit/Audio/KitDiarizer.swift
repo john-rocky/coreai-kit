@@ -23,6 +23,7 @@ import CoreAIKitVision
 import Foundation
 
 /// One speaker turn: `speaker` (0..<4) is active over `[startSec, endSec)` (frames are 80 ms).
+@available(macOS 27, iOS 27, *)
 public struct SpeakerSegment: Sendable, Hashable {
     public let speaker: Int
     public let startFrame: Int
@@ -162,6 +163,7 @@ struct SortformerMel: Sendable {
 /// Any speaker-diarization model in the catalog (`ModelCatalog.builtin.available(.diarization)`)
 /// behind one `diarize(samples:)` call. Serial use (one clip at a time) — the host streaming
 /// loop owns the speaker cache.
+@available(macOS 27, iOS 27, *)
 public actor KitDiarizer {
     // streaming params (metadata.json / NeMo model_config.yaml)
     static let spkcacheLen = 188, fifoLen = 0, chunkLen = 188

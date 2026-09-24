@@ -124,6 +124,7 @@ extension CoreAI {
     /// the aspect-fill correction (`TODO` on `LiveResult`). `result.stats` carries what the
     /// pipeline is actually achieving — measured frame rate, median latency, dropped frames,
     /// thermal state — because the requested rate is not the interesting number on a phone.
+    @available(macOS 27, iOS 27, *)
     public static func watch(
         camera: LiveVision.Options = LiveVision.Options(), scoreThreshold: Float = 0.5,
         options: OpOptions = OpOptions()
@@ -141,6 +142,7 @@ extension CoreAI {
 
     /// Live camera → depth, per frame. Apple has no monocular depth API; this is a 54 MB
     /// model reading depth from the single wide camera, on any device.
+    @available(macOS 27, iOS 27, *)
     public static func watchDepth(
         camera: LiveVision.Options = LiveVision.Options(), options: OpOptions = OpOptions()
     ) async throws -> LiveWatch<DepthMap> {
@@ -159,6 +161,7 @@ extension CoreAI {
     /// detector runs continuously and decides, and the model that costs gigabytes and
     /// seconds runs on a handful of frames. The default capture rate is deliberately lower
     /// than `watch()`'s — a trigger stage exists to spend less, not more.
+    @available(macOS 27, iOS 27, *)
     public static func watch(
         for trigger: WatchTrigger,
         camera: LiveVision.Options = LiveVision.Options(framesPerSecond: 5),
