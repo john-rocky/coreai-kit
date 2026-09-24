@@ -91,12 +91,18 @@ public final class KitNemotronModel: @unchecked Sendable {
         computeUnits: GraphModel.ComputeUnits = .gpu,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
-        guard id == "nemotron-3.5-asr-streaming-0.6b" else {
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .asr)
+        guard entry.id == "nemotron-3.5-asr-streaming-0.6b" else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
         try await self.init(
-            model: .nemotronASRStreaming, store: store, computeUnits: computeUnits,
+            model: Self.model(for: entry), store: store, computeUnits: computeUnits,
             downloadProgress: downloadProgress)
+    }
+
+    /// The bundle `init(catalog:)` downloads: the preset, at the revision the entry pins.
+    static func model(for entry: CatalogEntry) -> ModelID {
+        ModelID.nemotronASRStreaming.pinned(entry.revision)
     }
 
     /// Downloads the Nemotron bundle from the Hub (if needed) and loads it.
