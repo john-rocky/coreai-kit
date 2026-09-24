@@ -257,6 +257,22 @@ the hands-off run — positive, sharing news, 😀; three decisions in 279 ms at
 **Shared** = the state is prefilled once and each question rewinds the engine to it
 (`Decision.Timing.reusedTokens` = 150 here); **from scratch** = the whole prompt every time.
 
+**The same command on the iPhone 17 Pro** (iOS 27.0, 2026-09-24, the phone at thermal state
+"nominal" from start to finish, the app in front, the catalog's own bundles; `decide-cli bench
+--repeat 3` run inside an app on the phone):
+
+| Model (catalog id) | ms per decision, state shared | ms per decision, every prompt from scratch | prefill + 8 decisions on one state |
+|---|---:|---:|---:|
+| MiniCPM5 2B int8 (`minicpm5-2b`) | 106.0 | 208.2 | 1,019 ms vs 1,850 ms |
+| laya multilingual (`laya-multilingual`, 256-token window) | 47.1 | 46.4 | 390 ms vs 458 ms |
+| OpenThai-SystemOne 0.8B int8 (`openthai-systemone`) | 1,527 | 1,713 | 13.5 s vs 15.2 s (0 reused: a recurrent hybrid re-prefills every row) |
+| Qwen3.5 2B Decision int8 (`qwen3.5-2b-decision`) | 6,063 | 6,150 | 53.2 s vs 54.2 s (0 reused) |
+
+The phone reads MiniCPM5 2B at about 1.6× the Mac's time per shared decision and laya at 4×;
+the two decision models pay their S = 1 prefill at the phone's rate, about 30 ms per token,
+so a question on them is seconds there — the hot-phone figures in their paragraphs below are
+about twice these.
+
 Agreement with the published bf16 readout of the same models on the same 144 authored rows
 (SemIf's `authored144` fixture, its `direct` rendering byte for byte, its `evaluate.py` metric):
 
@@ -266,6 +282,13 @@ Agreement with the published bf16 readout of the same models on the same 144 aut
 | MiniCPM5 1B int8 | — | — | — | 0.513 | — | 0.535 | 9.974 | 0.636 → 0.623 | 0.184 → 0.157 |
 | Qwen3 0.6B 4-bit | 144/144 | 59/144 | 1.000 / 0.580 | 0.333 | 0.440 | 0.340 | 11.882 | 1.299 → 0.722 | 0.650 → 0.185 |
 | decider 0.8B int8, card temperature 1.03 | — (its own prompt form) | — | — | 0.753 | — | 0.771 | none (its card's 1.03) | 0.296 | 0.061 |
+
+On the **iPhone 17 Pro** (iOS 27.0, 2026-09-23) the same MiniCPM5 2B int8 bundle, read at the same
+catalog temperature, answers 143 of the 144 rows as the Mac does — the one difference is a row
+the Mac ties at 0.500 / 0.500 and the phone reads 0.473 / 0.478 — with max |Δp| 0.0049 against
+the Mac's rows (mean 0.0011), 144/144 prompt tokens identical, accuracy 102/144 = 0.708, mean
+family balanced accuracy 0.688 by the same evaluator (evidence 0.752, rule 0.735, candidate
+0.579); 115 ms median per decision with the phone at thermal state "serious".
 
 Brier is the multi-class score (sum over options of (p − 1[correct])², SemIf's definition), ECE
 the top-label expected calibration error over 10 equal-width bins, both from `decide-cli
@@ -339,7 +362,12 @@ sequence and answers them in one pass, and those answers can differ from the one
 rows the kit sends (up to 0.375 on the fixture's requests) — the kit's rows equal the
 author's single-question API exactly; and Thai is cut the way the reference tokenizer cuts it
 (at every combining mark), which the Swift tokenizer alone does not do — `SlotPrompt.Encoder`
-does the cutting, and 23 of the 50 rows differed before it did.
+does the cutting, and 23 of the 50 rows differed before it did. **iPhone 17 Pro** (iOS 27.0, the
+same int8 bundle, 2026-09-23, thermal state "serious"): tokens, slots and argmax identical on
+50/50 there too, max |Δp| 0.0210 and |Δabstain| 0.0213 against the fp32 readout (the Mac's
+0.0226 / 0.0222), the 255-option row included; on SemIf's 144 rows the phone scores the Mac's
+109/144 and 0.725 exactly. 1.9 s median per question over the fixture's 50 rows (the Mac's 354
+ms), 2.1 s median per SemIf decision, the 255-option row 41 s (7.2 s).
 
 **A decision model for browser actions and workflow steps.** `apus-decision-v1-4b` (catalog
 kind `decision`, `Decision.Format.sharedState`; APUS AI Lab's APUS-OpenJev-v1-4B, a Qwen3.5-4B
@@ -382,7 +410,16 @@ shared between questions. The published MLX checkpoint is not in the Hugging Fac
 convolution kernels transposed, 61 RMSNorm scales stored without their +1); the zoo's converter
 puts them back, proved against the author's MLX bf16 readout (58/58, max |Δp| 0.012), and the
 bundle is that converted checkpoint. 2.9 GB int8, the size of `qwen3.5-2b`, so it ships to
-iPhone too; no iPhone number yet.
+iPhone too. **iPhone 17 Pro** (iOS 27.0, the same int8 bundle, 2026-09-23, the phone at thermal
+state "serious" throughout): the author's 58 rows are token- and slot-identical on the phone and
+argmax-identical to the fp32 reference on 58/58, max |Δp| 0.0070 (the Mac's 0.0079), the two
+1,700-token rows included; the sentence above with a choice, a yes/no and a five-level score comes
+back Business 0.729 / Science/Technology 0.254 / World 0.012 / Sports 0.005 on the phone and
+0.731 / 0.253 / 0.012 / 0.005 on the Mac for the same three rows (the card example's own row
+is two tokens longer, hence its 0.684). The price is the same S = 1 prefill at the phone's rate:
+2.7, 6.0 and 7.4 s for those 80-, 71- and 82-token rows, 11.3 s median per fixture question (the
+Mac's 986 ms), the 1,743-token row 155 s — a question a second on the Mac is a question every ten
+on the phone, so on the phone this model is for a decision that can wait.
 
 **A scoring head instead of letters, under a non-commercial license.** `system-one-scorer-4b`
 (catalog kind `decision`, `Decision.Format.scalar`; pngwn's system-one-qwen3.5-4b-scorer, a
@@ -441,8 +478,21 @@ first decision. The shipped bundles run on the GPU: the Neural Engine takes only
 graph, which misses the answer bar, and asking for the Neural Engine with the shipped graph (the last
 row) gives answers outside the bar that change from run to run. A structured `instructions` value is
 written with its non-ASCII text as is, where the publisher's client escapes it, so such a question
-can tokenize differently from the publisher's; plain-text instructions are unaffected. iPhone: not
-yet measured.
+can tokenize differently from the publisher's; plain-text instructions are unaffected.
+
+**`laya-multilingual` on the iPhone 17 Pro** (iOS 27.0, the catalog's `ios/wfp16-s256` bundle,
+the same code, 2026-09-23, through a headless harness that runs the fixture rows on the phone): the
+201 rows are token- and marker-identical there too, argmax 81/81, max |Δp| 8e-6 on the GPU and
+9e-6 CPU-only, every row within 1e-3 of the official model. One decision costs 47 ms with the
+state shared (`decide-cli bench`, the table above), 53–55 ms median per fixture row on the GPU
+with the row's tokens given (p90 57–60 ms; the same at thermal state "fair" and "nominal"), 69–70
+ms through `TypedDecisions` with the state's tokens kept and the question tokenized on the phone,
+73 ms CPU-only — about four times the Mac GPU's 11.5 ms, where MiniCPM5 2B takes about 1.6× its
+Mac time. The bundle loads in 1.2–2.5 s and the process peaks at 357 MB; the zoo's ahead-of-time
+`ios-h18p` compile of the same graph gives the same 201 rows at 51 ms. A Neural Engine
+preference misses the bar on the phone as on the Mac: 196/201 rows within 1e-3, argmax 80/81,
+max |Δp| 0.33, at 82 ms, with the process at 1.4 GB (that run and the CPU-only run at thermal
+state "serious").
 
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on

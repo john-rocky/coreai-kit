@@ -46,8 +46,9 @@ policy.
   16 options or fewer renders token for token as before. Why numbers: on 61 synthetic rows of
   17–255 options, `minicpm5-2b` picked the named option on 58 read at numbers and on 43 read at
   two-letter labels, where it answers one letter of the label. A 255-option prompt is 1,965
-  tokens on the decider's fixture row and 3,100–4,200 in the chat form, over the iPhone's
-  1,024, so it is a Mac call.
+  tokens on the decider's fixture row and 3,100–4,200 in the chat form, over the 1,024 a chat
+  model's prompt may take on an iPhone, so on a chat model it is a Mac call; the decider's row
+  ran on the iPhone 17 Pro in 70 s (2026-09-23).
 - `decide-cli oracle --dump-prompts <path>` writes each row's token ids and answer-slot ids in
   the `--prompts` shape. A row whose prompt outgrows the model's context is skipped and listed
   instead of ending the run.
@@ -60,7 +61,10 @@ policy.
   by default). `EncoderPrompt`, `EncoderReadout` and `EncoderDecider` are the low level
   (`decideRow` for the raw numbers). `decide-cli parity` reads `coreai-encoder-fixtures/1` — tokens
   and markers with only a tokenizer (`--tokens-only --tokenizer`), the raw logits with a bundle —
-  and `--compute` reaches every command.
+  and `--compute` reaches every command. On the iPhone 17 Pro the catalog's `ios/wfp16-s256`
+  bundle passes the same 201 rows (argmax 81/81, max |Δp| 8e-6) at 47 ms per decision on the GPU
+  with the state shared (53–55 ms per fixture row);
+  a Neural Engine preference misses the bar there too (`Examples/Decide/README.md`).
 - `Examples/Decide/conformance/` — `check.py <base_url>`: 22 requests in the hosted System One
   forms and the shape each answer must come back in (types and keys), for this server or any
   other that speaks the route; `calibration.py`: accuracy, NLL, Brier, top-label ECE and a
@@ -113,7 +117,14 @@ policy.
   measured against the local server by base URL alone; other servers that speak the form;
   the calibration table for `minicpm5-2b` and `decider-0.8b`.
 - `docs/SYSTEM_ONE.md` "How many options a choice lists": the count per model, the measured
-  wide-choice table for `minicpm5-2b`, and the iPhone rule (a prompt under 1,024 tokens).
+  wide-choice table for `minicpm5-2b`, and the iPhone rule (a chat model's prompt under 1,024
+  tokens; a decision model on the logits engine reads longer rows there — measured 2026-09-23).
+- `Examples/Decide/README.md`, `docs/SYSTEM_ONE.md`: the iPhone 17 Pro measured (2026-09-23) for
+  `laya-multilingual` (201/201 rows, 47 ms per decision on the GPU; a Neural Engine preference
+  misses the bar there too), `qwen3.5-2b-decision` (58/58 rows, max |Δp| 0.0070; 6 s per
+  decision cool, 11 s hot — the S = 1 prefill at the phone's rate), `openthai-systemone` (50/50 rows, 0.021;
+  the same 109/144 on SemIf's rows as the Mac), `decider-0.8b` (44/44 rows with the 255-option
+  row) and `minicpm5-2b` on SemIf's rows (143 of 144 answers the Mac's, the one a tie).
 
 ## [0.6.0] — 2026-09-23
 
