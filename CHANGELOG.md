@@ -7,10 +7,24 @@ policy.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-09-24
+
+Decisions on a recurrent hybrid reuse the state: the catalog's five hybrid decision models
+prefill a state once and each later question only its own tokens, 2.5–8.1× faster per decision
+on an M4 Max, through coreai-models 0.2.7-zoo's engine checkpoint. `CoreAI.systemOne` is the
+hosted System One call as one op; a choice lists up to 255 options where the model can read that
+many; `qwen3.5-2b-decision`, `system-one-scorer-4b` and the encoder model `laya-multilingual` join
+the catalog, with catalog-fitted temperatures and token-level scoring (`logits(for:)`). A minor:
+the 0.6.0 catalog id `apus-openjev-v1-4b` becomes `apus-decision-v1-4b`, a request that repeats a
+question id is refused, and the calibrated models read at new probabilities (the same answers);
+`exact: "0.6.0"` resolvers move to `0.7.0`. Built and gated on macOS 27.0 (26A428) and Xcode 27
+(27A266a); the `coreai-models` runtime pin moves from 0.2.4-zoo to 0.2.7-zoo.
+
 ### Removed
 
 - **`openjev-27b`** — withdrawn from the catalog (its Hub repo is now private) pending the source
-  model's training-data provenance.
+  model's training-data provenance. It entered the catalog after 0.6.0 (under Added below), so no
+  tag carries it.
 
 ### Changed
 
@@ -65,7 +79,7 @@ policy.
   that asks for the number; `decider-0.8b` reads its author's labels A–Z, AA, AB, … (its 44-row
   fixture now passes whole, the 255-option row included); `system-one-scorer-4b` scores 255 rows
   (was 64). `TypedDecisions.maxOptions` is each model's own count: 26 on `qwen3-0.6b`, whose
-  tokenizer has no single-token numbers past 9, and 16 on `apus-openjev-v1-4b`. A question of
+  tokenizer has no single-token numbers past 9, and 16 on `apus-decision-v1-4b`. A question of
   16 options or fewer renders token for token as before. Why numbers: on 61 synthetic rows of
   17–255 options, `minicpm5-2b` picked the named option on 58 read at numbers and on 43 read at
   two-letter labels, where it answers one letter of the label. A 255-option prompt is 1,965
@@ -109,6 +123,48 @@ policy.
   from-scratch side of a comparison; `--engine-log` prints the inference engine's own log lines (a
   checkpoint's size and copy time among them); `parity --dump-probs <rows.jsonl>` writes each
   row's probabilities, argmax, prompt and reused tokens, and time.
+- **`qwen3.5-2b-decision`** — chaoliangUNSW's Jev-Style-Qwen3.5-2B-Decision (Qwen3.5-2B-Base
+  fine-tune, English, Apache-2.0; its calibration temperature folded into the weights, the author
+  reports ECE 0.017) as a catalog `decision` model with its readout: `Decision.Format.decisionFunction`,
+  the author's plain-text prompt without a chat template read at the space-prefixed letters ` A`–` Z`
+  (up to 26 options), T = 1. On the author's 58-row fixture the kit's rows are token- and
+  slot-identical to the author's and argmax-identical to the fp32 reference on 58/58 for both
+  bundles (int8 max |Δp| 0.0079, fp16 0.0058; `decide-cli parity`); 0.798 mean family balanced
+  accuracy on SemIf's 144 English rows through the kit. Mac and iPhone (2.9 GB int8; no iPhone
+  number yet).
+- **`system-one-scorer-4b`** — pngwn's system-one-qwen3.5-4b-scorer (a Qwen3.5-4B-Base LoRA with
+  a scalar scoring head, English, **CC BY-NC 4.0**) as a catalog `decision` model with its readout:
+  `Decision.Format.scalar`, one `State:` / `Question:` / `Option:` row per option with the state cut
+  from its end to fit 384 tokens, the rows' scalars softmaxed at the author's temperature 1.75 —
+  both declared by the bundle's metadata (`decision.head == "scalar"`), which is how the format is
+  resolved. Up to 64 options; a yes/no is the rows `yes` / `no`, a score one row per level. On the
+  author's 48-question, 280-row fixture the kit's rows are token- and slot-identical on 280/280 and
+  argmax-identical to the fp32 readout on 48/48 for both bundles (int8 max |Δp| 0.0110, fp16 0.0037;
+  `decide-cli parity`, which reads `coreai-scalar-fixtures/1`); 0.844 mean family balanced accuracy
+  on SemIf's 144 English rows through the kit. Mac only (5.1 GB).
+- **`Decision.Format.letterList`** — the lettered option list under the chat template that OpenJev's
+  helper sends (`State:`, `Question:`, `Options:` as `[A] key: description` lines, "Answer with the
+  letter of the best option only."), read at the bare letters A–Z then a–z (up to 52) at the
+  temperature the bundle declares, a yes/no calibrated the helper's way (`decision.readout ==
+  "letters"` with `temperature` and `noul` in metadata.json); `decide-cli parity` reads the helper's
+  fixture rows.
+- **`openjev-27b`** — OpenJev (the OpenJev project's Qwen3.8-27B fine-tune; English, German, French,
+  Hindi, Chinese, Japanese; **CC BY-NC 4.0** for the weights), the open model behind its
+  `/v1/systemone` helper, as a catalog `decision` model with `format: letterList`. On the author's
+  61-row fixture the kit's rows are token-, slot- and argmax-identical to the helper's own readout
+  on 61/61 (int8 max |Δp| 0.0003; a yes/no compared after the helper's calibration); 0.907 mean
+  family balanced accuracy on SemIf's 144 English rows through the kit. Mac only (28 GB int8hu,
+  about 28 GB resident, about 8 s per decision on an M4 Max).
+- **`CatalogEntry.license`** — the SPDX id of a model's weights license when it restricts use
+  (`CC-BY-NC-4.0`); nil for the permissive ones. `systemone models` prints it beside the name and
+  `/v1/models` adds it to the description; the zoo card has every model's exact terms.
+- **Token-level scoring on `TypedDecisions`** — `logits(for:)` feeds a token sequence and
+  returns the logits at its last position for the whole vocabulary (`Decision.Logits`), with
+  the KV-cache prefix reuse `decide` has (`timing.reusedTokens`); `prefill(tokens:)` is the
+  token-level `prefill(_:)`; `tokenizer` is the bundle's own, to render the prompt with. For
+  a caller with its own readout — AnyDecisionModel's Core AI backend sums the variants of
+  each label, measures the allowed-answer mass and calibrates, where `decide` takes a softmax
+  over one letter token per option. `decide` is unchanged.
 
 ### Changed
 
@@ -219,41 +275,6 @@ and Xcode 27 (27A266a); the `coreai-models` runtime pin stays 0.2.4-zoo.
   choice and yes/no rows, argmax 40/40, max |Δp| 0.0055 (`decide-cli parity`, which also reads
   the letter fixture form, `coreai-letter-fixtures/1`); 0.906 mean family balanced accuracy on
   SemIf's 144 English rows through the kit. Mac only (5.8 GB).
-- **`qwen3.5-2b-decision`** — chaoliangUNSW's Jev-Style-Qwen3.5-2B-Decision (Qwen3.5-2B-Base
-  fine-tune, English, Apache-2.0; its calibration temperature folded into the weights, the author
-  reports ECE 0.017) as a catalog `decision` model with its readout: `Decision.Format.decisionFunction`,
-  the author's plain-text prompt without a chat template read at the space-prefixed letters ` A`–` Z`
-  (up to 26 options), T = 1. On the author's 58-row fixture the kit's rows are token- and
-  slot-identical to the author's and argmax-identical to the fp32 reference on 58/58 for both
-  bundles (int8 max |Δp| 0.0079, fp16 0.0058; `decide-cli parity`); 0.798 mean family balanced
-  accuracy on SemIf's 144 English rows through the kit. Mac and iPhone (2.9 GB int8; no iPhone
-  number yet).
-- **`system-one-scorer-4b`** — pngwn's system-one-qwen3.5-4b-scorer (a Qwen3.5-4B-Base LoRA with
-  a scalar scoring head, English, **CC BY-NC 4.0**) as a catalog `decision` model with its readout:
-  `Decision.Format.scalar`, one `State:` / `Question:` / `Option:` row per option with the state cut
-  from its end to fit 384 tokens, the rows' scalars softmaxed at the author's temperature 1.75 —
-  both declared by the bundle's metadata (`decision.head == "scalar"`), which is how the format is
-  resolved. Up to 64 options; a yes/no is the rows `yes` / `no`, a score one row per level. On the
-  author's 48-question, 280-row fixture the kit's rows are token- and slot-identical on 280/280 and
-  argmax-identical to the fp32 readout on 48/48 for both bundles (int8 max |Δp| 0.0110, fp16 0.0037;
-  `decide-cli parity`, which reads `coreai-scalar-fixtures/1`); 0.844 mean family balanced accuracy
-  on SemIf's 144 English rows through the kit. Mac only (5.1 GB).
-- **`Decision.Format.letterList`** — the lettered option list under the chat template that OpenJev's
-  helper sends (`State:`, `Question:`, `Options:` as `[A] key: description` lines, "Answer with the
-  letter of the best option only."), read at the bare letters A–Z then a–z (up to 52) at the
-  temperature the bundle declares, a yes/no calibrated the helper's way (`decision.readout ==
-  "letters"` with `temperature` and `noul` in metadata.json); `decide-cli parity` reads the helper's
-  fixture rows.
-- **`openjev-27b`** — OpenJev (the OpenJev project's Qwen3.8-27B fine-tune; English, German, French,
-  Hindi, Chinese, Japanese; **CC BY-NC 4.0** for the weights), the open model behind its
-  `/v1/systemone` helper, as a catalog `decision` model with `format: letterList`. On the author's
-  61-row fixture the kit's rows are token-, slot- and argmax-identical to the helper's own readout
-  on 61/61 (int8 max |Δp| 0.0003; a yes/no compared after the helper's calibration); 0.907 mean
-  family balanced accuracy on SemIf's 144 English rows through the kit. Mac only (28 GB int8hu,
-  about 28 GB resident, about 8 s per decision on an M4 Max).
-- **`CatalogEntry.license`** — the SPDX id of a model's weights license when it restricts use
-  (`CC-BY-NC-4.0`); nil for the permissive ones. `systemone models` prints it beside the name and
-  `/v1/models` adds it to the description; the zoo card has every model's exact terms.
 - `decide-cli --bundle <dir>` — any command on an unpublished bundle directory; `parity` reads
   the slot fixture form (`coreai-slot-fixtures/1`) and renders JSON states itself.
 
@@ -343,13 +364,6 @@ runtime pin stays 0.2.4-zoo.
   own — 1 for a chat model, the card's calibration for a decision model.
 - `TypedDecisions.promptTokens(_:_:)` is `promptRows(_:_:)` and returns one token sequence per
   scored row (a score question under `.decider` is several).
-- **Token-level scoring on `TypedDecisions`** — `logits(for:)` feeds a token sequence and
-  returns the logits at its last position for the whole vocabulary (`Decision.Logits`), with
-  the KV-cache prefix reuse `decide` has (`timing.reusedTokens`); `prefill(tokens:)` is the
-  token-level `prefill(_:)`; `tokenizer` is the bundle's own, to render the prompt with. For
-  a caller with its own readout — AnyDecisionModel's Core AI backend sums the variants of
-  each label, measures the allowed-answer mass and calibrates, where `decide` takes a softmax
-  over one letter token per option. `decide` is unchanged.
 
 ## [0.4.2] — 2026-09-15
 
