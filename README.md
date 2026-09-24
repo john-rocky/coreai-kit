@@ -66,7 +66,7 @@ swift run -c release --package-path Examples/ChatDemo chat-cli \
   --model qwen3-0.6b --prompt "What is the capital of Japan?"
 ```
 
-Set `DEVELOPER_DIR` to your installed **beta 5** application's `Contents/Developer`
+Set `DEVELOPER_DIR` to your installed **Xcode 27 `27A266a`** application's `Contents/Developer`
 directory if its name differs. [ChatDemo](Examples/ChatDemo) provides the app and the
 copyable Swift function. [Getting started](docs/GETTING_STARTED.md) covers a second
 turn, FoundationModels and download progress.
@@ -177,7 +177,7 @@ later is a refactor, not a rewrite.
 
 **[Watch the 0.4.1 Mac demo](https://github.com/john-rocky/coreai-assets/blob/main/kit/coreaikit-0.4.1-mac.mp4):
 Qwen3 0.6B chat → VoxCPM 0.5B speech.** Recorded on a Mac Studio M4 Max with the
-public exact `0.4.1` examples and the beta toolchain above. Builds and model downloads
+public exact `0.4.1` examples and Xcode 27 beta 5 (`27A5237l`). Builds and model downloads
 are omitted; the video shows cached runs. The [reproduction record](https://github.com/john-rocky/coreai-assets/blob/main/kit/coreaikit-0.4.1-mac.md)
 includes commands, model pins, and recording details. The separate
 [release evidence](https://github.com/john-rocky/coreai-kit/releases/tag/0.4.1)

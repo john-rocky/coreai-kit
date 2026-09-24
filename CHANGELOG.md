@@ -194,6 +194,12 @@ question id is refused, and the calibrated models read at new probabilities (the
   from separate fields renders as before. This reached every door the wire feeds — `systemone
   serve`, `systemone mcp`, the `decide` MCP tool — for a `choice` whose criteria carry
   descriptions; the chosen option did not change on the fixture.
+- **Concurrent calls on one `TypedDecisions` could drive its engine at once.** The actor did
+  not serialize a call: each engine `await` let another `decide` or `logits(for:)` call in to
+  rewind or feed the engine under the first, which then crashed in `CoreAISequentialEngine` or
+  came back without logits. Engine calls now wait their turn in a FIFO async lock, held from
+  the rewind to the end of the stream and around `reset()`; a task cancelled while it waits
+  throws `CancellationError` and leaves the queue (#43, @mattt).
 
 ### Docs
 
