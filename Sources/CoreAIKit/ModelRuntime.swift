@@ -94,7 +94,9 @@ struct ModelRuntime: Sendable {
         // (Gemma/VL/Audio/ASR). Official dynamic bundles load via `.auto` and keep the
         // default threshold (single-pass prefill). Process-wide by necessity: the runtime
         // reads the env var per generation; a user-set value always wins.
-        if engineVariant == .pipelined, getenv("COREAI_CHUNK_THRESHOLD") == nil {
+        if Self.needsSingleTokenPrefill(bundleName: url.lastPathComponent, engineVariant: engineVariant),
+            getenv("COREAI_CHUNK_THRESHOLD") == nil
+        {
             setenv("COREAI_CHUNK_THRESHOLD", "1", 1)
         }
         let start = SuspendingClock.now
@@ -118,5 +120,14 @@ struct ModelRuntime: Sendable {
         self.loadSeconds = ProcessStats.seconds(from: start, to: .now)
         self.promptRenderer = .chatTemplate
         self.gemma = nil
+    }
+
+    /// Whether a bundle must prefill one token per step: a `.pipelined` load (the catalog's
+    /// hint for the zoo's decode-only ports), or a decode-only port by its name (`_decode_`,
+    /// the test `TypedDecisions` applies) whatever the engine. `.auto` reaches here from
+    /// `ChatSession(model:)` and `init(bundleAt:)`, and on those ports it used to leave chunking
+    /// on: the first multi-token prompt stopped the process with a shape-substitution fatal.
+    static func needsSingleTokenPrefill(bundleName: String, engineVariant: EngineVariant) -> Bool {
+        engineVariant == .pipelined || bundleName.contains("_decode_")
     }
 }
