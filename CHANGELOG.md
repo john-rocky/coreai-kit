@@ -25,6 +25,13 @@ policy.
   `decide-cli ask | bench | filter | serve --backend fm` answer on it (the model id is
   `apple-foundation-model`). No catalog model's path changes.
 
+## [0.7.2] — 2026-09-24
+
+A patch. With the default engine, `ChatSession(model:)` and `init(bundleAt:)` no longer stop the
+process on the zoo's decode-only chat models. The examples' lockfiles now pin the swift-huggingface
+version the package requires. `exact: "0.7.1"` resolvers move to `0.7.2`; `from:` resolvers pick it
+up. Built and gated on macOS 27.0 (26A428) and Xcode 27 (27A266a).
+
 ### Fixed
 
 - **`ChatSession(model:)` stopped the process on a zoo decode-only model.** With the default
