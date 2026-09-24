@@ -1,5 +1,5 @@
 {
-  "originHash" : "98c5a3ca9657b57bfb5ed72a7a19b629fd509b2b320e88f1553c8cb14c243346",
+  "originHash" : "a6f8a4323143cdfe0901ef8b93c554f647b1561d2bd0b20dcd4f2d7d860ae3d1",
   "pins" : [
     {
       "identity" : "coreai-models",
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/huggingface/swift-huggingface.git",
       "state" : {
-        "revision" : "b721959445b617d0bf03910b2b4aced345fd93bf",
-        "version" : "0.9.0"
+        "revision" : "f2f99991f2d7d8fdb3187e4fd539cd2facf5c13d",
+        "version" : "0.11.0"
       }
     },
     {

@@ -7,9 +7,21 @@
 //   swift run -c release decide-cli bench --model minicpm5-2b --repeat 3
 //   swift run -c release decide-cli oracle --model qwen3-0.6b --fixture authored144.jsonl \
 //       --prompts prompts.jsonl --reference predictions.jsonl --limit 48 --out predictions.out.jsonl
+//   (--dump-prompts <path> writes the kit's own rendering in the --prompts shape, for a reference to score)
+//   swift run -c release decide-cli calibrate --model minicpm5-2b --fit perturbations108.jsonl --report authored144.jsonl \
+//       --record minicpm5-2b.calibration.json --out report.after.jsonl --out-raw report.raw.jsonl
+//   swift run -c release decide-cli parity --fixture fixtures-decider-0.8b.json --model decider-0.8b
+//   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
+//   (a scalar-head model's fixture, coreai-scalar-fixtures/1, compares every option row of each question)
+//   swift run -c release decide-cli parity --fixture fixtures-laya-multilingual.json --bundle <dir> [--compute ane]
+//   (an encoder model's fixture, coreai-encoder-fixtures/1: tokens and markers, then the raw logits at T = 1;
+//    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
+//   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
+//   swift run -c release decide-cli mcp --preload      # a Model Context Protocol server on stdio (SystemOneMCPServer in the kit)
 //   swift run -c release decide-cli --list-models
 
 import CoreAIOps
+import CryptoKit
 import Foundation
 
 let usage = """
@@ -17,7 +29,21 @@ let usage = """
                             (--noul <q> | --choice "<q>|<opt>|<opt>…" | --score "<q>|<level>|<level>…")…
            decide-cli bench [--model <catalog-id>] [--state-file <path>] [--repeat <n>]
            decide-cli oracle --fixture <rows.jsonl> [--prompts <rows.jsonl>] [--reference <rows.jsonl>]
-                            [--model <catalog-id>] [--limit <n>] [--out <predictions.jsonl>]
+                            [--model <catalog-id>] [--limit <n>] [--out <predictions.jsonl>] [--dump-prompts <rows.jsonl>]
+           decide-cli calibrate --fit <rows.jsonl> --report <rows.jsonl> [--model <catalog-id>] [--record <calibration.json>]
+                            [--out <report-calibrated.jsonl>] [--out-raw <report-raw.jsonl>] [--bins 10] [--limit <n>]
+                            [--fit-name <text>] [--report-name <text>] [--verbose]
+                            (a temperature fitted on --fit, before / after on --report; the record is a catalog.json `calibration`)
+           decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
+                            (--bundle <dir> loads a local bundle directory instead of a catalog id, for any command)
+                            (an encoder fixture: [--tokens-only] [--tokenizer <dir> --head-max-len <n>]
+                             [--compute gpu|ane|cpu|cpuonly] [--act-compute gpu|ane|cpu|cpuonly])
+           decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
+                            (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
+           decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
+                            (a /v1/systemone endpoint over the loaded model, in the hosted request and answer forms)
+           decide-cli mcp   [--model <catalog-id>] [--preload]
+                            (a Model Context Protocol server on stdin/stdout — tools decide, models — for Claude Code, Codex, Cursor)
            decide-cli --list-models
     """
 
@@ -51,8 +77,8 @@ var args = CommandLine.arguments.dropFirst()
 guard let command = args.popFirst() else { fail(usage) }
 
 if command == "--list-models" {
-    for entry in ModelCatalog.builtin.available(.chat) {
-        print("\(entry.id)  —  \(entry.name)")
+    for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision) {
+        print("\(entry.id)  —  \(entry.name)  [\(entry.kind.rawValue)]")
     }
     exit(0)
 }
@@ -67,7 +93,53 @@ var promptsPath: String?
 var referencePath: String?
 var limit = Int.max
 var outPath: String?
+/// `oracle`: where to write each row's rendered token ids and answer-slot ids (the `--prompts` shape).
+var dumpPromptsPath: String?
 var verbose = false
+var threshold = 0.5
+var printAll = false
+var statesPath: String?
+var host = "127.0.0.1"
+var port: UInt16 = 8090
+var preload = false
+/// A local bundle directory instead of a catalog id — a port gated before it is published.
+var bundlePath: String?
+var fitPath: String?
+var reportPath: String?
+var recordPath: String?
+var outRawPath: String?
+var bins = 10
+var fitName: String?
+var reportName: String?
+/// An encoder fixture's rows checked with no bundle: the tokenizer folder, and the head budget
+/// a bundle's metadata would otherwise declare.
+var tokenizerPath: String?
+var tokensOnly = false
+var headMaxLength: Int?
+/// Compute units for an encoder bundle's graphs, and for its act head when it differs.
+var computeUnits: GraphModel.ComputeUnits = .gpu
+var actComputeUnits: GraphModel.ComputeUnits?
+
+func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
+    switch name {
+    case "gpu": return .gpu
+    case "ane", "neuralEngine": return .neuralEngine
+    case "cpu": return .cpu
+    case "cpuonly", "cpuOnly": return .cpuOnly
+    default: fail(usage)
+    }
+}
+
+/// The decider every command loads: the `--bundle` directory when given, else the catalog id.
+/// `--compute` reaches an encoder bundle's graphs; the language formats ignore it.
+@MainActor func loadDecider(configuration: TypedDecisions.Configuration = .init()) async throws -> TypedDecisions {
+    var configuration = configuration
+    configuration.computeUnits = computeUnits
+    if let bundlePath {
+        return try await TypedDecisions(bundleAt: URL(fileURLWithPath: bundlePath), configuration: configuration)
+    }
+    return try await TypedDecisions(catalog: modelID, configuration: configuration, downloadProgress: progress)
+}
 
 func parts(_ spec: String) -> (String, [String]) {
     let pieces = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -96,7 +168,29 @@ while let arg = args.popFirst() {
     case "--reference": referencePath = args.popFirst()
     case "--limit": limit = Int(args.popFirst() ?? "") ?? limit
     case "--out": outPath = args.popFirst()
+    case "--dump-prompts": dumpPromptsPath = args.popFirst()
     case "--verbose": verbose = true
+    case "--threshold": threshold = Double(args.popFirst() ?? "") ?? threshold
+    case "--states": statesPath = args.popFirst()
+    case "--all": printAll = true
+    case "--host": host = args.popFirst() ?? host
+    case "--port": port = UInt16(args.popFirst() ?? "") ?? port
+    case "--preload": preload = true
+    case "--fit": fitPath = args.popFirst()
+    case "--report": reportPath = args.popFirst()
+    case "--record": recordPath = args.popFirst()
+    case "--out-raw": outRawPath = args.popFirst()
+    case "--bins": bins = Int(args.popFirst() ?? "") ?? bins
+    case "--fit-name": fitName = args.popFirst()
+    case "--report-name": reportName = args.popFirst()
+    case "--bundle":
+        bundlePath = args.popFirst()
+        if let bundlePath { modelID = URL(fileURLWithPath: bundlePath).lastPathComponent }
+    case "--tokenizer": tokenizerPath = args.popFirst()
+    case "--tokens-only": tokensOnly = true
+    case "--head-max-len": headMaxLength = Int(args.popFirst() ?? "")
+    case "--compute": computeUnits = parseComputeUnits(args.popFirst())
+    case "--act-compute": actComputeUnits = parseComputeUnits(args.popFirst())
     default: fail(usage)
     }
 }
@@ -123,7 +217,15 @@ let id = modelID
 @MainActor func runAsk() async throws {
     guard let state, !questions.isEmpty else { fail(usage) }
     let asked = Dictionary(uniqueKeysWithValues: questions)
-    let answers = try await decide(state: state, questions: asked, model: id, downloadProgress: progress)
+    // `--bundle` must reach every command: the QuickStart snippet only knows catalog ids.
+    let answers: [String: Decision.Answer]
+    if bundlePath != nil {
+        let decider = try await loadDecider()
+        stderrPrint("model: \(id) (\(await decider.modelName))   format: \(decider.format.rawValue)")
+        answers = try await decider.decide(state, asked)
+    } else {
+        answers = try await decide(state: state, questions: asked, model: id, downloadProgress: progress)
+    }
     for (key, _) in questions {
         print("\(key): \(describe(answers[key]!))")
     }
@@ -178,14 +280,14 @@ let benchQuestions: [Decision.Question] = [
     let text = try stateFile.map { try String(contentsOfFile: $0, encoding: .utf8) } ?? benchState
     var shared = TypedDecisions.Configuration()
     shared.sharePrefix = true
-    let decider = try await TypedDecisions(catalog: id, configuration: shared, downloadProgress: progress)
+    let decider = try await loadDecider(configuration: shared)
     let name = await decider.modelName
     // Warm: the first prompt at a new length pays the engine's specialization.
     _ = try await decider.decide(text, benchQuestions[0])
     let s = try await bench(decider: decider, state: text, label: "shared")
     var direct = TypedDecisions.Configuration()
     direct.sharePrefix = false
-    let directDecider = try await TypedDecisions(catalog: id, configuration: direct)
+    let directDecider = try await loadDecider(configuration: direct)
     _ = try await directDecider.decide(text, benchQuestions[0])
     let d = try await bench(decider: directDecider, state: text, label: "direct")
     let stateTokens = try await decider.prefill(text).tokens
@@ -205,11 +307,22 @@ struct FixtureRow: Decodable {
         let id: String
         let description: String
     }
+    struct Provenance: Decodable {
+        /// The row a perturbation was made from.
+        let base_id: String?
+    }
     let id: String
     let state: String
     let question: String
     let options: [Option]
     let label: Int?
+    /// SemIf's task family, the situation the row belongs to (`<group>` or `<group>/<set>`),
+    /// where it came from, and its question type — "choice" when absent; "noul" lists no then
+    /// yes, "score" its levels lowest first. `calibrate` reads them.
+    let family: String?
+    let group_id: String?
+    let provenance: Provenance?
+    let type: String?
 }
 
 struct PromptRow: Decodable {
@@ -240,17 +353,26 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     let references = try referencePath.map { try readRows($0, as: ReferenceRow.self) } ?? []
     let referenceByID = Dictionary(uniqueKeysWithValues: references.map { ($0.id, $0) })
 
-    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let decider = try await loadDecider()
     let name = await decider.modelName
     var out: [String] = []
+    var dumped: [String] = []
     var scored = 0, tokensExact = 0, tokensChecked = 0, argmaxAgree = 0, labelCorrect = 0, labelled = 0
     var deltas: [Double] = []
     var milliseconds: [Double] = []
     var skippedStates = 0
+    var skippedLong: [String] = []
     for row in rows.prefix(limit) {
         let question = Decision.Question.choice(
             row.question, options: row.options.map { .init(id: $0.id, description: $0.description) })
-        let answer = try await decider.decide(row.state, question)
+        let answer: Decision.Answer
+        do {
+            answer = try await decider.decide(row.state, question)
+        } catch DecisionError.promptTooLong(let tokens, let max) {
+            // A wide row can outgrow a small context: skip it and say so, rather than end the run.
+            skippedLong.append("\(row.id) (\(tokens) tokens, at most \(max))")
+            continue
+        }
         guard case .choice(let choice) = answer.value else { continue }
         scored += 1
         milliseconds.append(answer.timing.milliseconds)
@@ -260,9 +382,19 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
             labelled += 1
             if best == label { labelCorrect += 1 }
         }
-        if let prompt = promptByID[row.id] {
+        var rendered: (tokens: [Int32], slots: [Int32])? = nil
+        if promptByID[row.id] != nil || dumpPromptsPath != nil {
+            rendered = try decider.promptRows(row.state, question)[0]
+        }
+        if let rendered, dumpPromptsPath != nil {
+            dumped.append(JSONValue.object([
+                .init("id", .string(row.id)),
+                .init("ids", .array(rendered.tokens.map { .int(Int($0)) })),
+                .init("answer_token_ids", .array(rendered.slots.map { .int(Int($0)) })),
+            ]).dumps())
+        }
+        if let prompt = promptByID[row.id], let rendered {
             tokensChecked += 1
-            let rendered = try decider.promptTokens(row.state, question)
             if rendered.tokens == prompt.ids, rendered.slots == prompt.answer_token_ids {
                 tokensExact += 1
             } else if verbose {
@@ -288,7 +420,13 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     if let outPath {
         try out.joined(separator: "\n").appending("\n").write(toFile: outPath, atomically: true, encoding: .utf8)
     }
+    if let dumpPromptsPath {
+        try dumped.joined(separator: "\n").appending("\n").write(toFile: dumpPromptsPath, atomically: true, encoding: .utf8)
+    }
     print("model: \(id) (\(name))   rows scored: \(scored)   skipped (non-string state): \(skippedStates)")
+    if !skippedLong.isEmpty {
+        print("skipped (prompt longer than the model's context): \(skippedLong.count) — \(skippedLong.joined(separator: "; "))")
+    }
     if labelled > 0 {
         print("accuracy vs fixture label: \(labelCorrect)/\(labelled) = \(fmt(Double(labelCorrect) / Double(labelled), 4))")
     }
@@ -302,11 +440,1016 @@ func readRows<Row: Decodable>(_ path: String, as type: Row.Type) throws -> [Row]
     print("ms per decision: median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
 }
 
+// MARK: - calibrate (a temperature fitted on one labelled fixture, reported on another)
+
+/// One row as the model answered it, kept at temperature 1 so any other temperature is one
+/// `rescale` away.
+struct CalibrationScore {
+    let fixture: FixtureRow
+    let type: String
+    let label: Int
+    /// The temperature the kit read the answer at by default.
+    let temperature: Double
+    let raw: [Double]
+    let tokens: Int
+    let seconds: Double
+
+    func row(at t: Double) -> DecisionCalibration.Row {
+        DecisionCalibration.Row(
+            probabilities: DecisionCalibration.rescale(raw, to: t), label: label,
+            optionIDs: fixture.options.map(\.id), family: fixture.family)
+    }
+}
+
+/// The typed question a calibration row asks, with its type's name.
+func calibrationQuestion(_ row: FixtureRow) -> (type: String, question: Decision.Question)? {
+    switch row.type ?? "choice" {
+    case "choice":
+        return ("choice", .choice(row.question, options: row.options.map { .init(id: $0.id, description: $0.description) }))
+    case "noul":
+        guard row.options.count == 2 else { return nil }
+        func meaning(_ option: FixtureRow.Option) -> String? {
+            option.description.isEmpty || option.description == option.id ? nil : option.description
+        }
+        return ("noul", .noul(row.question, yes: meaning(row.options[1]), no: meaning(row.options[0])))
+    case "score":
+        return ("score", .score(row.question, levels: row.options.map(\.description)))
+    default:
+        return nil
+    }
+}
+
+func sha256(ofFile path: String) throws -> String {
+    SHA256.hash(data: try Data(contentsOf: URL(fileURLWithPath: path))).map { String(format: "%02x", $0) }.joined()
+}
+
+/// A number in the record: three places, no trailing zeros.
+func recordNumber(_ value: Double) -> JSONValue {
+    var text = String(format: "%.3f", value)
+    while text.hasSuffix("0") { text.removeLast() }
+    if text.hasSuffix(".") { text += "0" }
+    return .number(text)
+}
+
+func tally(_ values: [String]) -> String {
+    Dictionary(grouping: values, by: { $0 }).keys.sorted()
+        .map { key in "\(key) \(values.filter { $0 == key }.count)" }.joined(separator: ", ")
+}
+
+/// Index of the largest probability, the first on a tie.
+func firstMax(_ p: [Double]) -> Int {
+    var best = 0
+    for i in p.indices where p[i] > p[best] { best = i }
+    return best
+}
+
+@MainActor func runCalibrate() async throws {
+    guard let fitPath, let reportPath else { fail(usage) }
+    let fitRows = Array(try readRows(fitPath, as: FixtureRow.self).prefix(limit))
+    let reportRows = Array(try readRows(reportPath, as: FixtureRow.self).prefix(limit))
+    guard !fitRows.isEmpty, !reportRows.isEmpty else { fail("calibrate: --fit and --report each need a row") }
+
+    // The two sets must not share a row. What else they share is printed on every run.
+    for (flag, rows) in [("--fit", fitRows), ("--report", reportRows)] {
+        let repeated = Dictionary(grouping: rows.map(\.id), by: { $0 }).filter { $0.value.count > 1 }.keys.sorted()
+        if let first = repeated.first { fail("calibrate: \(flag) repeats \(repeated.count) row ids (\(first), …)") }
+    }
+    let fitIDs = Set(fitRows.map(\.id)), reportIDs = Set(reportRows.map(\.id))
+    let shared = fitIDs.intersection(reportIDs).sorted()
+    if let first = shared.first {
+        fail("calibrate: \(shared.count) row ids are in both --fit and --report (\(first), …); a temperature is reported on rows it was not fitted on")
+    }
+    var typed: [String: (type: String, question: Decision.Question, label: Int)] = [:]
+    for row in fitRows + reportRows {
+        guard let (type, question) = calibrationQuestion(row) else {
+            fail("calibrate: row \(row.id) is type \(row.type ?? "choice") with \(row.options.count) options; calibrate asks a choice, a noul (options no, yes) or a score (options its levels)")
+        }
+        guard let label = row.label, row.options.indices.contains(label) else {
+            fail("calibrate: row \(row.id) has no label among its \(row.options.count) options")
+        }
+        typed[row.id] = (type, question, label)
+    }
+    func situation(_ row: FixtureRow) -> String? { row.group_id.map { String($0.prefix { $0 != "/" }) } }
+    let fitSituations = Set(fitRows.compactMap(situation)), reportSituations = Set(reportRows.compactMap(situation))
+    let fitFromReport = fitRows.compactMap(\.provenance?.base_id).filter { reportIDs.contains($0) }
+    let reportFromFit = reportRows.compactMap(\.provenance?.base_id).filter { fitIDs.contains($0) }
+    let fitStates = Set(fitRows.map(\.state)), reportStates = Set(reportRows.map(\.state))
+    let fitHash = try sha256(ofFile: fitPath), reportHash = try sha256(ofFile: reportPath)
+    let fitLabel = fitName ?? URL(fileURLWithPath: fitPath).deletingPathExtension().lastPathComponent
+    let reportLabel = reportName ?? URL(fileURLWithPath: reportPath).deletingPathExtension().lastPathComponent
+    for (side, path, rows, hash) in [("fit", fitPath, fitRows, fitHash), ("report", reportPath, reportRows, reportHash)] {
+        print("\(side): \(path)  \(rows.count) rows  sha256 \(hash.prefix(12))…  families: \(tally(rows.map { $0.family ?? "-" }))  types: \(tally(rows.map { typed[$0.id]!.type }))")
+    }
+    print("shared by fit and report: row ids 0 · situations (group_id before \"/\") \(fitSituations.intersection(reportSituations).count) (fit \(fitSituations.count), report \(reportSituations.count)) · fit rows made from a report row \(fitFromReport.count) (from \(Set(fitFromReport).count) report rows) · report rows made from a fit row \(reportFromFit.count) · states \(fitStates.intersection(reportStates).count) (fit \(fitStates.count), report \(reportStates.count) distinct)")
+
+    let decider = try await loadDecider()
+    let name = await decider.modelName
+    // Re-reading an answer at another temperature needs one softmax behind it.
+    let types = Set(typed.values.map(\.type))
+    if decider.format == .decider, types.contains("score") {
+        fail("calibrate: a .decider score normalises one yes/no per level, not one softmax; calibrate its choice and noul rows")
+    }
+    if decider.format == .letterList, types.contains("noul") {
+        fail("calibrate: a .letterList yes/no is recalibrated after its softmax; calibrate its choice and score rows")
+    }
+    let probes: [(String, Decision.Question)] = [
+        ("choice", .choice("?", ["a", "b"])), ("score", .score("?", levels: ["a", "b"])), ("noul", .noul("?")),
+    ]
+    let defaults = probes.map { "\($0.0) \(fmt(decider.temperature(for: $0.1)))" }.joined(separator: ", ")
+    var source = "the model's own (its bundle's, or its prompt form's default)"
+    if bundlePath == nil, let calibration = try await ModelCatalog.entry(forID: id).calibration {
+        source = "the catalog's calibration (\(calibration.temperature)\(calibration.byType.map { ", by type \($0)" } ?? ""))"
+    }
+    print("model: \(id) (\(name))   format: \(decider.format.rawValue)   default temperature: \(defaults) — \(source)")
+
+    func score(_ rows: [FixtureRow], _ side: String) async throws -> [CalibrationScore] {
+        var scored: [CalibrationScore] = []
+        for (index, row) in rows.enumerated() {
+            let (type, question, label) = typed[row.id]!
+            let answer = try await decider.decide(row.state, question)
+            let t = decider.temperature(for: question)
+            let raw = DecisionCalibration.rescale(answer.probabilities, from: t, to: 1)
+            scored.append(
+                CalibrationScore(
+                    fixture: row, type: type, label: label, temperature: t, raw: raw,
+                    tokens: answer.timing.promptTokens, seconds: answer.timing.seconds))
+            if verbose {
+                stderrPrint("  \(side) \(row.id) \(type) label \(label)  p \(answer.probabilities.map { fmt($0) }) at T \(fmt(t))  raw \(raw.map { fmt($0) })")
+            } else if (index + 1) % 12 == 0 || index + 1 == rows.count {
+                stderrPrint("\rscoring \(side) rows: \(index + 1)/\(rows.count)", terminator: index + 1 == rows.count ? "\n" : "")
+            }
+        }
+        return scored
+    }
+    let fitScored = try await score(fitRows, "fit")
+    let reportScored = try await score(reportRows, "report")
+    print("scored \(fitScored.count) fit and \(reportScored.count) report rows, median \(fmt(median((fitScored + reportScored).map { $0.seconds * 1000 }), 1)) ms per decision")
+
+    // One temperature per question type fitted, and the one over all of them: the record keeps
+    // three places, and the kit applies what the record says, so `after` is read at that.
+    let order = ["choice", "score", "noul"]
+    let fitTypes = order.filter { type in fitScored.contains { $0.type == type } }
+    let rawFit = fitScored.map { $0.row(at: 1) }
+    var fitted: [String: Double] = [:]
+    for type in fitTypes {
+        fitted[type] = DecisionCalibration.fitTemperature(zip(fitScored, rawFit).filter { $0.0.type == type }.map(\.1))
+    }
+    let pooled = DecisionCalibration.fitTemperature(rawFit)
+    func threePlaces(_ t: Double) -> Double { (t * 1000).rounded() / 1000 }
+    let recorded = threePlaces(pooled)
+    let recordedByType = fitTypes.count > 1 ? fitted.mapValues(threePlaces) : nil
+    func applied(_ type: String) -> Double { recordedByType?[type] ?? recorded }
+    let perType = fitTypes.map { type in "\(type) \(fmt(fitted[type]!, 4)) (\(fitScored.filter { $0.type == type }.count) rows)" }
+    print("fitted on the fit rows (least NLL on exp(x/40), x in -60..<100): \(perType.joined(separator: ", ")); all types \(fmt(pooled, 4)) → recorded \(recordNumber(recorded).dumps())\(recordedByType == nil ? "" : " and one per type")")
+    print("for comparison, fitted on the report rows themselves: \(fmt(DecisionCalibration.fitTemperature(reportScored.map { $0.row(at: 1) }), 4))")
+
+    func table(_ title: String, _ rows: [DecisionCalibration.Row]) {
+        print("\n\(title)")
+        print("| family | n | accuracy | balanced acc. | NLL | Brier | ECE | mean conf. |")
+        print("|---|---:|---:|---:|---:|---:|---:|---:|")
+        for (family, m) in DecisionCalibration.familyMetrics(rows, bins: bins) {
+            print("| \(family) | \(m.n) | \(fmt(m.accuracy)) | \(fmt(m.balancedAccuracy)) | \(fmt(m.nll)) | \(fmt(m.brier)) | \(fmt(m.ece)) | \(fmt(m.meanConfidence)) |")
+        }
+    }
+    let fitBefore = fitScored.map { $0.row(at: $0.temperature) }
+    let fitAfter = fitScored.map { $0.row(at: applied($0.type)) }
+    let reportBefore = reportScored.map { $0.row(at: $0.temperature) }
+    let reportAfter = reportScored.map { $0.row(at: applied($0.type)) }
+    let afterText = fitTypes.count > 1
+        ? fitTypes.map { "\($0) \(recordNumber(applied($0)).dumps())" }.joined(separator: ", ")
+        : recordNumber(recorded).dumps()
+    table("fit rows (\(fitLabel)), in-sample, before: the default temperature", fitBefore)
+    table("fit rows (\(fitLabel)), in-sample, after: \(afterText)", fitAfter)
+    table("report rows (\(reportLabel)), before: the default temperature", reportBefore)
+    table("report rows (\(reportLabel)), after: \(afterText)", reportAfter)
+    func moved(_ a: [DecisionCalibration.Row], _ b: [DecisionCalibration.Row]) -> Int {
+        zip(a, b).filter { firstMax($0.probabilities) != firstMax($1.probabilities) }.count
+    }
+    print("\nargmax moved by the temperature: \(moved(reportBefore, reportAfter)) of \(reportScored.count) report rows, \(moved(fitBefore, fitAfter)) of \(fitScored.count) fit rows")
+
+    if let recordPath {
+        let before = DecisionCalibration.metrics(reportBefore, bins: bins)
+        let after = DecisionCalibration.metrics(reportAfter, bins: bins)
+        let day = DateFormatter()
+        day.locale = Locale(identifier: "en_US_POSIX")
+        day.dateFormat = "yyyy-MM-dd"
+        #if os(macOS)
+        let platform = "macos"
+        #else
+        let platform = "ios"
+        #endif
+        let fit = JSONValue.object([
+            .init("fixture", .string(fitLabel)), .init("sha256", .string(fitHash)), .init("rows", .int(fitScored.count)),
+            .init("questionTypes", .array(fitTypes.map(JSONValue.string))), .init("format", .string(decider.format.rawValue)),
+            .init("date", .string(day.string(from: Date()))), .init("platform", .string(platform)),
+        ])
+        let report = JSONValue.object([
+            .init("fixture", .string(reportLabel)), .init("sha256", .string(reportHash)), .init("rows", .int(reportScored.count)),
+            .init("accuracy", recordNumber(before.accuracy)),
+            .init("eceBefore", recordNumber(before.ece)), .init("eceAfter", recordNumber(after.ece)),
+            .init("brierBefore", recordNumber(before.brier)), .init("brierAfter", recordNumber(after.brier)),
+            .init("nllBefore", recordNumber(before.nll)), .init("nllAfter", recordNumber(after.nll)),
+        ])
+        var lines = ["{", "  \"temperature\": \(recordNumber(recorded).dumps()),"]
+        if let recordedByType {
+            let byType = JSONValue.object(fitTypes.map { JSONValue.Member($0, recordNumber(recordedByType[$0]!)) })
+            lines.append("  \"byType\": \(byType.dumps()),")
+        }
+        lines += ["  \"fit\": \(fit.dumps()),", "  \"report\": \(report.dumps())", "}"]
+        try (lines.joined(separator: "\n") + "\n").write(toFile: recordPath, atomically: true, encoding: .utf8)
+        print("record: \(recordPath)")
+    }
+    func write(_ path: String, _ rows: [DecisionCalibration.Row]) throws {
+        let lines = zip(reportScored, rows).map { scored, row in
+            JSONValue.object([
+                .init("id", .string(scored.fixture.id)),
+                .init("option_ids", .array(scored.fixture.options.map { .string($0.id) })),
+                .init("probabilities", .array(row.probabilities.map(JSONValue.double))),
+                .init("input_tokens", .int(scored.tokens)),
+                .init("forward_seconds", .number(fmt(scored.seconds, 4))),
+                .init("model", .object([.init("catalog", .string(id)), .init("name", .string(name))])),
+            ]).dumps()
+        }
+        try (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+    }
+    if let outPath {
+        try write(outPath, reportAfter)
+        print("report rows at the recorded temperature: \(outPath)")
+    }
+    if let outRawPath {
+        try write(outRawPath, reportScored.map { $0.row(at: 1) })
+        print("report rows at temperature 1: \(outRawPath)")
+    }
+}
+
+// MARK: - parity (a decision model's own fixture: every row's token ids, slot and probabilities)
+
+/// The fixture a decision-model port ships (`coreai-decider-fixtures/1`): requests in the
+/// model's wire shape, and the rows they were planned into with the author's fp32 readout.
+struct DeciderFixture: Decodable {
+    struct Request: Decodable {
+        let id: String
+        /// The state as text; nil when the fixture carries it as a JSON value (the model's
+        /// API serialises those itself — `--states` supplies that rendering).
+        let state: String?
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            state = try? c.decode(String.self, forKey: .state)
+        }
+
+        enum CodingKeys: String, CodingKey { case id, state }
+    }
+    struct Row: Decodable {
+        let id: String
+        let request_id: String
+        let question_id: String
+        let kind: String  // "list" (one row) or "iso" (one row per score level); "slot" (a slot-head row)
+        let type: String  // choice / score / noul
+        let level_index: Int?
+        let question: String
+        let options: [String]
+        let ids: [Int32]
+        let slot: Int
+        let nopts: Int
+        let label_ids: [Int32]
+        let p_oracle: [Double]
+        /// A slot-head fixture (`coreai-slot-fixtures/1`): the abstain mass and this row's
+        /// temperature beside the renormalised option probabilities.
+        let abstain: Double?
+        let temperature: Double?
+    }
+    let schema: String
+    /// One temperature for the letter readout; a slot-head fixture carries one per type instead.
+    let temperature: Double?
+    let temperature_by_type: [String: Double]?
+    let requests: [Request]
+    let rows: [Row]
+}
+
+/// Rebuilds the typed question a group of fixture rows was planned from, so the kit's own
+/// rendering (`Decision.Question` → rows → tokens) is what gets compared, not the fixture's
+/// pre-rendered strings.
+func fixtureQuestion(_ rows: [DeciderFixture.Row]) -> Decision.Question? {
+    guard let first = rows.first else { return nil }
+    switch first.type {
+    case "choice":
+        let options = first.options.map { text -> Decision.Option in
+            guard let range = text.range(of: ": ") else { return .init(text) }
+            // A slot row keeps the wire codec's composed form (`name: description` as the
+            // description), so a description equal to its name survives; the decider rows
+            // were produced from separate fields.
+            if first.kind == "slot" { return .init(id: String(text[..<range.lowerBound]), description: text) }
+            return .init(id: String(text[..<range.lowerBound]), description: String(text[range.upperBound...]))
+        }
+        return .choice(first.question, options: options)
+    case "noul":
+        func tail(_ text: String, _ head: String) -> String? {
+            text.hasPrefix(head + ": ") ? String(text.dropFirst(head.count + 2)) : nil
+        }
+        return .noul(first.question, yes: tail(first.options[1], "yes"), no: tail(first.options[0], "no"))
+    case "score":
+        if first.kind == "slot" {  // one row, the levels as "i: level"
+            let levels = first.options.enumerated().compactMap { index, text -> String? in
+                let prefix = "\(index): "
+                return text.hasPrefix(prefix) ? String(text.dropFirst(prefix.count)) : nil
+            }
+            return levels.count == first.options.count ? .score(first.question, levels: levels) : nil
+        }
+        let marker = "\nProposed answer: "
+        guard let head = first.question.range(of: marker) else { return nil }
+        let instructions = String(first.question[..<head.lowerBound])
+        let levels = rows.sorted { ($0.level_index ?? 0) < ($1.level_index ?? 0) }.compactMap { row -> String? in
+            guard let start = row.question.range(of: marker),
+                let end = row.question.range(of: "\nDoes the proposed answer fit?")
+            else { return nil }
+            return String(row.question[start.upperBound..<end.lowerBound])
+        }
+        return levels.count == rows.count ? .score(instructions, levels: levels) : nil
+    default:
+        return nil
+    }
+}
+
+/// A letter-readout fixture (`coreai-letter-fixtures/1`, apus-decision-v1-4b): one row per
+/// request in the author's own request shape, the compiled token sequence (chat template
+/// included), the letter token per criterion and the fp32 probabilities in label order.
+struct LetterFixture: Decodable {
+    struct Criterion: Decodable {
+        let id: String
+        let description: String
+    }
+    struct Request: Decodable {
+        let state: String
+        let instructions: String
+        let primitive: String
+        let criteria: [Criterion]
+    }
+    /// A listed option: a bare string, or the helper's `{key, desc}` pair.
+    struct Listed: Decodable {
+        let key: String
+        let desc: String
+
+        init(from decoder: any Decoder) throws {
+            if let text = try? decoder.singleValueContainer().decode(String.self) {
+                key = text
+                desc = text
+                return
+            }
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            key = try c.decode(String.self, forKey: .key)
+            desc = try c.decodeIfPresent(String.self, forKey: .desc) ?? ""
+        }
+
+        enum CodingKeys: String, CodingKey { case key, desc }
+    }
+    struct Row: Decodable {
+        let id: String
+        /// The author's request object (APUS form), or the flat fields of a plain-text form.
+        let request: Request?
+        let kind: String?
+        let state: String?
+        /// The question text of a flat row; the letter-list fixture puts the request object here
+        /// and the text under `instructions`, so a non-string is ignored.
+        let question: String?
+        let instructions: String?
+        let options: [Listed]?
+        let ids: [Int32]
+        let slot: Int
+        let label_ids: [Int32]
+        let p_oracle: [Double]
+        /// The helper's calibrated P(yes) of a yes/no row (the letter list), beside the raw pair.
+        let noul: Double?
+        let zoo_only: Bool?
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            request = try? c.decodeIfPresent(Request.self, forKey: .request)
+            kind = try c.decodeIfPresent(String.self, forKey: .kind)
+            state = try? c.decodeIfPresent(String.self, forKey: .state)
+            question = try? c.decodeIfPresent(String.self, forKey: .question)
+            instructions = try c.decodeIfPresent(String.self, forKey: .instructions)
+            options = try c.decodeIfPresent([Listed].self, forKey: .options)
+            ids = try c.decode([Int32].self, forKey: .ids)
+            slot = try c.decode(Int.self, forKey: .slot)
+            label_ids = try c.decode([Int32].self, forKey: .label_ids)
+            p_oracle = try c.decode([Double].self, forKey: .p_oracle)
+            noul = try c.decodeIfPresent(Double.self, forKey: .noul)
+            zoo_only = try c.decodeIfPresent(Bool.self, forKey: .zoo_only)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, request, kind, state, question, instructions, options, ids, slot, label_ids, p_oracle, noul, zoo_only
+        }
+
+        /// The request either way: primitive, state, instructions and the criteria texts.
+        var shape: (primitive: String, state: String, instructions: String, criteria: [Criterion])? {
+            if let request { return (request.primitive, request.state, request.instructions, request.criteria) }
+            guard let kind, let state, let options, let question = instructions ?? question else { return nil }
+            let primitive = kind == "bool" ? "noul" : kind
+            return (primitive, state, question, options.map { Criterion(id: $0.key, description: $0.desc.isEmpty ? $0.key : $0.desc) })
+        }
+    }
+    let schema: String
+    let rows: [Row]
+}
+
+@MainActor func runLetterParity(_ data: Data) async throws {
+    let fx = try JSONDecoder().decode(LetterFixture.self, from: data)
+    let decider = try await loadDecider()
+    let name = await decider.modelName
+    print("model: \(id) (\(name))   format: \(decider.format.rawValue)   temperature: \(decider.temperature)   fixture: \(fx.schema)")
+    var checked = 0, tokensExact = 0, slotExact = 0, argmaxAgree = 0, skipped: [String] = []
+    var deltas: [Double] = []
+    var milliseconds: [Double] = []
+    var lines: [String] = []
+    for row in fx.rows {
+        guard let request = row.shape else {
+            skipped.append("\(row.id) (no request or state/question/options)")
+            continue
+        }
+        let question: Decision.Question
+        switch request.primitive {
+        case "choice":
+            question = .choice(request.instructions, options: request.criteria.map { .init(id: $0.id, description: $0.description) })
+        case "noul":
+            // The letter list carries what yes and no mean; the other forms have fixed pairs.
+            if decider.format == .letterList, request.criteria.count == 2 {
+                question = .noul(request.instructions, yes: request.criteria[0].description, no: request.criteria[1].description)
+            } else {
+                question = .noul(request.instructions)
+            }
+        case "score":
+            // The plain-text forms score by listing the levels as the options.
+            question = .score(request.instructions, levels: request.criteria.map(\.description))
+        default:
+            // score_level is the author's yes/no on one proposition; the kit's questions have no such kind.
+            skipped.append("\(row.id) (primitive \(request.primitive); the kit renders choice and noul)")
+            continue
+        }
+        if request.criteria.count > decider.maxOptions {
+            skipped.append("\(row.id) (\(request.criteria.count) criteria; this model lists at most \(decider.maxOptions))")
+            continue
+        }
+        let rendered = try decider.promptRows(request.state, question)[0]
+        let answer = try await decider.decide(request.state, question)
+        milliseconds.append(answer.timing.milliseconds)
+        checked += 1
+        let tokensOK = rendered.tokens == row.ids
+        let slotsOK = rendered.slots == row.label_ids && rendered.tokens.count - 1 == row.slot
+        if tokensOK { tokensExact += 1 }
+        if slotsOK { slotExact += 1 }
+        // The fixture's probabilities are in label order: yes then no for a noul. A letter-list
+        // yes/no is compared calibrated, against the helper's own `noul`.
+        let p: [Double]
+        var reference = row.p_oracle
+        if case .noul(let yes) = answer.value {
+            p = [yes, 1 - yes]
+            if decider.format == .letterList, let calibrated = row.noul { reference = [calibrated, 1 - calibrated] }
+        } else {
+            p = answer.probabilities
+        }
+        let best = p.indices.max { p[$0] < p[$1] } ?? 0
+        let refBest = reference.indices.max { reference[$0] < reference[$1] } ?? 0
+        if best == refBest { argmaxAgree += 1 }
+        let delta = zip(p, reference).map { abs($0 - $1) }.max() ?? 0
+        deltas.append(delta)
+        let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
+        lines.append("| \(row.id) | \(request.primitive) | \(request.criteria.count) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
+        if verbose || flag == "DIFF" {
+            let firstDiff = zip(rendered.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+            stderrPrint("  \(row.id): tokens kit \(rendered.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(reference.map { fmt($0) })")
+            if verbose, !tokensOK {
+                stderrPrint("  \(row.id): kit tokens \(rendered.tokens.map(String.init).joined(separator: ","))")
+            }
+        }
+    }
+    print("| row | primitive | criteria | tokens | slot | argmax | max \\|Δp\\| | |")
+    print("|---|---|---:|:-:|:-:|:-:|---:|---|")
+    lines.forEach { print($0) }
+    print("rows checked: \(checked)   tokens identical: \(tokensExact)/\(checked)   slot + labels identical: \(slotExact)/\(checked)")
+    print("argmax agreement with the fp32 readout: \(argmaxAgree)/\(checked)")
+    print("|Δp| vs the fp32 readout: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(max(1, deltas.count)), 4))")
+    print("ms per question: median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
+    if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
+}
+
+/// A scalar-head fixture (`coreai-scalar-fixtures/1`, the System One scorer): the author's
+/// requests, one question per (state, question, options) with the fp32 probabilities over its
+/// options, and one row per option with the author's token ids (state cut to `max_len`) and
+/// the head's scalar.
+struct ScalarFixture: Decodable {
+    struct Request: Decodable {
+        let id: String
+        let state: String
+    }
+    struct Question: Decodable {
+        let id: String
+        let type: String  // choice / noul / score
+        let question: String
+        let options: [String]
+        let zoo_only: Bool?
+        let request_id: String
+        let row_ids: [String]
+        let p_oracle: [Double]
+    }
+    struct Row: Decodable {
+        let id: String
+        let ids: [Int32]
+        let slot: Int
+        let scalar: Double?
+    }
+    let schema: String
+    let temperature: Double?
+    let max_len: Int?
+    let requests: [Request]
+    let questions: [Question]
+    let rows: [Row]
+}
+
+@MainActor func runScalarParity(_ data: Data) async throws {
+    let fx = try JSONDecoder().decode(ScalarFixture.self, from: data)
+    let decider = try await loadDecider()
+    let name = await decider.modelName
+    print("model: \(id) (\(name))   format: \(decider.format.rawValue)   temperature: \(decider.temperature) (fixture \(fx.temperature.map { String($0) } ?? "-"), max_len \(fx.max_len.map(String.init) ?? "-"))   fixture: \(fx.schema)")
+    let states = Dictionary(fx.requests.map { ($0.id, $0.state) }, uniquingKeysWith: { a, _ in a })
+    let rows = Dictionary(fx.rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    var checked = 0, rowsChecked = 0, tokensExact = 0, slotExact = 0, argmaxAgree = 0, skipped: [String] = []
+    var deltas: [Double] = []
+    var milliseconds: [Double] = []
+    var lines: [String] = []
+    for q in fx.questions {
+        guard let state = states[q.request_id] else {
+            skipped.append("\(q.id) (no request state)")
+            continue
+        }
+        let question: Decision.Question
+        switch q.type {
+        case "choice": question = .choice(q.question, q.options)
+        case "noul": question = .noul(q.question)
+        case "score": question = .score(q.question, levels: q.options)
+        default:
+            skipped.append("\(q.id) (type \(q.type))")
+            continue
+        }
+        if q.options.count > decider.maxOptions {
+            skipped.append("\(q.id) (\(q.options.count) options; this model lists at most \(decider.maxOptions))")
+            continue
+        }
+        let rendered = try decider.promptRows(state, question)
+        guard rendered.count == q.row_ids.count else {
+            skipped.append("\(q.id) (kit planned \(rendered.count) rows, fixture has \(q.row_ids.count))")
+            continue
+        }
+        let answer = try await decider.decide(state, question)
+        milliseconds.append(answer.timing.milliseconds)
+        checked += 1
+        var tokensOK = true, slotsOK = true
+        for (r, rowID) in zip(rendered, q.row_ids) {
+            guard let row = rows[rowID] else { tokensOK = false; continue }
+            rowsChecked += 1
+            if r.tokens == row.ids { tokensExact += 1 } else { tokensOK = false }
+            if r.tokens.count - 1 == row.slot { slotExact += 1 } else { slotsOK = false }
+        }
+        // The fixture's probabilities are in option order: yes then no for a noul.
+        let p: [Double]
+        if case .noul(let yes) = answer.value { p = [yes, 1 - yes] } else { p = answer.probabilities }
+        let best = p.indices.max { p[$0] < p[$1] } ?? 0
+        let refBest = q.p_oracle.indices.max { q.p_oracle[$0] < q.p_oracle[$1] } ?? 0
+        if best == refBest { argmaxAgree += 1 }
+        let delta = zip(p, q.p_oracle).map { abs($0 - $1) }.max() ?? 0
+        deltas.append(delta)
+        let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
+        lines.append("| \(q.id) | \(q.type) | \(q.options.count) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag)\(q.zoo_only == true ? " zoo_only" : "") |")
+        if verbose || flag == "DIFF" {
+            for (r, rowID) in zip(rendered, q.row_ids) {
+                guard let row = rows[rowID], r.tokens != row.ids else { continue }
+                let firstDiff = zip(r.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+                stderrPrint("  \(rowID): tokens kit \(r.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-")")
+                if verbose { stderrPrint("  \(rowID): kit tokens \(r.tokens.map(String.init).joined(separator: ","))") }
+            }
+            stderrPrint("  \(q.id): kit p \(p.map { fmt($0) }) ref \(q.p_oracle.map { fmt($0) })")
+        }
+    }
+    print("| question | type | options | tokens | slot | argmax | max \\|Δp\\| | |")
+    print("|---|---|---:|:-:|:-:|:-:|---:|---|")
+    lines.forEach { print($0) }
+    print("questions checked: \(checked)   rows: \(rowsChecked)   tokens identical: \(tokensExact)/\(rowsChecked)   slot identical: \(slotExact)/\(rowsChecked)")
+    print("argmax agreement with the fp32 readout: \(argmaxAgree)/\(checked)")
+    print("|Δp| vs the fp32 readout: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(max(1, deltas.count)), 4))")
+    print("ms per question (all option rows summed): median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
+    if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
+}
+
+/// A question in the wire form (`{type, instructions, criteria}`), rebuilt the way the wire codec
+/// builds it — without its 16-option cap, which an encoder fixture passes (20).
+func wireQuestion(_ value: JSONValue) -> Decision.Question {
+    func text(_ value: JSONValue) -> String? {
+        switch value {
+        case .null: return nil
+        case .string(let s): return s
+        default: return value.dumps()
+        }
+    }
+    let instructions = value["instructions"].flatMap(text) ?? ""
+    switch value["type"]?.stringValue {
+    case "choice":
+        if let members = value["criteria"]?.members {
+            return .choice(instructions, options: members.map { member in
+                let description = text(member.value).flatMap { $0.isEmpty ? nil : $0 }
+                return .init(id: member.key, description: description.map { "\(member.key): \($0)" } ?? member.key)
+            })
+        }
+        return .choice(instructions, (value["criteria"]?.elements ?? []).compactMap(text))
+    case "score":
+        return .score(instructions, levels: (value["criteria"]?.elements ?? []).compactMap(text))
+    default:
+        let criteria = value["criteria"]
+        return .noul(instructions, yes: criteria?["true"].flatMap(text), no: criteria?["false"].flatMap(text))
+    }
+}
+
+func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactMap(\.doubleValue) }
+
+/// An encoder model's fixture (`coreai-encoder-fixtures/1`, laya): one row per question and
+/// window — the question in the wire form, the publisher's token ids and marker positions, its
+/// raw marker and act logits, and its probabilities and act probability at the fixture's
+/// temperature (1, the publisher's own). The states ride in the rows (`state`), in `states` /
+/// `requests` / `fixtures` keyed by the rows' `fixture_id`, or in `--states` (an id → state
+/// object, or a list of `{id, state}`); a structured state is written the reference way.
+///
+/// Tokens and markers need only the tokenizer: `--tokens-only` with a bundle directory, or with
+/// `--tokenizer <dir>` and the head budget (`head_max_len` in the fixture, or `--head-max-len`).
+/// The numbers run the bundle's graphs on the kit's own rows (`EncoderDecider.decideRow`).
+@MainActor func runEncoderParity(_ data: Data) async throws {
+    let root = try JSONValue.parse(data)
+    guard let rows = root["rows"]?.elements, !rows.isEmpty else { fail("the fixture has no rows") }
+    func stateText(_ value: JSONValue) -> String { value.stringValue ?? value.dumps() }
+    var states: [String: String] = [:]
+    func collect(_ value: JSONValue?) {
+        for member in value?.members ?? [] where states[member.key] == nil { states[member.key] = stateText(member.value) }
+        for item in value?.elements ?? [] {
+            if let id = item["id"]?.stringValue, let state = item["state"], states[id] == nil { states[id] = stateText(state) }
+        }
+    }
+    collect(root["states"])
+    collect(root["requests"])
+    collect(root["fixtures"])
+    if let statesPath { collect(try JSONValue.parse(Data(contentsOf: URL(fileURLWithPath: statesPath)))) }
+    // The fixture's temperature: one number, or one per question type with optional buckets.
+    let temperatures: EncoderReadout.Temperatures
+    if let t = root["temperature"]?.doubleValue {
+        temperatures = .init(byType: [t, t, t])
+    } else if let t = root["temperature"], numbers(t).count == 3 {
+        var buckets: [String: Double] = [:]
+        for member in root["temperature_by_options"]?.members ?? [] { buckets[member.key] = member.value.doubleValue }
+        temperatures = .init(byType: numbers(t), byOptions: buckets)
+    } else {
+        temperatures = .one
+    }
+    func window(of row: JSONValue) -> Int? { (row["window"] ?? root["window"])?.doubleValue.map { Int($0) } }
+
+    // The rows' builder, and the bundle's graphs unless only the tokens are asked for.
+    var decider: EncoderDecider? = nil
+    let base: EncoderPrompt
+    var bundleWindow: Int? = nil
+    let source: String
+    if let tokenizerPath, bundlePath == nil {
+        guard tokensOnly else { fail("--tokenizer checks tokens only: pass --tokens-only, or --bundle for the numbers") }
+        guard let head = headMaxLength ?? root["head_max_len"]?.doubleValue.map({ Int($0) }) else {
+            fail("the fixture declares no head_max_len: pass --head-max-len")
+        }
+        guard let first = rows.lazy.compactMap(window).first else { fail("the fixture's rows carry no window") }
+        base = try await EncoderPrompt(tokenizerFolder: URL(fileURLWithPath: tokenizerPath), window: first, headMaxLength: head)
+        source = "tokenizer \(URL(fileURLWithPath: tokenizerPath).lastPathComponent), head_max_len \(head)"
+    } else {
+        let url: URL
+        if let bundlePath {
+            url = URL(fileURLWithPath: bundlePath)
+        } else {
+            let entry = try await ModelCatalog.entry(forID: id)
+            guard let model = entry.modelID else { fail("'\(id)' is not published for this platform") }
+            url = try await ModelStore.default.download(model, progress: progress)
+        }
+        guard let layout = try EncoderPrompt.Layout.read(bundleAt: url) else {
+            fail("\(url.lastPathComponent) declares no encoder head (metadata.json 'decision' block)")
+        }
+        if tokensOnly {
+            base = try await EncoderPrompt(tokenizerFolder: url.appendingPathComponent("tokenizer"), layout: layout)
+        } else {
+            let loaded = try await EncoderDecider(bundleAt: url, computeUnits: computeUnits, actComputeUnits: actComputeUnits)
+            decider = loaded
+            base = loaded.prompt
+        }
+        bundleWindow = layout.window
+        source = "bundle \(url.lastPathComponent) (\(decider?.modelName ?? "tokens only")), window \(layout.window)"
+    }
+    print("fixture: \(root["schema"]?.stringValue ?? "-")   \(source)   temperature: \(temperatures.byType)\(temperatures.byOptions.isEmpty ? "" : " + buckets")")
+
+    struct Tally {
+        var rows = 0, tokens = 0, markers = 0, scored = 0, withinBar = 0, argmaxRows = 0, argmax = 0
+        var deltas: [Double] = [], actDeltas: [Double] = [], markerErrors: [Double] = [], actRelative: [Double] = []
+        var milliseconds: [Double] = []
+    }
+    var tallies: [Int: Tally] = [:]
+    var prompts: [Int: EncoderPrompt] = [:]
+    var skipped: [String] = []
+    var lines: [String] = []
+    for row in rows {
+        let rid = row["row_id"]?.stringValue ?? row["id"]?.stringValue ?? "?"
+        guard let w = window(of: row), let q = row["question"] else {
+            skipped.append("\(rid) (no window or question)")
+            continue
+        }
+        if let bundleWindow, bundleWindow != w {
+            skipped.append("\(rid) (window \(w); the bundle's is \(bundleWindow))")
+            continue
+        }
+        let fixtureID = row["fixture_id"]?.stringValue ?? row["request_id"]?.stringValue
+        guard let state = row["state"].map(stateText) ?? fixtureID.flatMap({ states[$0] }) else {
+            skipped.append("\(rid) (no state; pass --states)")
+            continue
+        }
+        let prompt = prompts[w] ?? base.windowed(w)
+        prompts[w] = prompt
+        let question = wireQuestion(q)
+        let rendered: EncoderPrompt.Rendered
+        do {
+            rendered = try prompt.render(state: state, question: question)
+        } catch {
+            skipped.append("\(rid) (\(error.localizedDescription))")
+            continue
+        }
+        var tally = tallies[w] ?? Tally()
+        tally.rows += 1
+        let ids = numbers(row["sequence_ids"]).map { Int32($0) }
+        let markers = numbers(row["marker_positions"]).map { Int32($0) }
+        let tokensOK = rendered.tokens == ids, markersOK = rendered.markers == markers
+        if tokensOK { tally.tokens += 1 }
+        if markersOK { tally.markers += 1 }
+        var cells = "\(tokensOK ? "=" : "≠") | \(markersOK ? "=" : "≠")"
+        var flag = tokensOK && markersOK ? "ok" : "DIFF"
+        if !tokensOK || verbose {
+            let first = zip(rendered.tokens, ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+            stderrPrint("  \(rid) s\(w): tokens kit \(rendered.tokens.count) ref \(ids.count), first diff \(first.map(String.init) ?? "-"); markers kit \(rendered.markers) ref \(markers)")
+        }
+        if let decider {
+            let out = try await decider.decideRow(ids: rendered.tokens, markers: rendered.markers, qtype: rendered.qtype)
+            let p = EncoderReadout.probabilities(
+                logits: out.optionLogits, temperature: temperatures.temperature(qtype: rendered.qtype, options: rendered.markers.count))
+            let reference = numbers(row["probabilities"])
+            // A noul is compared on P(true), a choice or a score on every option (the gate's rule).
+            let delta = rendered.qtype == 2
+                ? abs((p.last ?? 0) - (reference.last ?? 0))
+                : (zip(p, reference).map { abs($0 - $1) }.max() ?? 0)
+            let act = EncoderReadout.actProbability(actLogits: out.actLogits)
+            let actDelta = abs(act - (row["act_probability"]?.doubleValue ?? .nan))
+            tally.scored += 1
+            // The acceptance bar of the port's gate: 1e-3 on the probabilities and on the act probability.
+            if delta <= 1e-3, actDelta <= 1e-3 { tally.withinBar += 1 } else { flag = "DIFF" }
+            tally.deltas.append(delta)
+            tally.actDeltas.append(actDelta)
+            tally.milliseconds.append(out.seconds * 1000)
+            var argmaxCell = "-"
+            if rendered.qtype != 2 {
+                tally.argmaxRows += 1
+                let best = p.indices.max { p[$0] < p[$1] }, refBest = reference.indices.max { reference[$0] < reference[$1] }
+                if best == refBest { tally.argmax += 1 } else { flag = "DIFF" }
+                argmaxCell = best == refBest ? "=" : "≠"
+            }
+            // Informational: the fixture's raw logits come from the publisher's batched, padded call.
+            let rawLogits = numbers(row["raw_logits"]), rawAct = numbers(row["raw_act_logits"])
+            if rawLogits.count == out.optionLogits.count {
+                tally.markerErrors.append(zip(out.optionLogits, rawLogits).map { abs(Double($0) - $1) }.max() ?? 0)
+            }
+            if rawAct.count == out.actLogits.count, let scale = rawAct.map(abs).max(), scale > 0 {
+                tally.actRelative.append((zip(out.actLogits, rawAct).map { abs(Double($0) - $1) }.max() ?? 0) / scale)
+            }
+            cells += " | \(argmaxCell) | \(fmt(delta, 6)) | \(fmt(actDelta, 6))"
+        }
+        tallies[w] = tally
+        lines.append("| \(rid) | \(w) | \(EncoderReadout.questionTypes[rendered.qtype]) | \(rendered.markers.count) | \(cells) | \(flag) |")
+    }
+    let numbersToo = decider != nil
+    print(numbersToo
+        ? "| row | window | type | options | tokens | markers | argmax | \\|Δp\\| | act \\|Δ\\| | |\n|---|---:|---|---:|:-:|:-:|:-:|---:|---:|---|"
+        : "| row | window | type | options | tokens | markers | |\n|---|---:|---|---:|:-:|:-:|---|")
+    lines.forEach { print($0) }
+    for w in tallies.keys.sorted() {
+        let t = tallies[w]!
+        print("s\(w): rows \(t.rows)   tokens identical \(t.tokens)/\(t.rows)   markers identical \(t.markers)/\(t.rows)")
+        guard t.scored > 0 else { continue }
+        print("s\(w): argmax agreement (choice + score) \(t.argmax)/\(t.argmaxRows)   max |Δp| \(fmt(t.deltas.max() ?? 0, 6))   max act-probability |Δ| \(fmt(t.actDeltas.max() ?? 0, 6))   within 1e-3: \(t.withinBar)/\(t.scored)")
+        if !t.markerErrors.isEmpty || !t.actRelative.isEmpty {
+            print("s\(w): vs the fixture's raw logits (batched and padded upstream, informational): marker max |Δ| \(fmt(t.markerErrors.max() ?? 0, 6)), act max relative \(String(format: "%.3g", t.actRelative.max() ?? 0))")
+        }
+        print("s\(w): ms per question (main + act): median \(fmt(median(t.milliseconds), 2)), max \(fmt(t.milliseconds.max() ?? 0, 2)) over \(t.milliseconds.count) rows, no warm-up")
+    }
+    if !skipped.isEmpty { print("skipped \(skipped.count): " + skipped.joined(separator: "; ")) }
+}
+
+@MainActor func runParity() async throws {
+    guard let fixture else { fail(usage) }
+    let data = try Data(contentsOf: URL(fileURLWithPath: fixture))
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-encoder-fixtures") {
+        try await runEncoderParity(data)
+        return
+    }
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-letter-fixtures") {
+        try await runLetterParity(data)
+        return
+    }
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-scalar-fixtures") {
+        try await runScalarParity(data)
+        return
+    }
+    let fx = try JSONDecoder().decode(DeciderFixture.self, from: data)
+    var stateByRequest: [String: String] = [:]
+    for request in fx.requests { if let state = request.state { stateByRequest[request.id] = state } }
+    // A structured state is what the model's API serialises itself; `JSONValue.dumps` writes
+    // the reference bytes (Python's json.dumps, ensure_ascii=False), so no --states is needed.
+    if let requests = try JSONValue.parse(data)["requests"]?.elements {
+        for request in requests {
+            guard let rid = request["id"]?.stringValue, stateByRequest[rid] == nil, let state = request["state"] else { continue }
+            if state.stringValue == nil, state != .null { stateByRequest[rid] = state.dumps() }
+        }
+    }
+    if let statesPath {
+        let rendered = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: URL(fileURLWithPath: statesPath)))
+        for (id, state) in rendered where stateByRequest[id] == nil { stateByRequest[id] = state }
+    }
+    let decider = try await loadDecider()
+    let name = await decider.modelName
+    let format = decider.format
+    let temperature = decider.temperature
+    let fixtureTemperature = fx.temperature.map { String($0) }
+        ?? fx.temperature_by_type.map { t in t.keys.sorted().map { "\($0) \(t[$0]!)" }.joined(separator: ", ") }
+        ?? "-"
+    print("model: \(id) (\(name))   format: \(format.rawValue)   temperature: \(temperature) (fixture \(fixtureTemperature))")
+
+    // Group rows by (request, question), keeping request order.
+    var groups: [(key: String, rows: [DeciderFixture.Row])] = []
+    var index: [String: Int] = [:]
+    for row in fx.rows {
+        let key = row.request_id + "/" + row.question_id
+        if let i = index[key] {
+            groups[i].rows.append(row)
+        } else {
+            index[key] = groups.count
+            groups.append((key, [row]))
+        }
+    }
+
+    var checked = 0, tokensExact = 0, slotExact = 0, argmaxAgree = 0, skipped: [String] = []
+    var deltas: [Double] = []
+    var abstainDeltas: [Double] = []
+    var milliseconds: [Double] = []
+    var lines: [String] = []
+    for group in groups {
+        let rows = group.rows.sorted { ($0.level_index ?? 0) < ($1.level_index ?? 0) }
+        guard let state = stateByRequest[rows[0].request_id] else {
+            skipped.append("\(group.key) (JSON state; pass --states)")
+            continue
+        }
+        guard let question = fixtureQuestion(rows) else {
+            skipped.append("\(group.key) (could not rebuild the question)")
+            continue
+        }
+        if rows[0].nopts > decider.maxOptions {  // the label table's count for a letter readout, the slot count for a slot head
+            skipped.append("\(group.key) (\(rows[0].nopts) options; this model lists at most \(decider.maxOptions))")
+            continue
+        }
+        let rendered = try decider.promptRows(state, question)
+        guard rendered.count == rows.count else {
+            skipped.append("\(group.key) (kit planned \(rendered.count) rows, fixture has \(rows.count))")
+            continue
+        }
+        let answer = try await decider.decide(state, question)
+        milliseconds.append(answer.timing.milliseconds)
+        // Per-row probabilities the kit produced, in the fixture's row order.
+        let kitRows: [[Double]]
+        if case .score(let score) = answer.value, let fit = score.fit {
+            kitRows = fit.map { [1 - $0, $0] }
+        } else {
+            kitRows = [answer.probabilities]
+        }
+        for (i, row) in rows.enumerated() {
+            checked += 1
+            let r = rendered[i]
+            let tokensOK = r.tokens == row.ids
+            let slotsOK = Array(r.slots.prefix(row.nopts)) == Array(row.label_ids.prefix(row.nopts)) && r.tokens.count - 1 == row.slot
+            if tokensOK { tokensExact += 1 }
+            if slotsOK { slotExact += 1 }
+            let p = kitRows[i]
+            let best = p.indices.max { p[$0] < p[$1] } ?? 0
+            let refBest = row.p_oracle.indices.max { row.p_oracle[$0] < row.p_oracle[$1] } ?? 0
+            if best == refBest { argmaxAgree += 1 }
+            let delta = zip(p, row.p_oracle).map { abs($0 - $1) }.max() ?? 0
+            deltas.append(delta)
+            if let reference = row.abstain, let abstain = answer.abstain { abstainDeltas.append(abs(abstain - reference)) }
+            let flag = (tokensOK && slotsOK && best == refBest) ? "ok" : "DIFF"
+            lines.append("| \(row.id) | \(row.type) | \(row.nopts) | \(tokensOK ? "=" : "≠") | \(slotsOK ? "=" : "≠") | \(best == refBest ? "=" : "≠") | \(fmt(delta, 4)) | \(flag) |")
+            if verbose || flag == "DIFF" {
+                let firstDiff = zip(r.tokens, row.ids).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+                stderrPrint("  \(row.id): tokens kit \(r.tokens.count) ref \(row.ids.count) first diff \(firstDiff.map(String.init) ?? "-"); kit p \(p.map { fmt($0) }) ref \(row.p_oracle.map { fmt($0) })")
+                if verbose, !tokensOK {
+                    stderrPrint("  \(row.id): kit tokens \(r.tokens.map(String.init).joined(separator: ","))")
+                }
+            }
+        }
+    }
+    print("| row | type | options | tokens | slot | argmax | max \\|Δp\\| | |")
+    print("|---|---|---:|:-:|:-:|:-:|---:|---|")
+    lines.forEach { print($0) }
+    print("rows checked: \(checked)   tokens identical: \(tokensExact)/\(checked)   slot + labels identical: \(slotExact)/\(checked)")
+    print("argmax agreement with the fp32 readout: \(argmaxAgree)/\(checked)")
+    print("|Δp| vs the fp32 readout: max \(fmt(deltas.max() ?? 0, 4)), mean \(fmt(deltas.reduce(0, +) / Double(max(1, deltas.count)), 4))")
+    if !abstainDeltas.isEmpty {
+        print("|Δabstain| vs the fp32 readout: max \(fmt(abstainDeltas.max() ?? 0, 4)), mean \(fmt(abstainDeltas.reduce(0, +) / Double(abstainDeltas.count), 4)) over \(abstainDeltas.count) rows")
+    }
+    print("ms per question (all rows of a score question summed): median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
+    if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
+}
+
+// MARK: - filter (a semantic `grep`: one decision per stdin line)
+
+@MainActor func runFilter() async throws {
+    guard questions.count == 1, let (_, question) = questions.first else { fail(usage) }
+    var lines: [String] = []
+    while let line = readLine() {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { lines.append(trimmed) }
+    }
+    let decider = try await loadDecider()
+    var passed = 0
+    var milliseconds: [Double] = []
+    for line in lines {
+        let answer = try await decider.decide(line, question)
+        milliseconds.append(answer.timing.milliseconds)
+        switch answer.value {
+        case .noul(let p):
+            let pass = p >= threshold
+            if pass { passed += 1 }
+            if pass || printAll { print("\(fmt(p, 2))\t\(line)") }
+        case .choice(let c):
+            passed += 1
+            print("\(c.id)\t\(fmt(c.confidence, 2))\t\(line)")
+        case .score(let s):
+            passed += 1
+            print("\(fmt(s.value, 2))\t\(line)")
+        }
+    }
+    stderrPrint("\(passed)/\(lines.count) lines · median \(fmt(median(milliseconds), 1)) ms per decision · \(id)")
+}
+
+// MARK: - serve (a /v1/systemone endpoint over the loaded model — `SystemOneServer` in the kit;
+// `systemone serve`, the Homebrew-installed binary, is the same server without a toolchain)
+
+@MainActor func runServe() async throws {
+    let decider = try await loadDecider()
+    let models: JSONValue
+    if bundlePath == nil {
+        let entry = try await ModelCatalog.entry(forID: id)
+        models = SystemOne.modelsValue(
+            id: id,
+            description: "\(entry.name), CoreAIKit catalog kind \(entry.kind.rawValue), bundle \(await decider.modelName), on this machine",
+            revision: entry.revision)
+    } else {
+        models = SystemOne.modelsValue(
+            id: id, description: "local bundle \(await decider.modelName), on this machine", revision: nil)
+    }
+    stderrPrint("loaded \(id) (\(await decider.modelName)); one request at a time, questions share the state's prefill")
+    let server = SystemOneServer(host: host, port: port, modelID: id, models: models, decider: decider) { line in
+        stderrPrint("decide-cli serve: \(line)  (Ctrl-C stops)")
+    }
+    try await server.run()
+}
+
+// MARK: - mcp (the same decisions as Model Context Protocol tools — `SystemOneMCPServer` in the kit;
+// `systemone mcp` is the same server as the Homebrew-installed binary)
+
+@MainActor func runMCP() async throws {
+    if bundlePath != nil { fail("decide-cli mcp loads catalog ids (the decide tool's `model`); --bundle does not apply") }
+    signal(SIGPIPE, SIG_IGN)
+    let server = SystemOneMCPServer(defaultModel: id, downloadProgress: progress) { line in
+        stderrPrint("decide-cli mcp: \(line)")
+    }
+    stderrPrint("decide-cli mcp: stdio, tools decide and models; \(id) loads on the first decide\(preload ? " (preloading)" : "")")
+    try await server.run(preload: preload)
+}
+
 do {
     switch command {
     case "ask": try await runAsk()
     case "bench": try await runBench()
     case "oracle": try await runOracle()
+    case "calibrate": try await runCalibrate()
+    case "parity": try await runParity()
+    case "filter": try await runFilter()
+    case "serve": try await runServe()
+    case "mcp": try await runMCP()
     default: fail(usage)
     }
 } catch {

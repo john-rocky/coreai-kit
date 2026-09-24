@@ -25,6 +25,8 @@ from `Op.allCases`.
 | [redact PII](#work-with-text) | `CoreAI.redact(text)` | Text → text with PII replaced by labels |
 | [find names/emails/anything in text](#work-with-text) | `CoreAI.extractEntities(from:labels:)` | Text → entities by zero-shot label |
 | [decide something about text, with a probability](#decide-without-generating) | `CoreAI.decide(state, questions)` | State + typed questions → answers with probabilities |
+| [answer a `/v1/systemone` request in-process](#decide-without-generating) | `CoreAI.systemOne(json:)` | The hosted request form → the hosted response, typed answers beside it |
+| [give Claude Code / Codex / Cursor a decision tool](#decide-without-generating) | `systemone mcp` | An MCP server on stdio: tools `decide`, `models` |
 | [chat with a local LLM, streaming](#chat-tools-and-guided-json) | `ChatSession` | Prompt ⇄ streamed conversation |
 | [let the model call my functions](#chat-tools-and-guided-json) | `KitLanguageModel` + FM tools | Prompt → answer via your tools |
 | [get schema-valid JSON, guaranteed](#chat-tools-and-guided-json) | guided generation | Prompt → schema-valid JSON |
@@ -130,8 +132,9 @@ a["anger"]?.score         // 1.4 — expected level on the 0…2 scale
 a["reply"]?.timing        // promptTokens, reusedTokens, milliseconds
 ```
 
-`choice` takes 2–16 options (`Decision.Option(id:description:)` when the model should read a
-description and the answer report an id); `score` takes 2–10 ordered level descriptions and
+`choice` takes from 2 options up to the model's `maxOptions` — 255 on `minicpm5-2b`,
+[per model](SYSTEM_ONE.md#how-many-options-a-choice-lists) — with `Decision.Option(id:description:)` when the model should read a
+description and the answer report an id; `score` takes 2–10 ordered level descriptions and
 answers the expected level plus the distribution; `noul` takes optional descriptions of what
 yes and no mean. The request shape — a state, then questions keyed by id, each with
 `instructions` and `criteria` — is the one the hosted typed-decision APIs use, so a client
@@ -152,12 +155,137 @@ reply.timing.reusedTokens                                      // the state's to
 The default model is `minicpm5-2b` — the smallest catalog chat model whose zero-shot
 decisions track its own full-precision readout on the published fixtures (141/144 argmax,
 mean |Δp| 0.02; `Examples/Decide` has the tables). `options: .model("minicpm5-1b")` is twice
-as fast at lower accuracy. Decisions need the logits at the answer slot, so the model loads
+as fast at lower accuracy. The probabilities are read at the temperature the model's catalog
+entry records (`CatalogEntry.calibration`, 2.93 for `minicpm5-2b`, fitted on labelled rows by
+`decide-cli calibrate`): the same answers, less over-confident.
+`TypedDecisions.Configuration.temperature` overrides it; `nil` takes the catalog's, and a model
+without a record reads at its own. Decisions need the logits at the answer slot, so the model loads
 on the sequential engine (or the static-shape engine for a Neural Engine bundle) rather
 than the pipelined one; recurrent hybrids (Qwen3.5, LFM2.5, Granite 4) cannot rewind, so on
 them every decision re-prefills its whole prompt — correct, and `timing.reusedTokens` says 0.
-`Examples/Decide` runs the three shapes as a speech gate, a clipboard check with Shortcuts
-actions, and a passage reranker, each with its measured milliseconds.
+`Examples/Decide` runs the shapes as whole uses — copy an email and a checkout form fills at
+once, a contract read once and answered as a checklist, a folder sorted with what needs you
+first, a passage reranker, a speech gate — on a Mac and on an iPhone from the same sources,
+with two Shortcuts actions on the side.
+
+**Your existing System One client, on this machine.** `systemone serve`
+(`brew install john-rocky/tap/systemone`; from a checkout, `decide-cli serve` in `Examples/Decide`)
+answers `POST /v1/systemone` in the hosted API's request and answer forms over a catalog
+model; point the client's base URL at `http://127.0.0.1:8090` and nothing else changes. The
+server is `SystemOneServer` in `CoreAIKit` for an app that wants to listen itself. An app that
+holds the same JSON — from a client, a file, a recorded request — answers it in-process with
+`CoreAI.systemOne`: the hosted request form in, the hosted response out, the typed answers
+beside the wire object, the model from `options`, else the request's own `model`, else
+`CoreAI.decide`'s default:
+
+```swift
+let r = try await CoreAI.systemOne(json: body)        // state, questions in request order, model
+r["queue"]?.choice                                    // typed, by the request's key
+r.usage.inputTokens                                   // as the wire counts it
+let json = r.dumps()                                  // the reply, byte for byte what the server writes
+
+let same = try await CoreAI.systemOne(                // or built in Swift, answers in this order
+    state: ticket,
+    questions: ["reply": .noul("Does the customer expect a response today?"),
+                "queue": .choice("Which queue?", ["billing", "technical", "other"])])
+```
+
+The model-level form is `decider.systemOne(request)` on a `TypedDecisions` an app keeps warm;
+the codec underneath is `SystemOne.request(from:)` / `SystemOne.response(model:answers:)`.
+
+**From a coding agent.** `systemone mcp` (or `decide-cli mcp` from a checkout) is the same over
+the Model Context Protocol: `claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp`
+(Codex: `codex mcp add …`; Cursor: `~/.cursor/mcp.json`) and the agent's sessions get a
+`decide` tool that takes the request above as its arguments and returns the response as
+`structuredContent`, plus `models`. The server is `SystemOneMCPServer` in `CoreAIKit` and the
+message forms `SystemOneMCP`, for an app that is the MCP server itself:
+
+```swift
+let server = SystemOneMCPServer(defaultModel: "minicpm5-2b")   // stdin/stdout by default; any FileHandle pair
+try await server.run()                                          // returns when the input closes
+```
+
+**A model trained for this.** `decider-0.8b` (catalog kind `decision`) is not a chat model:
+it was fine-tuned to answer exactly these typed questions at an answer slot, and the kit
+renders it in the plain form it was trained on (`Decision.Format.decider`, chosen from the
+catalog kind) at its card's temperature. Its probabilities follow the model's own fp32
+readout on the model's fixture (`decide-cli parity`: 43/43 rows token-identical and
+argmax-identical, max |Δp| 0.0088). It ships as a decode-only
+graph on a recurrent hybrid, so every row re-prefills its whole prompt one token at a time —
+correct, and slower per decision than `minicpm5-2b`'s shared prefix; pick it when the
+probability has to mean something and the chat model's zero-shot answer does not.
+
+```swift
+let trained = try await TypedDecisions(catalog: "decider-0.8b")   // Format.decider, T = 1.03
+let a = try await trained.decide(ticket, .score("How upset is the customer?", levels: ["calm", "annoyed", "furious"]))
+a.score            // expected level; a["…"] for the op form
+```
+
+**A decision model with a head of its own.** `openthai-systemone` (Thai + English, kind
+`decision`) answers at a 256-way head instead of the vocabulary, so a choice may list up to
+255 options and every answer carries the probability that none of them fits
+(`Decision.Answer.abstain`). The bundle declares that head, and the kit reads it in the
+author's own control-token form (`Decision.Format.slot`, chosen from the bundle's metadata):
+token-identical and argmax-identical to the author's fp32 readout on all 50 of its fixture
+rows (int8 max |Δp| 0.023).
+
+```swift
+let thai = try await TypedDecisions(catalog: "openthai-systemone")   // Format.slot, temperatures from the bundle
+let team = try await thai.decide("ลูกค้าแจ้งว่าโดนหักเงินซ้ำสองครั้ง ขอเงินคืนด่วน",
+    .choice("ทีมใดควรรับผิดชอบ", ["billing", "technical", "sales"]))
+team.choice        // "billing"
+team.abstain       // P(none of these), reported beside the option probabilities
+```
+
+**A decision model for agent steps.** `apus-decision-v1-4b` (English + Chinese, kind `decision`)
+keeps its LM head and is read at the letters A–P after a `Shared state:` + JSON task turn under
+its chat template (`Decision.Format.sharedState`, named by the catalog entry's `format`). Its
+choices take 2–16 described criteria and its yes/no a proposition; a score becomes a choice over
+its levels. Token-identical to the author's compiled prompts on the fixture's 40 choice and
+yes/no rows (max |Δp| 0.0055); a 4B, so about 2 s per decision on the Mac and no iPhone
+number yet.
+
+```swift
+let agent = try await TypedDecisions(catalog: "apus-decision-v1-4b")   // Format.sharedState, T = 1
+let next = try await agent.decide(pageState,
+    .choice("Choose the next browser action that advances the goal.",
+            options: [.init(id: "submit", description: "Submit the completed form."),
+                      .init(id: "back", description: "Return to the previous page.")]))
+next.choice        // "submit"
+```
+
+**A calibrated decision model in plain text.** `qwen3.5-2b-decision` (English, kind `decision`) keeps
+its LM head and is read at the space-prefixed letters ` A`… after a plain-text prompt with no chat
+template (`Decision.Format.decisionFunction`, named by the catalog entry's `format`); its calibration
+temperature is already in the weights, so T = 1. A choice takes up to 26 options, a yes/no is a choice
+over `yes` / `no`, a score a choice over its levels. Token-identical to the author's rows on the
+fixture's 58 (int8 max |Δp| 0.0079 against the fp32 reference); about 1 s per decision on the Mac,
+2.9 GB int8, the size of `qwen3.5-2b`.
+
+```swift
+let calibrated = try await TypedDecisions(catalog: "qwen3.5-2b-decision")   // Format.decisionFunction, T = 1
+let section = try await calibrated.decide(newsSentence,
+    .choice("Which news section does this article belong to?",
+            ["World", "Sports", "Business", "Science/Technology"]))
+section.choice          // "Business"
+section.probabilities   // one probability per option, in that order
+```
+
+**A scoring head, non-commercial.** `system-one-scorer-4b` (English, kind `decision`, CC BY-NC 4.0 —
+`CatalogEntry.license` carries it; do not ship it in a commercial app) has no letters: each option
+is its own row and a scalar head scores it (`Decision.Format.scalar`, declared by the bundle's
+metadata together with its temperature 1.75 and its 384-token rows). Up to 64 options; a yes/no is
+the rows `yes` / `no`, a score one row per level; a choice costs one forward pass per option.
+Token-identical to the author's 280 fixture rows (int8 max |Δp| 0.011); about 2 s per three-option
+decision on the Mac, 5.1 GB, Mac only.
+
+```swift
+let scorer = try await TypedDecisions(catalog: "system-one-scorer-4b")   // Format.scalar, T = 1.75 from the bundle
+let team = try await scorer.decide(ticket,
+    .choice("Which team should handle this?", ["billing", "shipping", "technical"]))
+team.choice          // "billing"
+team.probabilities   // one per option: the rows' scores, softmaxed at the author's temperature
+```
 
 **Your own readout.** `decide` reads the answer as a softmax over one letter token per
 option. A library with its own scoring, one that sums the case and space variants of each

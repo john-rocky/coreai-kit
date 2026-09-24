@@ -38,6 +38,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case forecasting
         /// Music source separation (Mel-Band RoFormer): song → vocals + instrumental stems.
         case separation
+        /// Typed decisions (decider): state + question → probabilities over listed options,
+        /// read from the answer-slot logits; the model never generates and cannot chat.
+        case decision
         /// Policy-conditioned safety classification (Shieldstral): the caller writes the policy
         /// in plain language and the model returns P(violation) from ONE forward — a static
         /// graph with no decode loop, so nothing here resembles chat.
@@ -87,10 +90,27 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// states) only load on the pipelined engine — "sequential" validates exactly 2 states
     /// and rejects them. Official-recipe bundles (dynamic shapes) leave this nil (auto).
     public let engine: String?
+    /// For a `decision` entry: the prompt form its readout needs, by the raw value of
+    /// `Decision.Format` — `decider` (plain `Context:` / `Options:` rows), `slot` (a slot head
+    /// read at a control token; the bundle's metadata declares it too), `sharedState` (a
+    /// `Shared state:` + JSON task user turn read at the option letters), `encoder` (an
+    /// encoder-type model read at a mask marker per option in one forward pass; the bundle's
+    /// metadata declares it too). nil = the kind's default (`decider` for a decision entry).
+    public let format: String?
+    /// The weights' license when it restricts what an app may do with them — the SPDX
+    /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
+    /// (Apache-2.0, MIT, the Gemma terms); the exact terms of every model are on its card in
+    /// the model zoo. Shown by `systemone models` and in `/v1/models` so a client sees it.
+    public let license: String?
+    /// For a model that answers typed decisions: the temperature its answer-slot logits are read
+    /// at by default, fitted by the maintainer on labelled rows (`decide-cli calibrate`). nil =
+    /// the model's own temperature — its bundle's declaration, or its prompt form's default.
+    public let calibration: Calibration?
 
     public init(
         id: String, name: String, repo: String, revision: String? = nil, kind: Kind,
-        variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil
+        variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil,
+        format: String? = nil, license: String? = nil, calibration: Calibration? = nil
     ) {
         self.id = id
         self.name = name
@@ -100,6 +120,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.variants = variants
         self.thinking = thinking
         self.engine = engine
+        self.format = format
+        self.license = license
+        self.calibration = calibration
     }
 
     static var platformKey: String {
@@ -123,6 +146,31 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// sibling paths through this so every part downloads from the same pinned revision.
     public func modelID(path: String) -> ModelID {
         ModelID(repo, path: path, revision: revision ?? "main")
+    }
+}
+
+extension CatalogEntry {
+    /// The calibration the kit applies to a model's answer-slot logits by default: a softmax
+    /// temperature, fitted by the maintainer on one labelled fixture and reported on another
+    /// (`decide-cli calibrate`). catalog.json keeps the record's provenance in the same object —
+    /// what it was fitted on (`fit`) and the before/after numbers where it was checked
+    /// (`report`) — which the kit does not read. Only a model without a temperature of its own
+    /// carries one: a bundle whose author fitted or folded in a temperature keeps that.
+    public struct Calibration: Sendable, Codable, Hashable {
+        /// Temperature for every question type `byType` does not name.
+        public let temperature: Double
+        /// Per question type — "choice", "score", "noul" — when the types were fitted apart.
+        public let byType: [String: Double]?
+
+        public init(temperature: Double, byType: [String: Double]? = nil) {
+            self.temperature = temperature
+            self.byType = byType
+        }
+
+        /// The temperature for a question type: its own when fitted apart, else `temperature`.
+        public func temperature(forType type: String) -> Double {
+            byType?[type] ?? temperature
+        }
     }
 }
 
@@ -195,7 +243,8 @@ public struct ModelCatalog: Sendable, Codable {
                 guard e.revision == nil, let rev = pins[e.id] else { return e }
                 return CatalogEntry(
                     id: e.id, name: e.name, repo: e.repo, revision: rev, kind: e.kind,
-                    variants: e.variants, thinking: e.thinking, engine: e.engine)
+                    variants: e.variants, thinking: e.thinking, engine: e.engine, format: e.format,
+                    license: e.license, calibration: e.calibration)
             })
     }
 
@@ -212,6 +261,8 @@ public struct ModelCatalog: Sendable, Codable {
     static let builtinLiteral = ModelCatalog(
         version: 1,
         models: [
+            // Its calibration is the top of the fit grid: its three-option answers are at chance
+            // on the fixture, and the fit reads them nearly flat.
             CatalogEntry(
                 id: "qwen3-0.6b", name: "Qwen3 0.6B",
                 repo: "mlboydaisuke/qwen3-0.6b-CoreAI-official", kind: .chat,
@@ -219,7 +270,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "macos", sizeMB: 352),
                     "ios": .init(path: "ios", sizeMB: 456),
                 ],
-                thinking: true),
+                thinking: true, calibration: .init(temperature: 11.882)),
             CatalogEntry(
                 id: "qwen3-4b", name: "Qwen3 4B",
                 repo: "mlboydaisuke/qwen3-4b-CoreAI-official", kind: .chat,
@@ -316,6 +367,8 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "ios-h18p/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
                 ],
                 thinking: true, engine: "pipelined"),
+            // ── MiniCPM5 1B / 2B carry the temperature typed decisions read them at (`decide-cli
+            //    calibrate`; catalog.json has what it was fitted and reported on). ──
             CatalogEntry(
                 id: "minicpm5-1b", name: "MiniCPM5 1B",
                 repo: "mlboydaisuke/MiniCPM5-1B-CoreAI", kind: .chat,
@@ -323,7 +376,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "int8", sizeMB: 1159),
                     "ios": .init(path: "int8", sizeMB: 1159),
                 ],
-                thinking: true, engine: "pipelined"),
+                thinking: true, engine: "pipelined", calibration: .init(temperature: 9.974)),
             CatalogEntry(
                 id: "minicpm5-2b", name: "MiniCPM5 2B",
                 repo: "mlboydaisuke/MiniCPM5-2B-CoreAI", kind: .chat,
@@ -331,7 +384,89 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "int8", sizeMB: 2685),
                     "ios": .init(path: "int8", sizeMB: 2685),
                 ],
-                thinking: true, engine: "pipelined"),
+                thinking: true, engine: "pipelined", calibration: .init(temperature: 2.93)),
+            // ── decision: a model trained to answer typed questions at an answer slot
+            //    (Qwen3.5-0.8B-Base fine-tune, S=1 decode graph, int8 + head). Not a chat
+            //    model: `TypedDecisions` renders its own prompt form and reads the letter
+            //    logits; `ChatSession` has no business loading it. ──
+            CatalogEntry(
+                id: "decider-0.8b", name: "decider 0.8B",
+                repo: "mlboydaisuke/decider-0.8b-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                    "ios": .init(
+                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                ],
+                engine: "pipelined"),
+            // ── OpenThai-SystemOne: a slot-head decision model (Thai + English) — the LM head
+            //    replaced by a 256-way head read at a control token, so a choice may list 255
+            //    options and every answer carries an abstain probability. The bundle's own
+            //    metadata declares the head; `format` names the readout for the catalog's sake.
+            //    Ships to both platforms like decider-0.8b (1.0 GB int8; the phone number is
+            //    still to be taken). ──
+            CatalogEntry(
+                id: "openthai-systemone", name: "OpenThai-SystemOne 0.8B",
+                repo: "mlboydaisuke/OpenThai-SystemOne-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
+                    "ios": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
+                ],
+                engine: "pipelined", format: "slot"),
+            // ── APUS Decision v1 4B (APUS AI Lab's Qwen3.5-4B decision model): a letter-readout
+            //    model for browser actions and workflow steps — one `Shared state:` + JSON task
+            //    turn under its chat template, read at A–P (`format: sharedState`). macOS only
+            //    on purpose: 5.5 GB int8hu and no device measurement. Add "ios" when one has
+            //    been taken. ──
+            CatalogEntry(
+                id: "apus-decision-v1-4b", name: "APUS Decision v1 4B",
+                repo: "mlboydaisuke/APUS-Decision-v1-4B-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined-b2/apus_decision_v1_4b_decode_int8hu_block32_sym", sizeMB: 5504),
+                ],
+                engine: "pipelined", format: "sharedState"),
+            // ── Qwen3.5-2B-Decision: a calibrated plain-text decision model (English) read at
+            //    the space-prefixed letters after `Answer:` (`format: decisionFunction`); its
+            //    temperature is folded into the weights. Ships to both platforms like qwen3.5-2b
+            //    (the same 2.9 GB int8hu graph); no iPhone number yet. ──
+            CatalogEntry(
+                id: "qwen3.5-2b-decision", name: "Qwen3.5 2B Decision",
+                repo: "mlboydaisuke/Qwen3.5-2B-Decision-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 2905),
+                    "ios": .init(
+                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 2905),
+                ],
+                engine: "pipelined", format: "decisionFunction"),
+            // ── System One scorer 4B (pngwn): a scalar-head decision model — one row per
+            //    option, the head's one number per row, softmaxed at the author's T = 1.75
+            //    (`format: scalar`; the bundle declares it). CC BY-NC 4.0, and `license` says
+            //    so. macOS only on purpose: 5.1 GB int8lin and no device measurement. ──
+            CatalogEntry(
+                id: "system-one-scorer-4b", name: "System One scorer 4B",
+                repo: "mlboydaisuke/system-one-qwen3.5-4b-scorer-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin", sizeMB: 4859),
+                ],
+                engine: "pipelined", format: "scalar", license: "CC-BY-NC-4.0"),
+            // ── laya multilingual: an encoder-type decision model (mmBERT-base with a typed
+            //    decision head, Apache-2.0) — one forward pass per question, each option read at
+            //    its mask marker (`format: encoder`; the bundle's metadata declares it, with its
+            //    window and the calibration it ships). The fp16-weight graph at the 256-token
+            //    window, the same portable bundle on both platforms (0.68 GB), on the GPU: a
+            //    Neural Engine preference is refused (its answers change from run to run there).
+            //    No iPhone number yet. ──
+            CatalogEntry(
+                id: "laya-multilingual", name: "laya multilingual",
+                repo: "mlboydaisuke/Laya-Multilingual-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(path: "macos/wfp16-s256", sizeMB: 681),
+                    "ios": .init(path: "ios/wfp16-s256", sizeMB: 680),
+                ],
+                format: "encoder"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

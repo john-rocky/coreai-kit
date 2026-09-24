@@ -17,22 +17,22 @@ The entry below uses **Qwen3 0.6B** (`qwen3-0.6b`): approximately **352 MB on Ma
 use and cached. Keep at least 1 GB of free disk for the starter. No Python, conversion,
 API key or bundled model weights are needed.
 
-**0.4.2 targets Xcode 27 (`27A266a`) on macOS 27 (`26A428`), the release builds.** See the
+**0.6.0 targets Xcode 27 (`27A266a`) on macOS 27 (`26A428`), the release builds.** See the
 [validation record](docs/GETTING_STARTED.md#release-041-validation) for the tested Mac,
-OS/SDK builds and model revisions of the 0.4.1 train; 0.4.2 re-ran the same gates on the release
+OS/SDK builds and model revisions of the 0.4.1 train; 0.4.2, 0.5.0 and 0.6.0 re-ran the same gates on the release
 toolchain (CHANGELOG). Device rows were measured on the iOS 27 RC (24A435).
 
 ## Quickstart
 
 In Xcode, use **File → Add Package Dependencies…**, paste
-`https://github.com/john-rocky/coreai-kit`, choose **Exact Version: 0.4.2**, and add the
+`https://github.com/john-rocky/coreai-kit`, choose **Exact Version: 0.6.0**, and add the
 **CoreAIKit** product to your app target. If App Sandbox is enabled on your macOS
 target, enable **Signing & Capabilities → App Sandbox → Outgoing Connections (Client)**
 for first-use model downloads ([network client entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.client)).
 For a Swift package:
 
 ```swift
-.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.4.2")
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.6.0")
 // In your target's dependencies:
 .product(name: "CoreAIKit", package: "coreai-kit")
 ```
@@ -59,7 +59,7 @@ response deltas to your view state. Keep the session for follow-up questions.
 **Run the same release on your Mac:**
 
 ```bash
-git clone --branch 0.4.2 --depth 1 https://github.com/john-rocky/coreai-kit.git
+git clone --branch 0.6.0 --depth 1 https://github.com/john-rocky/coreai-kit.git
 cd coreai-kit
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # Xcode 27 (27A266a)
 swift run -c release --package-path Examples/ChatDemo chat-cli \
@@ -75,6 +75,39 @@ If it stops at build, download or load, start with the
 [observed errors and fixes](https://github.com/john-rocky/coreai-model-zoo/blob/main/knowledge/coreai-error-index.md).
 For a reproducible bug, [open an issue](https://github.com/john-rocky/coreai-kit/issues/new)
 with package version, model ID/revision, OS/SDK build and the error text.
+
+## System One, on device
+
+A typed decision — a text, a question with fixed answers, each answer's probability, nothing
+generated — is what the hosted System One APIs sell by the call. The same call runs on the
+device with a catalog model: `CoreAI.decide` in Swift (`CoreAI.systemOne` for the hosted
+request and response forms), or `systemone serve` for everything else. It answers `POST /v1/systemone` in the hosted request and answer forms, so a client
+written for the hosted endpoint is switched by its base URL and nothing else changes:
+
+```bash
+brew install john-rocky/tap/systemone && systemone serve     # http://127.0.0.1:8090/v1/systemone
+brew services start systemone                                 # the same, kept running by launchd
+export TYPESAFE_BASE_URL=http://127.0.0.1:8090               # the official SDKs read this; other clients have their own base-URL setting
+```
+
+`systemone` is one signed, notarized 21 MB binary with no Swift toolchain behind it. The first
+`serve` downloads MiniCPM5 2B (2.7 GB) into `~/Library/Application Support/CoreAIKit/Models`;
+after that `brew services start` answers `/health` 0.7–4.6 s later (M4 Max; the spread is
+how much of the 2.7 GB is still in the file cache, and the model load is most of it). `systemone ask
+--state "…" --noul "…"` is one decision from the shell (`--json` for the wire form),
+`systemone models` says what can decide and what is downloaded. From source it is
+`swift run -c release systemone serve`, or `decide-cli serve` in `Examples/Decide`.
+`systemone mcp` is the same decisions as a Model Context Protocol server on stdio:
+`claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp` (Codex: `codex mcp add …`;
+Cursor: `~/.cursor/mcp.json`) and the agent's own sessions get a `decide` tool.
+
+MiniCPM5 2B answers a question in about 40–65 ms after the state is read once (M4 Max), and
+its decisions track the published full-precision readout (141/144 argmax on the authored
+fixture). Ten whole uses — a form that fills from a copied email, a contract checklist, a
+folder sorter, a car the model drives, a CSV with the columns you ask for, a command guard
+for a coding agent, context compression, as-you-type reading — are in
+[`Examples/Decide`](Examples/Decide), with the question shapes that read correctly on a 2B
+model and the ones that did not. [docs/SYSTEM_ONE.md](docs/SYSTEM_ONE.md) is the one-page map.
 
 ## Use your model with FoundationModels
 
@@ -292,6 +325,10 @@ Text & chat
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
 - `Examples/InfoExtract` — schema-driven extraction / PII redaction with GLiNER2 (iPhone + Mac)
 
+Typed decisions — the System One shape, on device
+
+- `Examples/Decide` — a text and a typed question in, the answer with its probability out, nothing generated; a chat model zero-shot (`minicpm5-2b`) or a model trained for decisions (`decider-0.8b`; `openthai-systemone` — Thai + English, up to 255 options, an abstain probability; `apus-decision-v1-4b` — browser actions and workflow steps, English + Chinese, Mac; `qwen3.5-2b-decision` — a calibrated 2B, English, plain-text prompt, iPhone-sized; `system-one-scorer-4b` — a scoring head, one row per option, English, Mac, CC BY-NC 4.0). Ten whole uses from the same sources on iPhone and Mac: copy an email and a checkout form fills at once, a contract read as a checklist, a folder sorted by what needs you, a car the model drives lane by lane, a CSV with the columns you ask for, a command guard for a coding agent (also a Claude Code hook), tool results dropped from an agent's context by relevance, tone / intent / emoji as you type (`swift run decide-cli` is the headless door; `decide-cli serve` is a `/v1/systemone` endpoint for a client written for the hosted API)
+
 Vision
 
 - `Examples/VLChat` — local **VLM** image chat (Qwen3-VL) via the `KitVisionModel` vision executor (iPhone + Mac)
@@ -335,7 +372,7 @@ See `docs/GETTING_STARTED.md`.
 ## How the catalog is verified — and how you re-check it yourself
 
 The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 61 catalog entries:
+this is *what was checked, by whom, and can you check it again.* All 67 catalog entries:
 
 - **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
   that were gated — never "whatever is on `main` today." CI re-checks every pin

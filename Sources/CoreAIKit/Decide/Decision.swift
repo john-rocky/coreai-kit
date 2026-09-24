@@ -5,7 +5,7 @@
 // and the answer is the probability the model assigns to each listed option at the answer
 // slot. Three shapes cover the ways an app branches on a piece of text:
 //
-//   choice  — which of these options (2–16)            → the option, plus every option's probability
+//   choice  — which of these options (2–maxOptions)    → the option, plus every option's probability
 //   score   — where on this ordered scale (2–10 levels) → the expected level, plus the distribution
 //   noul    — yes or no                                  → P(yes)
 //
@@ -20,6 +20,66 @@ import Foundation
 
 /// Namespace for the typed-decision value types.
 public enum Decision {
+    /// How a state and a question become the prompt that is scored.
+    public enum Format: String, Sendable, Codable {
+        /// One JSON request in a user turn under the model's chat template, the assistant
+        /// turn opened with its thinking closed; the answer is the letter at the next token.
+        /// The rendering an instruction-tuned chat model answers zero-shot, and the one the
+        /// published fixture numbers use.
+        case chat
+        /// The plain-text form a decision model (`decider-0.8b`) is trained on — `Context:`,
+        /// the state, `Question:`, `Options:` as `(A) …` lines, `Answer: (` — with no chat
+        /// template and no special tokens. A score question is judged one level per row, each
+        /// level alone as a yes/no, and the levels' P(yes) normalised into the distribution;
+        /// that is the form the model's own API uses, and its temperature is 1.03.
+        case decider
+        /// The control-token form of a slot-head decision model (OpenThai-SystemOne): the
+        /// state and one question laid out with `<|ts_…|>` tokens, the hidden state at
+        /// `<|ts_answer|>` projected by a small head whose slot i is option i and whose last
+        /// slot abstains. The bundle declares it (`decision.head == "slot"` in its
+        /// metadata.json) together with a temperature per question type; a score is one row
+        /// over its levels. `SlotPrompt.swift`.
+        case slot
+        /// The `Shared state:` + JSON task form (APUS's decision model, apus-decision-v1-4b): one user turn under the chat
+        /// template holding the state, then a JSON object whose criteria carry the letters
+        /// A–P, then `Answer:`; the answer is the letter at the next token, read from the
+        /// ordinary LM head with no temperature. The model's own primitives are `choice` and a
+        /// yes/no on a proposition; a score is rendered as a choice over its levels.
+        /// `SharedStatePrompt.swift`.
+        case sharedState
+        /// The plain-text "decision function" form (Jev-Style-Qwen3.5-2B-Decision): a fixed
+        /// header, `[State]`, `[Question]`, `[Options]` as `A. …` lines and `Answer:`, no chat
+        /// template; the answer is the next token among the space-prefixed letters ` A`, ` B`, …
+        /// (up to 26), read at temperature 1 because the model's calibration is folded into its
+        /// weights. A bool is the choice `yes` / `no`, a score the choice over its levels.
+        /// `DecisionFunctionPrompt.swift`.
+        case decisionFunction
+        /// The per-option scalar form (pngwn's System One scorer): one row per option —
+        /// `State:`, the state cut to fit, `Question:`, `Option:` — read by a scalar head at
+        /// the row's last token, the rows softmaxed together at the calibration temperature
+        /// the bundle declares (`decision.head == "scalar"` with `temperature` and `max_len`
+        /// in its metadata.json). No chat template. A yes/no is the rows `yes` / `no`, a score
+        /// one row per level. `ScalarPrompt.swift`.
+        case scalar
+        /// The lettered option list under the chat template (the lettered-list helper form): one user turn —
+        /// `State:`, the state, `Question:`, `Options:` as `[A] key: description` lines,
+        /// "Answer with the letter of the best option only." — read at the bare letters A–Z
+        /// then a–z (up to 52) from the LM head at the temperature the bundle declares
+        /// (`decision.readout == "letters"` with `temperature` and the yes/no calibration
+        /// `noul` in its metadata.json). A score lists its levels as `0: level` …; a yes/no
+        /// lists `yes` / `no` with what each means and is calibrated the helper's way.
+        /// `LetterListPrompt.swift`.
+        case letterList
+        /// The encoder form (laya): one forward pass over `[CLS] <type> question: <instructions>
+        /// [SEP] [MASK] option [MASK] option … [SEP] <state> [SEP]`, the model giving every
+        /// position a logit and each option read at its mask marker, softmaxed within the
+        /// question at the temperature the bundle declares for its type and option count. No
+        /// chat template and no answer slot; the bundle is not a language bundle and declares
+        /// itself (`decision.head == "encoder"` in its metadata.json, with its window, head
+        /// budget, special ids and temperatures). `EncoderPrompt.swift`, `EncoderDecider.swift`.
+        case encoder
+    }
+
     /// One listed answer for a `choice` question. `id` is what the answer reports;
     /// `description` is what the model reads (the id when no description is given).
     public struct Option: Sendable, Hashable, Codable {
@@ -131,6 +191,11 @@ public enum Decision {
         public let certainty: Double
         /// Probability per level, lowest level first.
         public let probabilities: [Double]
+        /// P(this level fits) per level, before normalisation, when every level was judged
+        /// alone (`Format.decider`); nil when the levels were scored together in one row.
+        /// Their sum is near 1 when exactly one level fits, low when none does, high when
+        /// several do.
+        public let fit: [Double]?
     }
 
     /// Where the tokens of one decision went.
@@ -180,10 +245,15 @@ public enum Decision {
 
         public let value: Value
         public let timing: Timing
+        /// The probability the model puts on "none of the listed options", when its head has
+        /// a slot for that (`Format.slot`); nil for the other formats. The option
+        /// probabilities are renormalised without it, as the model's own API reports them.
+        public let abstain: Double?
 
-        public init(value: Value, timing: Timing) {
+        public init(value: Value, timing: Timing, abstain: Double? = nil) {
             self.value = value
             self.timing = timing
+            self.abstain = abstain
         }
 
         /// P(yes) of a `noul` question; nil for the other shapes.
@@ -235,6 +305,8 @@ public enum DecisionError: Error, LocalizedError, Equatable {
     case tooManyOptions(count: Int, max: Int)
     /// The tokenizer has no single-token answer slot for this letter.
     case answerSlotNotSingleToken(letter: String)
+    /// A slot-head bundle's tokenizer does not carry this control token as one token.
+    case controlTokenNotSingleToken(token: String)
     case promptTooLong(tokens: Int, max: Int)
     /// The token sequence to score has no tokens.
     case emptyPrompt
@@ -256,6 +328,9 @@ public enum DecisionError: Error, LocalizedError, Equatable {
             return "A question can list at most \(max) options, got \(count)."
         case .answerSlotNotSingleToken(let letter):
             return "The tokenizer does not encode answer slot '\(letter)' as one token."
+        case .controlTokenNotSingleToken(let token):
+            return "The tokenizer does not encode control token '\(token)' as one token; "
+                + "this bundle is not the slot-head decision model its metadata declares."
         case .promptTooLong(let tokens, let max):
             return "The rendered prompt is \(tokens) tokens; this model takes at most \(max)."
         case .emptyPrompt:

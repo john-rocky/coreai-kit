@@ -17,7 +17,33 @@
           "sizeMB": 456
         }
       },
-      "thinking": true
+      "thinking": true,
+      "calibration": {
+        "temperature": 11.882,
+        "fit": {
+          "fixture": "SemIf perturbations108",
+          "sha256": "1dd7ccf80518d0e34886478ca23982aa726e9daccd343b9e95cedaf6b569bec4",
+          "rows": 108,
+          "questionTypes": [
+            "choice"
+          ],
+          "format": "chat",
+          "date": "2026-09-23",
+          "platform": "macos"
+        },
+        "report": {
+          "fixture": "SemIf authored144",
+          "sha256": "8162d1c73f925af64453f1ec05ef36d583b3815bf698e60f0d454bd11537e079",
+          "rows": 144,
+          "accuracy": 0.34,
+          "eceBefore": 0.65,
+          "eceAfter": 0.185,
+          "brierBefore": 1.299,
+          "brierAfter": 0.722,
+          "nllBefore": 6.289,
+          "nllAfter": 1.176
+        }
+      }
     },
     {
       "id": "qwen3-4b",
@@ -207,7 +233,33 @@
         }
       },
       "thinking": true,
-      "engine": "pipelined"
+      "engine": "pipelined",
+      "calibration": {
+        "temperature": 9.974,
+        "fit": {
+          "fixture": "SemIf perturbations108",
+          "sha256": "1dd7ccf80518d0e34886478ca23982aa726e9daccd343b9e95cedaf6b569bec4",
+          "rows": 108,
+          "questionTypes": [
+            "choice"
+          ],
+          "format": "chat",
+          "date": "2026-09-23",
+          "platform": "macos"
+        },
+        "report": {
+          "fixture": "SemIf authored144",
+          "sha256": "8162d1c73f925af64453f1ec05ef36d583b3815bf698e60f0d454bd11537e079",
+          "rows": 144,
+          "accuracy": 0.535,
+          "eceBefore": 0.184,
+          "eceAfter": 0.157,
+          "brierBefore": 0.636,
+          "brierAfter": 0.623,
+          "nllBefore": 1.123,
+          "nllAfter": 1.035
+        }
+      }
     },
     {
       "id": "minicpm5-2b",
@@ -226,7 +278,138 @@
         }
       },
       "thinking": true,
+      "engine": "pipelined",
+      "calibration": {
+        "temperature": 2.93,
+        "fit": {
+          "fixture": "SemIf perturbations108",
+          "sha256": "1dd7ccf80518d0e34886478ca23982aa726e9daccd343b9e95cedaf6b569bec4",
+          "rows": 108,
+          "questionTypes": [
+            "choice"
+          ],
+          "format": "chat",
+          "date": "2026-09-23",
+          "platform": "macos"
+        },
+        "report": {
+          "fixture": "SemIf authored144",
+          "sha256": "8162d1c73f925af64453f1ec05ef36d583b3815bf698e60f0d454bd11537e079",
+          "rows": 144,
+          "accuracy": 0.701,
+          "eceBefore": 0.167,
+          "eceAfter": 0.071,
+          "brierBefore": 0.455,
+          "brierAfter": 0.411,
+          "nllBefore": 0.886,
+          "nllAfter": 0.706
+        }
+      }
+    },
+    {
+      "id": "decider-0.8b",
+      "name": "decider 0.8B",
+      "repo": "mlboydaisuke/decider-0.8b-CoreAI",
+      "revision": "ff60ccf563556efbf83442e891e57d68a1840728",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym",
+          "sizeMB": 1276
+        },
+        "ios": {
+          "path": "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym",
+          "sizeMB": 1276
+        }
+      },
       "engine": "pipelined"
+    },
+    {
+      "id": "openthai-systemone",
+      "name": "OpenThai-SystemOne 0.8B",
+      "repo": "mlboydaisuke/OpenThai-SystemOne-CoreAI",
+      "revision": "e48583dab6c527fb87f47e074a5724a701c05600",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/openthai_systemone_decode_int8lin",
+          "sizeMB": 1019
+        },
+        "ios": {
+          "path": "gpu-pipelined/openthai_systemone_decode_int8lin",
+          "sizeMB": 1019
+        }
+      },
+      "engine": "pipelined",
+      "format": "slot"
+    },
+    {
+      "id": "apus-decision-v1-4b",
+      "name": "APUS Decision v1 4B",
+      "repo": "mlboydaisuke/APUS-Decision-v1-4B-CoreAI",
+      "revision": "3e946e1c4fafd9c909492bb81e8f400439560aee",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined-b2/apus_decision_v1_4b_decode_int8hu_block32_sym",
+          "sizeMB": 5504
+        }
+      },
+      "engine": "pipelined",
+      "format": "sharedState"
+    },
+    {
+      "id": "qwen3.5-2b-decision",
+      "name": "Qwen3.5 2B Decision",
+      "repo": "mlboydaisuke/Qwen3.5-2B-Decision-CoreAI",
+      "revision": "3b79912057db40be51697dfdaa433d6cb436b409",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym",
+          "sizeMB": 2905
+        },
+        "ios": {
+          "path": "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym",
+          "sizeMB": 2905
+        }
+      },
+      "engine": "pipelined",
+      "format": "decisionFunction"
+    },
+    {
+      "id": "system-one-scorer-4b",
+      "name": "System One scorer 4B",
+      "repo": "mlboydaisuke/system-one-qwen3.5-4b-scorer-CoreAI",
+      "revision": "f27dcd3124cb3aa53e46b6707d3edb976f55c5f3",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin",
+          "sizeMB": 4859
+        }
+      },
+      "engine": "pipelined",
+      "format": "scalar",
+      "license": "CC-BY-NC-4.0"
+    },
+    {
+      "id": "laya-multilingual",
+      "name": "laya multilingual",
+      "repo": "mlboydaisuke/Laya-Multilingual-CoreAI",
+      "revision": "1175a4e6231fdfe8946e6566276f8d71eb8f02ef",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "macos/wfp16-s256",
+          "sizeMB": 681
+        },
+        "ios": {
+          "path": "ios/wfp16-s256",
+          "sizeMB": 680
+        }
+      },
+      "format": "encoder"
     },
     {
       "id": "nanbeige4.1-3b",

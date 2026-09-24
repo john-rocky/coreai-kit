@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SearchView: View {
     @Environment(DecideRuntime.self) private var runtime
+    @Environment(Autoplay.self) private var autoplay
     @State private var model = SearchModel()
 
     var body: some View {
@@ -33,12 +34,15 @@ struct SearchView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(hit.passage).font(.callout).lineLimit(3)
                     ProbabilityBar(value: hit.relevance, tint: hit.relevance >= 0.5 ? .green : .gray)
-                    Text("\(hit.answer.summaryLine) · \(hit.answer.timingLine)")
+                    Text("\(hit.answer.summaryLine) · \(ms(hit.answer.timing.milliseconds))")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 2)
             }
         }
         .padding()
+        .task {
+            await autoplay.run(.search, runtime: runtime, status: { model.status }) { model.rank(runtime) }
+        }
     }
 }

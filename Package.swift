@@ -21,6 +21,11 @@ let package = Package(
         // Answers "what will this app download" before someone has to answer it in a meeting.
         // An executable, so linking the libraries never drags it in.
         .executable(name: "coreai-doctor", targets: ["coreai-doctor"]),
+        // System One on this machine without a Swift toolchain: `systemone serve` is the
+        // /v1/systemone endpoint over a catalog model, `ask` one decision from the shell,
+        // `models` what can decide. Built, signed and notarized by the release workflow and
+        // installed with `brew install john-rocky/tap/systemone`.
+        .executable(name: "systemone", targets: ["systemone"]),
     ],
     traits: [
         // Off by default. Enable it to download large files over Xet; swift-xet and its
@@ -104,6 +109,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "coreai-doctor",
+            dependencies: ["CoreAIOps"]
+        ),
+        .executableTarget(
+            name: "systemone",
             dependencies: ["CoreAIOps"]
         ),
         .testTarget(

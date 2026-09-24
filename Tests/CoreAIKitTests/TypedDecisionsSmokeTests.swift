@@ -21,7 +21,7 @@ final class TypedDecisionsSmokeTests: XCTestCase {
 
         // The public path and `decide` read the same logits: both from a cold cache, the
         // letter softmax over `logits(for:)` is `decide`'s answer.
-        let (tokens, slots) = try decider.promptTokens(state, question)
+        let (tokens, slots) = try decider.promptRows(state, question)[0]
         let scored = try await decider.logits(for: tokens)
         XCTAssertGreaterThan(scored.values.count, Int(slots.max()!))
         XCTAssertEqual(scored.timing.promptTokens, tokens.count)
@@ -50,8 +50,9 @@ final class TypedDecisionsSmokeTests: XCTestCase {
             "reused \(reused.timing.reusedTokens) of a \(prefix.count)-token prefix")
         let reusedReadout = DecisionPrompt.probabilities(
             logits: slots.map { Double(reused.values[Int($0)]) }, temperature: 1)
+        // Cached and uncached runs of the fp16 engine differ by up to ~4e-3.
         for (own, cold) in zip(reusedReadout, readout) {
-            XCTAssertEqual(own, cold, accuracy: 1e-3)
+            XCTAssertEqual(own, cold, accuracy: 5e-3)
         }
         print("SMOKE prefix=\(prefix.count) reused=\(reused.timing.reusedTokens) "
             + "P(yes)=\(reusedReadout[1]) \(reused.timing.milliseconds) ms")
@@ -94,7 +95,7 @@ final class TypedDecisionsSmokeTests: XCTestCase {
         let states = ["Water is wet.", "Fire is hot."]
         let question = Decision.Question.choice(
             "What is the claim about?", ["water", "fire", "air"])
-        let prompts = try states.map { try decider.promptTokens($0, question) }
+        let prompts = try states.map { try decider.promptRows($0, question)[0] }
         // Cached and uncached runs of the fp16 engine differ by up to ~4e-3.
         let accuracy = 5e-3
         let calls = 6

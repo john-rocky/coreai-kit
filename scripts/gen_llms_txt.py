@@ -54,6 +54,10 @@ let answer = try await chat.respond(to: "What is the capital of Japan?")
   one compiles with a single `import CoreAIOps`.
 - [Getting started]({SITE}/docs/GETTING_STARTED.html): from an empty Xcode project to a model
   answering on device.
+- [System One, on device]({SITE}/docs/SYSTEM_ONE.html): typed decisions — choice, score,
+  yes/no with probabilities, nothing generated — as a Swift call or a `/v1/systemone` endpoint
+  in the hosted API's forms (`brew install john-rocky/tap/systemone && systemone serve`); the
+  numbers, the question shapes that read, the ten whole uses.
 - [AGENTS.md]({SITE}/AGENTS.html): for coding agents — which layer to reach for, why the catalog
   is data to read rather than guess at, and the failures that only appear on a real device.
 - [Stability policy]({SITE}/docs/STABILITY.html): what a version bump is allowed to change.

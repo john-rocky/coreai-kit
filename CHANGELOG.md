@@ -7,6 +7,240 @@ policy.
 
 ## [Unreleased]
 
+### Removed
+
+- **`openjev-27b`** — withdrawn from the catalog (its Hub repo is now private) pending the source
+  model's training-data provenance.
+
+### Changed
+
+- **`apus-openjev-v1-4b` → `apus-decision-v1-4b`** — the catalog id, display name and Hub repo
+  (`mlboydaisuke/APUS-Decision-v1-4B-CoreAI`; the old URL redirects) no longer carry the source
+  model's product name. The source attribution stays on the card and in `base_model`.
+
+### Added
+
+- **`CoreAI.systemOne`** — the hosted System One call as one op: a request in the `/v1/systemone`
+  form in (`SystemOne.Request`; the request's bytes with `json:`; or `state:` and `questions:`
+  keyed by the caller's ids, in the order the answers come back) and the response in that form
+  out. `SystemOne.Response` holds the typed answers in request order (`response["queue"]?.choice`),
+  `usage`, `stateTokens`, the whole request's `milliseconds`, and the wire object as `value` /
+  `dumps()` — byte for byte what `systemone serve` returns. The model is `options.model`, else the
+  request's own `model`, else `CoreAI.decide`'s default, from the same cache under the same
+  one-request-at-a-time rule; bytes the wire refuses throw `SystemOne.WireError` before any model
+  loads. `TypedDecisions.systemOne(_:)` is the model-level call: every question checked against the
+  model's option count first, the state prefilled once, each question decided against it.
+  `SystemOne.Request` gains initialisers for a request built in Swift, a structured state included
+  (serialized the reference way). `SystemOneServer`, `SystemOneMCPServer` and `systemone ask` now
+  answer through this one path; their replies are unchanged. Checked against the decider's own API
+  on the zoo's 13-request fixture (`SystemOneDeciderSmokeTests`, opt-in with `KIT_DECIDER_FIXTURE`):
+  on `decider-0.8b` every one of the 36 answers names the author's option, and every probability,
+  expected score, level fit and fit mass is within 0.02 of the author's fp32 assembly (max 0.016, on
+  a five-level fit mass; M4 Max, 2026-09-23, GPU shared).
+- **A choice lists up to 255 options**, the hosted API's width, where the model can read that
+  many. `minicpm5-2b` reads A–Z and, past 26 options, the numbers "1"…"255" under a system line
+  that asks for the number; `decider-0.8b` reads its author's labels A–Z, AA, AB, … (its 44-row
+  fixture now passes whole, the 255-option row included); `system-one-scorer-4b` scores 255 rows
+  (was 64). `TypedDecisions.maxOptions` is each model's own count: 26 on `qwen3-0.6b`, whose
+  tokenizer has no single-token numbers past 9, and 16 on `apus-openjev-v1-4b`. A question of
+  16 options or fewer renders token for token as before. Why numbers: on 61 synthetic rows of
+  17–255 options, `minicpm5-2b` picked the named option on 58 read at numbers and on 43 read at
+  two-letter labels, where it answers one letter of the label. A 255-option prompt is 1,965
+  tokens on the decider's fixture row and 3,100–4,200 in the chat form, over the iPhone's
+  1,024, so it is a Mac call.
+- `decide-cli oracle --dump-prompts <path>` writes each row's token ids and answer-slot ids in
+  the `--prompts` shape. A row whose prompt outgrows the model's context is skipped and listed
+  instead of ending the run.
+- **Encoder-type decision models: `Decision.Format.encoder`.** A bundle whose `metadata.json`
+  declares `decision.head == "encoder"` (laya multilingual) is recognised by both `TypedDecisions`
+  initialisers before anything reads it as a language bundle, and answers in one forward pass per
+  question, read at the mask marker in front of each option, at the temperature the bundle declares
+  per question type and option count. `prefill` tokenizes the state once; recent questions' tokens
+  are reused. `TypedDecisions.Configuration.computeUnits` picks the graphs' compute units (the GPU
+  by default). `EncoderPrompt`, `EncoderReadout` and `EncoderDecider` are the low level
+  (`decideRow` for the raw numbers). `decide-cli parity` reads `coreai-encoder-fixtures/1` — tokens
+  and markers with only a tokenizer (`--tokens-only --tokenizer`), the raw logits with a bundle —
+  and `--compute` reaches every command.
+- `Examples/Decide/conformance/` — `check.py <base_url>`: 22 requests in the hosted System One
+  forms and the shape each answer must come back in (types and keys), for this server or any
+  other that speaks the route; `calibration.py`: accuracy, NLL, Brier, top-label ECE and a
+  fitted temperature from `decide-cli oracle` output on SemIf's `authored144`.
+- `CatalogEntry.calibration` (`CatalogEntry.Calibration`: `temperature`, `byType`,
+  `temperature(forType:)`): the temperature a model's decisions are read at by default, fitted
+  by the maintainer. catalog.json keeps what it was fitted and reported on (`fit`, `report`) in
+  the same object; the kit reads only the temperatures.
+- `DecisionCalibration`: `rescale` (a distribution re-read at another temperature — exact when it
+  is one softmax), `fitTemperature` (least NLL on `calibration.py`'s grid), `metrics` and
+  `familyMetrics` (accuracy, balanced accuracy over the right options' ids, NLL, multi-class
+  Brier, top-label ECE), each defined as the script defines it.
+- `decide-cli calibrate --fit <rows> --report <rows>`: a temperature per question type fitted on
+  one labelled fixture and read on another, before and after, per family. It refuses a row id in
+  both sets and prints what else they share (situations, source rows, states); `--record`
+  writes the catalog record, `--out` / `--out-raw` the rows `calibration.py` reads.
+
+### Changed
+
+- A `/v1/systemone` request that keys two questions by the same id is refused — 422,
+  `duplicate question id 'q'` — instead of answering both under one key, where the second
+  overwrote the first in the response object.
+- `SystemOne.maxOptions` is the hosted API's 255 (was 16). `SystemOne.request(from:maxOptions:)`
+  takes the loaded model's count, and `SystemOneServer` passes it, so a list the model cannot
+  read is a 422 that names the count ("this engine lists at most 26 options, got 27"). The wire
+  never takes more than 255. The MCP `decide` tool describes 2–255 options.
+- `TypedDecisions` — and so `CoreAI.decide`, `systemone` and `SystemOneServer` — reads a catalog
+  model at its entry's `calibration` when it has one. The order is `Configuration.temperature`,
+  the catalog, the bundle's declaration, the prompt form's default. `minicpm5-2b` (2.93),
+  `minicpm5-1b` (9.974) and `qwen3-0.6b` (11.882) carry records fitted on SemIf's
+  `perturbations108`: their probabilities change, their answers do not. `minicpm5-2b` on
+  `authored144`: ECE 0.167 → 0.071, Brier 0.455 → 0.411, accuracy 0.701 either way. A local
+  bundle (`init(bundleAt:)`) has no catalog entry and reads as before.
+
+### Fixed
+
+- **`decider-0.8b` read a described option twice over the wire.** `SystemOne.request(from:)`
+  writes each option's description as `key: description`, the text the chat form reads, and the
+  decider form composed it again: the model read `repair: repair: Replace damaged parts`, and
+  P(repair) on the fixture's one described choice came out 0.941 against the author's 0.971
+  (0.972 read in Python from the same bundle). The decider form now keeps a description that
+  already carries its name, as the slot, scalar and letter-list forms do; a choice built in Swift
+  from separate fields renders as before. This reached every door the wire feeds — `systemone
+  serve`, `systemone mcp`, the `decide` MCP tool — for a `choice` whose criteria carry
+  descriptions; the chosen option did not change on the fixture.
+
+### Docs
+
+- `docs/SYSTEM_ONE.md`, `Examples/Decide/README.md`, README: the official TypeSafe SDKs
+  measured against the local server by base URL alone; other servers that speak the form;
+  the calibration table for `minicpm5-2b` and `decider-0.8b`.
+- `docs/SYSTEM_ONE.md` "How many options a choice lists": the count per model, the measured
+  wide-choice table for `minicpm5-2b`, and the iPhone rule (a prompt under 1,024 tokens).
+
+## [0.6.0] — 2026-09-23
+
+The System One server as one signed, notarized binary: `brew install john-rocky/tap/systemone
+&& systemone serve`, and `brew services start systemone` to keep it running; `systemone mcp` serves the same decisions
+to a coding agent over the Model Context Protocol. `SystemOneServer`
+and `DecisionQueue` become public API, and `GET /v1/models` answers in the hosted list form
+(the official TypeSafe SDK's `models.list()` reads it). A minor: API added, one example file
+removed; `exact: "0.5.0"` resolvers move to `0.6.0`. Built and gated on macOS 27.0 (26A428)
+and Xcode 27 (27A266a); the `coreai-models` runtime pin stays 0.2.4-zoo.
+
+### Added
+
+- **`systemone` — the System One server without a Swift toolchain.** A root executable
+  product (`swift build -c release --product systemone`): `systemone serve [--model] [--host]
+  [--port]` is the `/v1/systemone` endpoint, `ask` one decision from the shell (`--json`
+  prints the wire form; the state comes from `--state`, `--state-file` or stdin), `models`
+  what can decide and what is downloaded. `.github/workflows/release.yml` builds it per tag on
+  the self-hosted Mac, signs it with Developer ID, notarizes it and attaches
+  `systemone-<tag>-macos-arm64.zip` to the tag's GitHub Release; the formula in
+  [john-rocky/homebrew-tap](https://github.com/john-rocky/homebrew-tap) installs that zip
+  (`brew install john-rocky/tap/systemone`) and `brew services start systemone` keeps it on
+  `127.0.0.1:8090` under launchd.
+- **`systemone mcp`** — the typed decisions as tools of a Model Context Protocol server on
+  stdio, so a coding agent calls the model on this machine: `claude mcp add systemone --
+  "$(brew --prefix)/bin/systemone" mcp` (Codex: `codex mcp add …`; Cursor: `~/.cursor/mcp.json`;
+  `decide-cli mcp` from a checkout). Tools `decide` (the `/v1/systemone` request form as
+  arguments, the response as `structuredContent` and as text) and `models` (the catalog ids
+  that can answer). Both revisions of the protocol are served — the `initialize` handshake of
+  2025-11-25 and earlier (what Claude Code 2.1 and Codex 0.154 send) and the per-request
+  `_meta` form of 2026-07-28 (`server/discover`). `SystemOneMCPServer` (the server over any
+  input/output pair; `run()` returns when the input closes, after the calls in flight have
+  answered, so a one-shot pipe works) and `SystemOneMCP` (the message
+  forms) are public API in `CoreAIKit`, with hermetic tests over pipes. On a Mac with two model
+  conversions running alongside, a three-question classification asked from a Claude Code
+  session round-tripped in 1,064 ms including the model load, 285 ms of it decisions.
+  `SystemOne.request(from: JSONValue)` joins the bytes overload.
+- **`SystemOneServer` and `DecisionQueue` are public** (`CoreAIKit`). The HTTP/1.1 server over
+  Network.framework that `decide-cli serve` carried moves into the kit, so an app serves the
+  same endpoint itself (on an iPhone, `host: "0.0.0.0"` offers it to the local network);
+  `run()` now returns when `stop()` is called and throws when the listener fails instead of
+  exiting the process. `DecisionQueue` is the one-at-a-time funnel any concurrent caller of
+  one `TypedDecisions` needs. `TypedDecisions.supports(_:)` says whether a catalog entry can
+  decide here.
+- **`openthai-systemone`** — iApp's OpenThai-SystemOne (Thai + English, Qwen3.5-0.8B tower,
+  Apache-2.0) as a catalog `decision` model, and the readout it needs: `Decision.Format.slot`.
+  A slot-head model replaces the LM head with a 256-way head read at a `<|ts_answer|>` control
+  token — option i is slot i, the last slot means "none of these" — so a choice may list up to
+  255 options (`TypedDecisions.maxOptions`; the letter readouts keep 16) and every answer
+  carries `Decision.Answer.abstain` (also written to a `/v1/systemone` choice answer). The
+  bundle declares the head and a temperature per question type in its `metadata.json`
+  (`decision` block); `TypedDecisions.temperature(for:)` reports which applies. On the
+  author's 50-row fixture (Thai, English and JSON states; 2–16, 40 and 255 options) the kit's
+  rows are token-, slot- and argmax-identical to the author's fp32 readout on 50/50, int8 max
+  |Δp| 0.0226 (`decide-cli parity`); 0.725 mean family balanced accuracy on SemIf's 144
+  English rows through the kit.
+- **`apus-openjev-v1-4b`** — APUS AI Lab's APUS-OpenJev-v1-4B (Qwen3.5-4B, English + Chinese,
+  Apache-2.0), a decision model for browser actions and workflow steps, as a catalog `decision`
+  model with its readout: `Decision.Format.sharedState`, one `Shared state:` + JSON task user
+  turn under the chat template read at the letters A–P, no calibration (the author's own
+  statement). A catalog entry may now name a decision model's readout (`CatalogEntry.format`),
+  read after the bundle's own declaration and before the kind's default. On the author's
+  48-row fixture the kit's prompts are token-identical to the author's compiled ones on all 40
+  choice and yes/no rows, argmax 40/40, max |Δp| 0.0055 (`decide-cli parity`, which also reads
+  the letter fixture form, `coreai-letter-fixtures/1`); 0.906 mean family balanced accuracy on
+  SemIf's 144 English rows through the kit. Mac only (5.8 GB).
+- **`qwen3.5-2b-decision`** — chaoliangUNSW's Jev-Style-Qwen3.5-2B-Decision (Qwen3.5-2B-Base
+  fine-tune, English, Apache-2.0; its calibration temperature folded into the weights, the author
+  reports ECE 0.017) as a catalog `decision` model with its readout: `Decision.Format.decisionFunction`,
+  the author's plain-text prompt without a chat template read at the space-prefixed letters ` A`–` Z`
+  (up to 26 options), T = 1. On the author's 58-row fixture the kit's rows are token- and
+  slot-identical to the author's and argmax-identical to the fp32 reference on 58/58 for both
+  bundles (int8 max |Δp| 0.0079, fp16 0.0058; `decide-cli parity`); 0.798 mean family balanced
+  accuracy on SemIf's 144 English rows through the kit. Mac and iPhone (2.9 GB int8; no iPhone
+  number yet).
+- **`system-one-scorer-4b`** — pngwn's system-one-qwen3.5-4b-scorer (a Qwen3.5-4B-Base LoRA with
+  a scalar scoring head, English, **CC BY-NC 4.0**) as a catalog `decision` model with its readout:
+  `Decision.Format.scalar`, one `State:` / `Question:` / `Option:` row per option with the state cut
+  from its end to fit 384 tokens, the rows' scalars softmaxed at the author's temperature 1.75 —
+  both declared by the bundle's metadata (`decision.head == "scalar"`), which is how the format is
+  resolved. Up to 64 options; a yes/no is the rows `yes` / `no`, a score one row per level. On the
+  author's 48-question, 280-row fixture the kit's rows are token- and slot-identical on 280/280 and
+  argmax-identical to the fp32 readout on 48/48 for both bundles (int8 max |Δp| 0.0110, fp16 0.0037;
+  `decide-cli parity`, which reads `coreai-scalar-fixtures/1`); 0.844 mean family balanced accuracy
+  on SemIf's 144 English rows through the kit. Mac only (5.1 GB).
+- **`Decision.Format.letterList`** — the lettered option list under the chat template that OpenJev's
+  helper sends (`State:`, `Question:`, `Options:` as `[A] key: description` lines, "Answer with the
+  letter of the best option only."), read at the bare letters A–Z then a–z (up to 52) at the
+  temperature the bundle declares, a yes/no calibrated the helper's way (`decision.readout ==
+  "letters"` with `temperature` and `noul` in metadata.json); `decide-cli parity` reads the helper's
+  fixture rows.
+- **`openjev-27b`** — OpenJev (the OpenJev project's Qwen3.8-27B fine-tune; English, German, French,
+  Hindi, Chinese, Japanese; **CC BY-NC 4.0** for the weights), the open model behind its
+  `/v1/systemone` helper, as a catalog `decision` model with `format: letterList`. On the author's
+  61-row fixture the kit's rows are token-, slot- and argmax-identical to the helper's own readout
+  on 61/61 (int8 max |Δp| 0.0003; a yes/no compared after the helper's calibration); 0.907 mean
+  family balanced accuracy on SemIf's 144 English rows through the kit. Mac only (28 GB int8hu,
+  about 28 GB resident, about 8 s per decision on an M4 Max).
+- **`CatalogEntry.license`** — the SPDX id of a model's weights license when it restricts use
+  (`CC-BY-NC-4.0`); nil for the permissive ones. `systemone models` prints it beside the name and
+  `/v1/models` adds it to the description; the zoo card has every model's exact terms.
+- `decide-cli --bundle <dir>` — any command on an unpublished bundle directory; `parity` reads
+  the slot fixture form (`coreai-slot-fixtures/1`) and renders JSON states itself.
+
+### Changed
+
+- `Examples/Decide/CLI/Serve.swift` is gone; `decide-cli serve` is a shell over the kit's
+  `SystemOneServer` with the same flags and routes.
+
+### Fixed
+
+- Thai, and every script that writes vowels and tones as combining marks, tokenizes through
+  swift-transformers differently from the reference tokenizer: the `Split` pre-tokenizer regex
+  is applied through Foundation's string search, whose matches snap to grapheme clusters, so a
+  letter run keeps its marks and BPE merges differently (23 of the 50 OpenThai fixture rows).
+  The slot-head path cuts each text segment with the same regex through ICU on UTF-16 and
+  encodes the pieces one by one (`SlotPrompt.Encoder`). The chat and decider paths still
+  tokenize through swift-transformers as before.
+
+## [0.5.0] — 2026-09-23
+
+Typed decisions — System One on device — enter the release train: `CoreAI.decide` /
+`TypedDecisions`, the `/v1/systemone` forms and `decide-cli serve`, and the ten whole uses
+in `Examples/Decide`. A minor: API added, nothing removed; `exact: "0.4.2"` resolvers move to
+`0.5.0`. Built and gated on macOS 27.0 (26A428) and Xcode 27 (27A266a); the `coreai-models`
+runtime pin stays 0.2.4-zoo.
+
 ### Added
 
 - **Typed decisions** — `CoreAI.decide(state, questions)` (CoreAIOps) and `TypedDecisions`
@@ -22,6 +256,54 @@ policy.
   as speed-only. `Examples/Decide`: a speech gate, a clipboard check with two Shortcuts
   actions, and a passage reranker, each decision with its measured milliseconds, plus
   `decide-cli` with `bench` and `oracle`.
+- **A model trained for decisions** — `decider-0.8b` (catalog kind `decision`, the first of
+  that kind: a Qwen3.5-0.8B-Base fine-tune that answers typed questions at an answer slot and
+  cannot chat). `TypedDecisions` renders it in the form it was trained on
+  (`Decision.Format.decider`: `Context:` / `Question:` / `Options:` / `Answer: (`, no chat
+  template; a score question is one yes/no row per level, `Decision.Score.fit` keeps the
+  per-level P(fits)) at its card's temperature 1.03; chat models keep the JSON-turn form
+  (`.chat`). The format follows the catalog kind, `Configuration.format` overrides it for a
+  local bundle. On the model's own 44-row fixture the kit's token ids, answer slots and
+  probabilities are checked by `decide-cli parity`: on the 43 rows the kit can list (the
+  255-option row is beyond its 16), token ids, answer slots and argmax all 43/43, max |Δp|
+  0.0088 / mean 0.0009 against the author's fp32 readout (int8 bundle, M4 Max, 2026-09-22).
+- `Examples/Decide` becomes five whole uses that run the same `TypedDecisions` on a Mac as on
+  an iPhone: **Autofill** (copy an email and every field of a checkout form fills at once —
+  the text prefilled once, one choice-among-lines question per field), **Checklist** (a
+  contract read once, a list of verdicts to `noul:` / `choice:` / `score:` lines), **Sorter**
+  (a folder read once per file: what needs you, then everything filed; Move files does it),
+  plus the passage reranker and the speech gate. The clipboard screen folds into Autofill;
+  the two Shortcuts actions stay. `decide-cli` gains `filter` (one decision per stdin line — a
+  semantic grep) and `parity`; the app takes `-autoplay <screen>` (`-trigger`, `-log`, `-feed`)
+  for hands-off runs and recordings.
+- Five more whole uses in `Examples/Decide`, the shapes of the most-viewed System One posts
+  with the model on the device: **Drive** (the model drives a car down a three-lane road, one
+  choice per tick, 80 ticks in 25 s at a 40 ms median on an M4 Max), **Columns** (a CSV and
+  the columns you ask for — every row read once, one decision per column; sort, save),
+  **Command guard** (an agent's command log under a policy in plain words → run / ask /
+  refuse; `hooks/claude-code-guard.sh` runs the same decision as a Claude Code PreToolUse
+  hook), **Context** (an agent transcript's tool results scored against the question — the
+  unrelated ones drop out, tokens counted by the model's tokenizer) and **Typing** (tone,
+  intent and an emoji read from the text at every pause). The README records which
+  question shapes read correctly on MiniCPM5 2B and which did not.
+- **The `/v1/systemone` forms** — `SystemOne.request(from:)` / `SystemOne.response(model:answers:)`
+  (CoreAIKit) read and write the request and answer JSON of the hosted System One API
+  (`state` as a string or structured data, `questions` keyed by id with `type` /
+  `instructions` / `criteria`; `answers` with `choice` + probabilities, `score` + legend,
+  `noul`, `confidence`, `usage`), over an order-keeping `JSONValue` that writes what Python's
+  `json.dumps(…, ensure_ascii=False)` writes, so a structured state reaches the model as the
+  same bytes a Python client sends. `decide-cli serve` puts a loaded model behind that
+  endpoint on this machine (`GET /v1/models`, `GET /health`, CORS open, `--host 0.0.0.0` for
+  the local network); a client written for the hosted endpoint switches by base URL. One
+  declared difference: at most 16 options per choice. `Examples/Decide/clients/` holds a curl
+  and a Python request.
+
+### Changed
+
+- `TypedDecisions.Configuration.temperature` is optional: `nil` (the default) is the model's
+  own — 1 for a chat model, the card's calibration for a decision model.
+- `TypedDecisions.promptTokens(_:_:)` is `promptRows(_:_:)` and returns one token sequence per
+  scored row (a score question under `.decider` is several).
 - **Token-level scoring on `TypedDecisions`** — `logits(for:)` feeds a token sequence and
   returns the logits at its last position for the whole vocabulary (`Decision.Logits`), with
   the KV-cache prefix reuse `decide` has (`timing.reusedTokens`); `prefill(tokens:)` is the
