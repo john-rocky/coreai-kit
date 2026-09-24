@@ -130,6 +130,9 @@ let package = Package(
         .testTarget(
             name: "CoreAIKitTests",
             dependencies: ["CoreAIKit", "CoreAIKitVision", "CoreAIKitEmbeddings", "CoreAIOps"],
+            // Read from the source tree (#filePath), not bundled: a test resource bundle would
+            // make `Bundle.module` ambiguous beside CoreAIKit's under `@testable import`.
+            exclude: ["Fixtures"],
             swiftSettings: [.define("COREAIKIT_XET", .when(traits: ["Xet"]))]
         ),
     ]

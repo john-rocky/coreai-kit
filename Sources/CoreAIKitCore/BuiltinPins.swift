@@ -41,6 +41,7 @@ enum BuiltinPins {
         "mistral-7b-v0.3": "9898c50a532b89cf933c7daa8c6f088b26c8a57f",
         "nanbeige4.1-3b": "b2efbe7b01a8a92ecd43c19c4d5cae15b0601879",
         "nanbeige4.2-3b": "5864ec7a5581940958e58354a6b6c46c8f06891e",
+        "nemotron-3-diarization": "8dc6258987e69fc7addadd240df0998b6ae131c0",
         "nemotron-3-nano-4b": "0f9e01aa8d3f569be4b067a67ff7681591c235c4",
         "nemotron-3.5-asr-streaming-0.6b": "3900f995653d7541e196f320c148775fe1662f9e",
         "north-micro-vision": "d6e48e3c2eb26dd3ad29c9b58642a405d66f0d54",

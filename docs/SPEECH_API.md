@@ -135,7 +135,7 @@ Every model already exists. Only the plumbing is missing.
 |---|---|---|
 | Ring buffer + `AsyncStream` over the mic | new | extends `MicRecorder`, which today only does start/stop |
 | **Voice-activity detection** | **new** | the only genuinely new component; small, no model, no dependency |
-| Speaker back-fill | new | `KitDiarizer` exists; the re-emit logic does not |
+| Speaker back-fill | new | `KitDiarizer` exists (Sortformer: 4 speakers, 80 ms; Nemotron-3-Diarization: 8 speakers, 10 ms); the re-emit logic does not |
 | `say` | thin | `KitSpeaker` exists; add playback |
 | `transcribeStream(file:)` | new | same pipeline as `listen()`, fed from a file instead of the mic |
 

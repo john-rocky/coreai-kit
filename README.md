@@ -348,7 +348,8 @@ Audio & speech
 
 - `Examples/Transcribe` — speech→text (Whisper large-v3-turbo, Qwen3-ASR, Parakeet TDT)
 - `Examples/Tidy` — the other half of dictation: raw transcript → written text (S1-mini by Superwhisper — fillers, false starts, spoken numbers and dates)
-- `Examples/Meeting` — who-said-what: Sortformer diarization + per-turn ASR in one API
+- `Examples/Meeting` — who-said-what: Sortformer (4 speakers) or Nemotron-3-Diarization (8)
+  diarization + per-turn ASR in one API
 - `Examples/Speak` — text-to-speech (Kokoro, VoxCPM)
 - `Examples/Music` — text→music with Stable Audio Open Small (~12× realtime on iPhone)
 - `Examples/AudioChat` — audio *understanding* — describe sounds, not just transcripts (Qwen2.5-Omni)
@@ -373,7 +374,7 @@ See `docs/GETTING_STARTED.md`.
 ## How the catalog is verified — and how you re-check it yourself
 
 The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 67 catalog entries:
+this is *what was checked, by whom, and can you check it again.* All 68 catalog entries:
 
 - **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
   that were gated — never "whatever is on `main` today." CI re-checks every pin
