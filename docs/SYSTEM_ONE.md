@@ -49,7 +49,9 @@ curl -s http://127.0.0.1:8090/v1/systemone -H 'Content-Type: application/json' -
 answers `/health` 0.7–4.6 s later (M4 Max, depending on how much of the model is still in the
 file cache). From a checkout the same
 server is `swift run -c release systemone serve`,
-or `decide-cli serve` in `Examples/Decide`.
+or `decide-cli serve` in `Examples/Decide`; `decide-cli serve --backend fm` is the same endpoint
+over Apple's on-device foundation model (`FoundationModelDecisions`: guided generation, one-hot
+probabilities, no calibration — the response says so in `metadata`).
 A client written for the hosted endpoint is pointed at this one by its base URL and nothing
 else changes. Measured 2026-09-23 against this server: the official TypeSafe Python SDK
 (`typesafe-sdk` 0.7.1) with `TYPESAFE_BASE_URL=http://127.0.0.1:8090` and any string as
@@ -265,6 +267,10 @@ Clips of each on the Mac and on the iPhone are in
   local network), `DecisionQueue` (one decision at a time over a shared model), and
   `SystemOneMCPServer` + `SystemOneMCP` (the same decisions as Model Context Protocol tools
   over stdio, and the message forms).
+- `Sources/CoreAIKit/Decide/FoundationModelDecisions.swift` — Apple's on-device foundation model
+  (FoundationModels, `SystemLanguageModel.default`) as a backend: each question one guided
+  generation under the answer's schema, the answer one-hot, no probabilities; `DecisionBackend`
+  is what it and `TypedDecisions` share and what `SystemOneServer` takes.
 - `Sources/CoreAIKit/Decide/Encoder*.swift` — an encoder-type model (laya): `EncoderPrompt` (the
   publisher's row builder; recent questions' tokens are kept), `EncoderReadout` (its host decoder:
   marker logits, act features, the temperature by question type and option count) and

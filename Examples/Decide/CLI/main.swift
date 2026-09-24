@@ -18,6 +18,7 @@
 //    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
 //   swift run -c release decide-cli mcp --preload      # a Model Context Protocol server on stdio (SystemOneMCPServer in the kit)
+//   swift run -c release decide-cli serve --backend fm  # the same endpoint over Apple's on-device foundation model
 //   swift run -c release decide-cli --list-models
 
 import CoreAILanguageModels
@@ -47,7 +48,10 @@ let usage = """
            decide-cli mcp   [--model <catalog-id>] [--preload]
                             (a Model Context Protocol server on stdin/stdout — tools decide, models — for Claude Code, Codex, Cursor)
            decide-cli --list-models
-    (--no-share: every command re-prefills each prompt whole, TypedDecisions.Configuration.sharePrefix = false;
+    (--backend fm: ask, bench, filter and serve answer on Apple's on-device foundation model — FoundationModelDecisions,
+     guided generation, one-hot probabilities, no calibration; the model id is apple-foundation-model;
+     --no-share: every command re-prefills each prompt whole, TypedDecisions.Configuration.sharePrefix = false —
+     on the system model, every question starts a new session instead of continuing the state's;
      --engine-log: the inference engine's own log lines on stdout)
     """
 
@@ -128,6 +132,10 @@ var actComputeUnits: GraphModel.ComputeUnits?
 var noShare = false
 /// `parity`: where to write each row's probabilities, argmax, and prompt and reused tokens.
 var dumpProbsPath: String?
+/// What answers: a catalog (or `--bundle`) model on `TypedDecisions`, or Apple's on-device
+/// foundation model on `FoundationModelDecisions` (`--backend fm`).
+enum BackendKind: String { case catalog, fm }
+var backendKind: BackendKind = .catalog
 
 func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
     switch name {
@@ -149,6 +157,22 @@ func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
         return try await TypedDecisions(bundleAt: URL(fileURLWithPath: bundlePath), configuration: configuration)
     }
     return try await TypedDecisions(catalog: modelID, configuration: configuration, downloadProgress: progress)
+}
+
+/// The system model as a backend: `--no-share` makes every question a new session.
+@MainActor func loadFoundationModel() throws -> FoundationModelDecisions {
+    var configuration = FoundationModelDecisions.Configuration()
+    if noShare { configuration.shareSession = false }
+    return try FoundationModelDecisions(configuration: configuration)
+}
+
+/// The backend `ask`, `filter` and `serve` answer on: the system model under `--backend fm`,
+/// else the decider `loadDecider` loads.
+@MainActor func loadBackend() async throws -> any DecisionBackend {
+    switch backendKind {
+    case .fm: return try loadFoundationModel()
+    case .catalog: return try await loadDecider()
+    }
 }
 
 func parts(_ spec: String) -> (String, [String]) {
@@ -202,6 +226,10 @@ while let arg = args.popFirst() {
     case "--compute": computeUnits = parseComputeUnits(args.popFirst())
     case "--act-compute": actComputeUnits = parseComputeUnits(args.popFirst())
     case "--no-share": noShare = true
+    case "--backend":
+        guard let name = args.popFirst(), let kind = BackendKind(rawValue: name) else { fail(usage) }
+        backendKind = kind
+        if kind == .fm { modelID = FoundationModelDecisions.modelID }
     case "--dump-probs": dumpProbsPath = args.popFirst()
     case "--engine-log": CLILogger.level = 1
     default: fail(usage)
@@ -233,7 +261,11 @@ let id = modelID
     // `--bundle` and `--no-share` must reach every command: the QuickStart snippet only knows
     // catalog ids and the default configuration.
     let answers: [String: Decision.Answer]
-    if bundlePath != nil || noShare {
+    if backendKind == .fm {
+        let decider = try loadFoundationModel()
+        stderrPrint("model: \(id) (\(decider.modelName))   guided generation, one-hot probabilities, session \(noShare ? "fresh" : "shared")")
+        answers = try await decider.decide(state, asked)
+    } else if bundlePath != nil || noShare {
         let decider = try await loadDecider()
         stderrPrint("model: \(id) (\(await decider.modelName))   format: \(decider.format.rawValue)")
         answers = try await decider.decide(state, asked)
@@ -290,7 +322,51 @@ let benchQuestions: [Decision.Question] = [
     return (median(per), median(totals), reused)
 }
 
+/// `bench` on the system model: the same state and eight questions, the state in one session
+/// that every question continues (shared) against a new session per question (fresh). The
+/// framework reports each answer's prompt tokens and how many it served from its cache.
+@MainActor func runBenchFM() async throws {
+    let text = try stateFile.map { try String(contentsOfFile: $0, encoding: .utf8) } ?? benchState
+    func run(_ label: String, share: Bool) async throws -> (perDecision: Double, total: Double, prompt: Int, reused: Int) {
+        var configuration = FoundationModelDecisions.Configuration()
+        configuration.shareSession = share
+        let decider = try FoundationModelDecisions(configuration: configuration)
+        // Warm: the first generation of a process loads the model.
+        _ = try await decider.decide(text, benchQuestions[0])
+        var totals: [Double] = []
+        var per: [Double] = []
+        var prompt = 0
+        var reused = 0
+        for _ in 0..<repeatCount {
+            await decider.reset()
+            let start = SuspendingClock.now
+            var answers: [Decision.Answer] = []
+            for question in benchQuestions {
+                answers.append(try await decider.decide(text, question))
+            }
+            let elapsed = SuspendingClock.now - start
+            let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+            totals.append(seconds * 1000)
+            per.append(contentsOf: answers.map(\.timing.milliseconds))
+            prompt = answers.map(\.timing.promptTokens).reduce(0, +)
+            reused = answers.map(\.timing.reusedTokens).reduce(0, +)
+            stderrPrint("  \(label): \(fmt(seconds * 1000, 0)) ms for \(benchQuestions.count) decisions")
+        }
+        return (median(per), median(totals), prompt, reused)
+    }
+    let s = try await run("shared", share: true)
+    let d = try await run("fresh", share: false)
+    print("model: \(id) (\(try loadFoundationModel().modelName))")
+    print("questions: \(benchQuestions.count)   repeat: \(repeatCount)   sampling: greedy")
+    print("| mode | ms per decision (median) | ms per state, \(benchQuestions.count) decisions (median) | prompt tokens, all decisions | cached tokens |")
+    print("|---|---:|---:|---:|---:|")
+    print("| shared | \(fmt(s.perDecision, 1)) | \(fmt(s.total, 0)) | \(s.prompt) | \(s.reused) |")
+    print("| fresh | \(fmt(d.perDecision, 1)) | \(fmt(d.total, 0)) | \(d.prompt) | \(d.reused) |")
+    print("shared / fresh: \(fmt(s.total / d.total, 2))× per state, \(fmt(s.perDecision / d.perDecision, 2))× per decision")
+}
+
 @MainActor func runBench() async throws {
+    if backendKind == .fm { return try await runBenchFM() }
     let text = try stateFile.map { try String(contentsOfFile: $0, encoding: .utf8) } ?? benchState
     var shared = TypedDecisions.Configuration()
     shared.sharePrefix = true
@@ -1420,7 +1496,7 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty { lines.append(trimmed) }
     }
-    let decider = try await loadDecider()
+    let decider = try await loadBackend()
     var passed = 0
     var milliseconds: [Double] = []
     for line in lines {
@@ -1446,6 +1522,23 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
 // `systemone serve`, the Homebrew-installed binary, is the same server without a toolchain)
 
 @MainActor func runServe() async throws {
+    if backendKind == .fm {
+        let decider = try loadFoundationModel()
+        // Warm: the first generation of a process loads the model; a client should not pay for it.
+        _ = try await decider.decide("warm-up", .noul("Is this a warm-up?"))
+        let build = ProcessInfo.processInfo.operatingSystemVersionString
+        let models = SystemOne.modelsValue(
+            id: id,
+            description: "Apple's on-device foundation model (FoundationModels, SystemLanguageModel.default), "
+                + "guided generation: one-hot probabilities, no calibration; \(build), on this machine",
+            revision: build)
+        stderrPrint("loaded \(id) (\(decider.modelName)); one request at a time, session \(noShare ? "fresh per question" : "shared per state")")
+        let server = SystemOneServer(host: host, port: port, modelID: id, models: models, backend: decider) { line in
+            stderrPrint("decide-cli serve: \(line)  (Ctrl-C stops)")
+        }
+        try await server.run()
+        return
+    }
     let decider = try await loadDecider()
     let models: JSONValue
     if bundlePath == nil {
@@ -1470,6 +1563,7 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
 
 @MainActor func runMCP() async throws {
     if bundlePath != nil { fail("decide-cli mcp loads catalog ids (the decide tool's `model`); --bundle does not apply") }
+    if backendKind == .fm { fail("decide-cli mcp loads catalog ids (the decide tool's `model`); --backend fm does not apply") }
     signal(SIGPIPE, SIG_IGN)
     let server = SystemOneMCPServer(defaultModel: id, downloadProgress: progress) { line in
         stderrPrint("decide-cli mcp: \(line)")

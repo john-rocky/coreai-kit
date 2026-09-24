@@ -312,6 +312,10 @@ public enum DecisionError: Error, LocalizedError, Equatable {
     case emptyPrompt
     /// The engine returned no logits for the prompt.
     case noLogits
+    /// The model refused this request — a guardrail, a refusal, a prompt past its context
+    /// window (`FoundationModelDecisions`). A server answers it as a 422: the input, not the
+    /// server, is what failed.
+    case refused(reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -337,6 +341,8 @@ public enum DecisionError: Error, LocalizedError, Equatable {
             return "A prompt needs at least one token."
         case .noLogits:
             return "The engine returned no logits for the prompt."
+        case .refused(let reason):
+            return "The model refused this request: \(reason)"
         }
     }
 }

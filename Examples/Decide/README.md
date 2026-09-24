@@ -50,6 +50,7 @@ endpoint is pointed at this one by its base URL and nothing else changes:
 
 ```bash
 swift run -c release decide-cli serve --model minicpm5-2b          # http://127.0.0.1:8090/v1/systemone
+swift run -c release decide-cli serve --backend fm                 # the same over Apple's on-device foundation model (one-hot answers; see below)
 clients/systemone.sh                                               # one request with curl
 python3 clients/systemone.py                                       # the same from Python, standard library only
 TYPESAFE_BASE_URL=http://127.0.0.1:8090 TYPESAFE_API_KEY=local python3 your_client.py   # the official SDKs; other clients have a base-URL setting
@@ -583,6 +584,28 @@ calibration temperature 2.93 (fit on SemIf perturbations108), `qwen3.5-2b` with 
 (temperature 1).
 ⁴ Three model servers ran on the same GPU at once. A solo re-check of 30 items per model returned
 bit-identical probabilities, in about half the time.
+
+Apple's on-device foundation model on the same 231 items, through `decide-cli serve --backend fm`
+at this branch (`FoundationModelDecisions`), the same harness and driver, one question per request,
+on the same Mac later the same day (other lanes' builds on the CPU, no other model server):
+
+| model | easy 48 | standard 72 | hard 111 | ECE hard | p50 | p95 | hard max | bundle on disk | note |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| `apple-foundation-model`, session shared per state | 0.875 | 0.722 | 0.387 | 0.602⁵ | 0.36 s | 2.04 s | 3.4 s | 0 | system model, guided generation⁶; 4 × 422⁷ |
+| `apple-foundation-model`, new session per question | 0.875 | 0.722 | 0.387 | 0.602⁵ | 0.34 s | 2.04 s | 3.4 s | 0 | system model, guided generation⁶; 4 × 422⁷ |
+
+⁵ Not a calibration figure: the framework exposes no logits, so every answer's probability is 1 and
+ECE is 1 − accuracy. The calibration axis does not apply to this backend.
+⁶ Each question is one guided generation under the answer's schema — a choice an enumeration of its
+option ids, a noul a Bool, a score an Int within its levels — sampled greedily, the state in the
+session's instructions. Shared and fresh answered all 231 items identically; with one question per
+request they send the same prompt. On eight questions about one state (`decide-cli bench --backend
+fm`), a fresh session per question is the cheaper of the two: 340 ms per decision against 366 ms on
+the shared transcript, which the framework serves from its cache but which grows with every answer.
+⁷ The framework's guardrails or the model refused four items as unsafe or sensitive (one names a
+credit card's last four digits); a refusal is a 422, which JevBench counts as wrong. No prompt
+overflowed the 8,192-token context window (the longest hard item is 3,999 input tokens). The
+yes side of a noul is over-chosen: 53 yes against 35 expected over the 74 yes/no items.
 
 JevBench's published scores (Intelligence and the rest) are chance-corrected over 534 items, sealed
 ones included, and are not comparable to these accuracies. Every request and answer is in

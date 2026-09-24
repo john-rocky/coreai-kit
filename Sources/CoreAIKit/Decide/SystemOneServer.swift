@@ -16,6 +16,10 @@
 // accepts concurrently. HTTP/1.1 over Network.framework — no dependency added, and the same
 // code listens on an iPhone (`host: "0.0.0.0"` serves the local network).
 //
+// The model is any `DecisionBackend`: a `TypedDecisions` (a catalog or local bundle, probabilities
+// from the logits) or a `FoundationModelDecisions` (Apple's on-device foundation model, one-hot
+// answers under a schema, `metadata` on every response saying so — `decide-cli serve --backend fm`).
+//
 // `systemone serve` (the Homebrew-installed CLI) and `decide-cli serve` (Examples/Decide) are
 // argument shells over this type.
 
@@ -122,7 +126,10 @@ public final class SystemOneServer: @unchecked Sendable {
     public let modelID: String
     /// What `GET /v1/models` says about the loaded model (`SystemOne.modelsValue`).
     public let models: JSONValue
-    public let decider: TypedDecisions
+    /// What answers: a `TypedDecisions` or a `FoundationModelDecisions`.
+    public let backend: any DecisionBackend
+    /// The backend when it is a `TypedDecisions`; nil over the system model.
+    public var decider: TypedDecisions? { backend as? TypedDecisions }
     /// One line per event (listening, each request served); stderr by default.
     public let log: @Sendable (String) -> Void
     private let decisions = DecisionQueue()
@@ -136,16 +143,25 @@ public final class SystemOneServer: @unchecked Sendable {
     ///   - models: the `GET /v1/models` body; `SystemOne.modelsValue(id:description:revision:)`
     ///     with the catalog entry's name and pin says what a hosted client expects. Left nil,
     ///     the id stands in for the description and the revision is empty.
-    public init(
+    public convenience init(
         host: String = "127.0.0.1", port: UInt16 = 8090, modelID: String, models: JSONValue? = nil,
         decider: TypedDecisions,
+        log: @escaping @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+    ) {
+        self.init(host: host, port: port, modelID: modelID, models: models, backend: decider, log: log)
+    }
+
+    /// The same over any backend — `FoundationModelDecisions` for the system model.
+    public init(
+        host: String = "127.0.0.1", port: UInt16 = 8090, modelID: String, models: JSONValue? = nil,
+        backend: any DecisionBackend,
         log: @escaping @Sendable (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
     ) {
         self.host = host
         self.port = port
         self.modelID = modelID
         self.models = models ?? SystemOne.modelsValue(id: modelID, description: modelID, revision: nil)
-        self.decider = decider
+        self.backend = backend
         self.log = log
     }
 
@@ -263,16 +279,19 @@ public final class SystemOneServer: @unchecked Sendable {
         let parsed: SystemOne.Request
         do {
             // The loaded model's own option count, so a list it cannot read is a 422 that says so.
-            parsed = try SystemOne.request(from: request.body, maxOptions: decider.maxOptions)
+            parsed = try SystemOne.request(from: request.body, maxOptions: backend.maxOptions)
         } catch let error as SystemOne.WireError {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.message))
         } catch {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: "\(error)"))
         }
         do {
-            let response = try await decisions.run { [decider] in try await decider.systemOne(parsed) }
-            log("POST \(SystemOne.path)  \(parsed.questions.count) question(s), state \(response.stateTokens) tokens, \(Int(response.milliseconds.rounded())) ms")
-            return .json(200, SystemOne.response(model: modelID, answers: response.answers.map { ($0.id, $0.question, $0.answer) }))
+            let response = try await decisions.run { [backend] in try await backend.systemOne(parsed) }
+            // The system model counts the state inside each answer, not as a prefix.
+            let state = response.stateTokens > 0 ? "state \(response.stateTokens) tokens, " : ""
+            log("POST \(SystemOne.path)  \(parsed.questions.count) question(s), \(state)\(Int(response.milliseconds.rounded())) ms")
+            return .json(200, SystemOne.response(
+                model: modelID, answers: response.answers.map { ($0.id, $0.question, $0.answer) }, metadata: response.metadata))
         } catch let error as DecisionError {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.localizedDescription))
         } catch {
