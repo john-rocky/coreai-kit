@@ -103,15 +103,17 @@ MCP server itself.
 | Twenty tickets × three columns, 60 decisions | 3,963 ms | 7,420 ms |
 | A `/v1/systemone` request, 2 questions on a 59-token state, end to end | 204 ms | — |
 | One decision, `laya-multilingual` (an encoder, 256-token window, GPU, state shared) | 11.5 ms | 47 ms |
-| One decision, `openthai-systemone` (0.8B, its own answer head; a recurrent hybrid on an S = 1 graph, the state checkpointed after its prefix) | 120 ms† | 1,527 ms‡ |
-| One decision, `qwen3.5-2b-decision` (2B, the same S = 1 graph and checkpoint) | 220 ms† | 6,063 ms‡ |
+| One decision, `openthai-systemone` (0.8B, its own answer head; a recurrent hybrid on an S = 1 graph, the state checkpointed after its prefix) | 120 ms† | 263 ms‡ |
+| One decision, `qwen3.5-2b-decision` (2B, the same S = 1 graph and checkpoint) | 220 ms† | 1,040 ms‡ |
 
 Measured 2026-09-22/24 on the runs in `Examples/Decide/README.md`, which says what each
 number is and what else was running; the phone at thermal state "nominal" for the last three rows.
 † `decide-cli bench --repeat 6`, eight questions on one state, nothing else on the GPU
 (2026-09-24); with every prompt from scratch they take 696 ms and 1,297 ms.
-‡ Before the checkpoint, when every question re-prefilled its whole row; the phone has not been
-measured with it yet.
+‡ The same bench on the phone with kit 0.7.1 (2026-09-24), at thermal state "nominal":
+`openthai-systemone` unplugged, `qwen3.5-2b-decision` on the charger. With every prompt from
+scratch they take 1,653 ms and 6,150 ms (`qwen3.5-2b-decision`'s on kit `a88ec6a`, before the
+checkpoint: its 0.7.1 from-scratch runs went hot).
 
 ## Which model
 
@@ -280,15 +282,17 @@ the same option on every row. `decider-0.8b` picked it on all 60 rows that fit i
 context. A question past 26 options reads its own system line, so it prefills the state again
 instead of reusing it.
 
-On an iPhone a chat model's prompt must stay under 1,024 tokens (the growing cache of the
-pipelined engine the chat models run on there), and a 255-option choice in the chat form does
-not: 3,100–4,200 tokens with short options, so on a chat model a choice that wide is a Mac
-call; the phone's ceiling there is what fits in 1,024 tokens beside the state, about 60 short
-options, estimated from the prompt sizes above (not measured on a phone). A decision model, read
-on the logits engine, takes a longer row on the phone: `decider-0.8b`'s 255-option fixture row,
-1,965 tokens, answered on the iPhone 17 Pro in 70 s with the fp32 readout's argmax
-(2026-09-23, all 44 rows argmax-identical there, max |Δp| 0.009), and `qwen3.5-2b-decision`'s
-1,743-token rows in 155 s — on a decision model a wide choice is a slow call, not a Mac-only one.
+The iPhone's 1,024-token limit belongs to the pipelined engine that chat generation runs on: on
+iOS it caps a growing KV cache there, because the on-device compiler miscompiles that graph once
+the cache reaches 2,048 positions. A decision loads a language model on the sequential engine,
+which has no such cap. On an iPhone 17 Pro, `minicpm5-2b` answered all 111 JevBench hard items,
+39 of them with prompts past 1,024 tokens (up to 3,789), with the Mac's answer on every one
+(max |Δp| 0.0046; kit 0.7.1, iOS 27.0, 2026-09-24). A 255-option choice in the chat form,
+3,100–4,200 tokens with short options, has not been run on a phone. A decision model takes a
+long row there too: `decider-0.8b`'s 255-option fixture row, 1,965 tokens, answered on the
+iPhone 17 Pro in 70 s with the fp32 readout's argmax (2026-09-23, all 44 rows argmax-identical
+there, max |Δp| 0.009), and `qwen3.5-2b-decision`'s 1,743-token rows in 155 s — on a decision
+model a wide choice is a slow call, not a Mac-only one.
 
 ## What runs
 

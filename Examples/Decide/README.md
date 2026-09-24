@@ -273,22 +273,23 @@ over two states with one revisited. Before coreai-models 0.2.7-zoo the two colum
 on the hybrids: every question replayed its prompt from the first token.
 
 **The same command on the iPhone 17 Pro** (iOS 27.0, 2026-09-24, the phone at thermal state
-"nominal" from start to finish, the app in front, the catalog's own bundles; `decide-cli bench
---repeat 3` run inside an app on the phone):
+"nominal" from start to finish, the app in front, the catalog's own bundles; `decide-cli bench`
+run inside an app on the phone, kit 0.7.1 with `--repeat 6`, unplugged unless noted; a figure
+marked kit `a88ec6a` is from that commit, before the checkpoint, with `--repeat 3`):
 
 | Model (catalog id) | ms per decision, state shared | ms per decision, every prompt from scratch | prefill + 8 decisions on one state |
 |---|---:|---:|---:|
-| MiniCPM5 2B int8 (`minicpm5-2b`) | 106.0 | 208.2 | 1,019 ms vs 1,850 ms |
-| laya multilingual (`laya-multilingual`, 256-token window) | 47.1 | 46.4 | 390 ms vs 458 ms |
-| OpenThai-SystemOne 0.8B int8 (`openthai-systemone`) | 1,527 | 1,713 | 13.5 s vs 15.2 s (0 reused: before the checkpoint a recurrent hybrid re-prefilled every row) |
-| Qwen3.5 2B Decision int8 (`qwen3.5-2b-decision`) | 6,063 | 6,150 | 53.2 s vs 54.2 s (0 reused, before the checkpoint) |
+| MiniCPM5 2B int8 (`minicpm5-2b`) | 100.8 | 220.8 | 1,007 ms vs 1,983 ms |
+| laya multilingual (`laya-multilingual`, 256-token window) | 47.1 | 46.4 | 390 ms vs 458 ms (kit `a88ec6a`) |
+| decider 0.8B int8 (`decider-0.8b`) | 517.4 | 2,463.1 | 8.8 s vs 33.6 s |
+| OpenThai-SystemOne 0.8B int8 (`openthai-systemone`) | 263.1 | 1,653.2 | 3.6 s vs 14.7 s |
+| Qwen3.5 2B Decision int8 (`qwen3.5-2b-decision`) | 1,040.1 | 6,150 (kit `a88ec6a`) | 13.9 s vs 54.2 s (the shared runs on the charger; from scratch on kit `a88ec6a`, because kit 0.7.1's runs went hot) |
 
-The phone reads MiniCPM5 2B at about 1.6× the Mac's time per shared decision and laya at 4×;
-the two decision models pay their S = 1 prefill at the phone's rate, about 30 ms per token,
-so a question on them is seconds there — the hot-phone figures in their paragraphs below are
-about twice these. These two rows predate the checkpoint described under the Mac table, which
-leaves a later question on a state only its own tokens to prefill; the phone has not been
-measured with it yet.
+The phone reads MiniCPM5 2B at about 1.6× the Mac's time per shared decision and laya at 4×.
+The three recurrent hybrids pay their S = 1 prefill at the phone's rate, so a state's first
+question costs seconds there. With the state checkpointed, each later question on it costs
+263–1,040 ms; before the checkpoint every question paid the whole prefill (kit `a88ec6a`:
+1,527 ms per shared decision on `openthai-systemone`, 6,063 ms on `qwen3.5-2b-decision`).
 
 Agreement with the published bf16 readout of the same models on the same 144 authored rows
 (SemIf's `authored144` fixture, its `direct` rendering byte for byte, its `evaluate.py` metric):

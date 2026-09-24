@@ -31,6 +31,15 @@ policy.
   and five of them on an iPhone 17 Pro (2026-09-24), with accuracy, time per question, download
   size and option limit per model, and when to name `apus-decision-v1-4b` instead of the
   default. The default stays `minicpm5-2b` on every platform.
+- `docs/SYSTEM_ONE.md`, `TypedDecisions`: the iPhone's 1,024-token limit is the pipelined engine's,
+  which chat generation runs on. A decision runs on the sequential engine, where `minicpm5-2b`
+  read prompts up to 3,789 tokens on an iPhone 17 Pro with the Mac's answer on all 111 JevBench
+  hard items (kit 0.7.1). The docs had told decisions to stay under 1,024 tokens.
+- `docs/SYSTEM_ONE.md` "What it costs", `Examples/Decide/README.md`: the iPhone's time per
+  decision on kit 0.7.1, where a recurrent hybrid reuses the checkpointed state: 263 ms on
+  `openthai-systemone`, 517 ms on `decider-0.8b`, 1,040 ms on `qwen3.5-2b-decision` (101 ms on
+  `minicpm5-2b`). The pages had the figures from before the checkpoint and said the phone had
+  not been measured with it.
 
 ## [0.7.2] — 2026-09-24
 

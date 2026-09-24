@@ -68,12 +68,14 @@
 // the static-shape engine for a chunked static (Neural Engine) bundle — the two engines that
 // return logits. Decode speed does not matter here: a decision generates nothing.
 //
-// On iPhone keep a prompt under 1024 tokens: the on-device compiler miscompiles the growing
-// KV cache of a dynamic bundle once it reaches 2048 positions (the same guard the pipelined
-// engine enforces). A choice of 255 options does not fit that — 1,965 tokens for the decider's
-// fixture row, 3,100–4,200 for a chat model's JSON of short options — so it is a Mac call; on
-// a phone the ceiling is what fits in 1024 tokens (about 60 short options in the chat form,
-// estimated from the Mac prompt sizes, not measured on a phone).
+// The iPhone's 1024-token limit belongs to the pipelined engine: on iOS it caps a growing KV
+// cache, because the on-device compiler miscompiles that graph once the cache reaches 2048
+// positions (apple/coreai-models#124). The sequential engine a decision loads on has no such
+// cap, and a long prompt reads correctly there: on an iPhone 17 Pro (iOS 27.0, kit 0.7.1,
+// 2026-09-24) `minicpm5-2b` answered JevBench's 111 hard items, 39 of them past 1024 tokens
+// (up to 3,789), with the Mac's argmax on every one. A 255-option choice is 1,965 tokens for
+// the decider's fixture row (70 s on that phone) and 3,100–4,200 for a chat model's JSON of
+// short options (not run on a phone).
 
 import CoreAIKitVision
 import CoreAILanguageModels
