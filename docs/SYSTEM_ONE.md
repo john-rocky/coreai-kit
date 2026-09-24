@@ -113,6 +113,62 @@ number is and what else was running; the phone at thermal state "nominal" for th
 ‡ Before the checkpoint, when every question re-prefilled its whole row; the phone has not been
 measured with it yet.
 
+## Which model
+
+The default, `minicpm5-2b`, is the fast one: at the median, 0.14 s per question on the Mac and
+0.17–0.63 s on the phone, up to 255 options, probabilities read at a fitted temperature. On a
+Mac, name `apus-decision-v1-4b` when accuracy matters more than time and download: 0.986 on
+JevBench's standard items (the hosted Jev's score), up to 16 options, 5.8 GB, about 2.6 s for
+the first question on a short state and 1.2 s for each later question on it. On an iPhone, keep
+`minicpm5-2b`: of the five models run there, it scores highest on the hard items (0.459).
+Name a model with `options: .model("apus-decision-v1-4b")` in Swift, or
+`systemone serve --model apus-decision-v1-4b` for the server.
+
+JevBench's 231 public items (48 easy, 72 standard, 111 hard), sent one question per request to
+`decide-cli serve` by the benchmark's own harness, which also scored them; M4 Max, macOS 27.0,
+2026-09-24:
+
+| Model | Standard | Hard | Median per question | Slowest hard item | Download | Most options | Note |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `apus-decision-v1-4b` | 0.986 | 0.559 | 5.94 s¹ | 217.6 s¹ | 5.8 GB | 16 | Mac only; browser and workflow steps, English + Chinese |
+| `system-one-scorer-4b` | 0.861 | 0.505 | 8.96 s¹ | 72.0 s¹ | 5.1 GB | 255 | Mac only; CC BY-NC 4.0; 70 hard states cut to its 384-token rows |
+| `decider-0.8b` | 0.833 | 0.414 | 1.69 s | 90.6 s | 1.3 GB | 255 | |
+| `openthai-systemone` | 0.819 | 0.324 | 0.62 s | 39.0 s | 1.1 GB | 255 | Thai + English; an abstain probability |
+| `qwen3.5-2b-decision` | 0.778 | 0.405 | 3.24 s¹ | 138.5 s¹ | 3.0 GB | 26 | |
+| `qwen3.5-2b` | 0.750 | 0.441 | 2.74 s | 62.3 s | 3.0 GB | 26 | chat model, zero-shot, no calibration |
+| `minicpm5-2b` (default) | 0.708 | 0.459 | 0.14 s | 1.8 s | 2.7 GB | 255 | chat model, zero-shot, catalog temperature 2.93 |
+| `laya-multilingual` | 0.403 | 0.342 | 0.02 s | 0.3 s | 0.7 GB | 20 | encoder; 256-token window: 95 hard states cut |
+
+¹ With two other model servers on the GPU. Re-run alone on 30 items, they gave the same
+probabilities in about half the time: 2.6 s per question for `apus-decision-v1-4b` on the easy
+and standard ones.
+The GPU was shared with other work on every row, so the times are an upper bound. Six of the
+eight models are Qwen3.5 recurrent hybrids that read a state one token at a time, so their
+slowest hard items take 39–218 s. The hosted Jev (1.13.0) scores 0.986 on the same standard
+items and 0.730 on the hard ones, on its own serving stack (JevBench's published per-item
+results).
+
+The same requests on an iPhone 17 Pro, answered in an app through `TypedDecisions.systemOne(_:)`,
+the path the server takes (iOS 27.0, kit 0.7.1), 2026-09-24; every time here is at thermal
+state "nominal". The phone gave the Mac's answer on every item it ran, 882 of 882:
+
+| Model | Standard | Hard | Median per question, standard | Median per question, hard | Download | Most options | Note |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `decider-0.8b` | 0.833 | 0.414² | 1.33 s³ | 8.04 s² | 1.3 GB | 255 | |
+| `openthai-systemone` | 0.819 | 0.324² | 0.99 s | 5.77 s² | 1.1 GB | 255 | Thai + English |
+| `qwen3.5-2b-decision` | 0.778 | 0.405² | 3.95 s | 18.09 s² | 3.0 GB | 26 | |
+| `minicpm5-2b` (default) | 0.708 | 0.459 | 0.17 s | 0.63 s | 2.7 GB | 255 | chat model |
+| `laya-multilingual` | 0.403 | 0.342 | 0.05 s | 0.07 s | 0.7 GB | 20 | encoder; 256-token window |
+
+² The phone ran the three hybrids on the 20 hard items of median length, with the Mac's answer
+on each. Their hard accuracy is the Mac's over all 111; their hard time is over those 20.
+³ Its easy items. Its standard items ran while the phone was hot, at 2.26 s.
+`apus-decision-v1-4b` and `system-one-scorer-4b` have no iPhone variant; `qwen3.5-2b` was not run
+on the phone. The Mac's requests and answers are in
+[mlboydaisuke/coreai-decision-models-public231](https://huggingface.co/datasets/mlboydaisuke/coreai-decision-models-public231);
+[`Examples/Decide/README.md`](../Examples/Decide/README.md#jevbench-public-231-mac-2026-09-24)
+has the Mac table with the easy items, ECE and p95.
+
 ## What it gets right, and what it does not
 
 `minicpm5-2b` is the default because its int8 decisions track its own full-precision readout:

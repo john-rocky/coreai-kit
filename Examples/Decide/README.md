@@ -610,6 +610,8 @@ yes side of a noul is over-chosen: 53 yes against 35 expected over the 74 yes/no
 JevBench's published scores (Intelligence and the rest) are chance-corrected over 534 items, sealed
 ones included, and are not comparable to these accuracies. Every request and answer is in
 [mlboydaisuke/coreai-decision-models-public231](https://huggingface.co/datasets/mlboydaisuke/coreai-decision-models-public231).
+The iPhone 17 Pro's results on the same items, for five of these models, are in
+[`docs/SYSTEM_ONE.md`](../../docs/SYSTEM_ONE.md#which-model).
 
 ## Where the code is
 

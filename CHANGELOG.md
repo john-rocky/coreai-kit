@@ -25,6 +25,13 @@ policy.
   `decide-cli ask | bench | filter | serve --backend fm` answer on it (the model id is
   `apple-foundation-model`). No catalog model's path changes.
 
+### Docs
+
+- `docs/SYSTEM_ONE.md` "Which model": JevBench's public items on eight catalog models on a Mac
+  and five of them on an iPhone 17 Pro (2026-09-24), with accuracy, time per question, download
+  size and option limit per model, and when to name `apus-decision-v1-4b` instead of the
+  default. The default stays `minicpm5-2b` on every platform.
+
 ## [0.7.2] — 2026-09-24
 
 A patch. With the default engine, `ChatSession(model:)` and `init(bundleAt:)` no longer stop the
