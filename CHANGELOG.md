@@ -34,13 +34,19 @@ policy.
   4.9% low. Another 21 were more than 2% off for other reasons, among them round-number
   estimates, subtrees a loader downloads left out (VibeVoice's glue, voices and embedding table,
   369 MB), and iOS figures above what the iOS subtree holds (VoxCPM2: 5,658 MB declared, 4,727 MB
-  downloaded).
-  `scripts/measure-catalog-sizes.py` now measures all 111 at the pinned revision and writes
-  `catalog.json` and the built-in copy together. CI runs its `--check`, which fails on a size more
-  than 2% off. `systemone models` and apps that load the live catalog show the new sizes once this
-  merges; `capability()`, the residency estimate and the MCP `models` tool read the built-in copy,
-  which carries them from the next release. Docs and examples that quoted an old size quote the
+  downloaded). `scripts/measure-catalog-sizes.py` now measures all 111 at the pinned revision and
+  writes `catalog.json` and the built-in copy together. CI runs its `--check`, which fails on a
+  size more than 2% off. `systemone models` and apps that load the live catalog already show the
+  new sizes; `capability()`, the residency estimate and the MCP `models` tool read the built-in
+  copy, which carries them from this release. Docs and examples that quoted an old size quote the
   new one.
+- **`KitMineruReader(catalog:)`, `KitGlmOcrReader(catalog:)` and `KitNemotronModel(catalog:)`
+  downloaded the model repo's `main`**, not the revision the catalog entry pins. An upload to one
+  of those repos would have reached apps without a reviewed pin bump. They now download the
+  pinned revision, as every other `catalog:` initializer does; `CoreAI.read` reaches the first
+  two. On 2026-09-24 `main` held the same files as the pins under the paths they fetch. A copy
+  cached from `main` is not reused while online: the first load after updating downloads the
+  pinned revision again (2.6 GB for MinerU, 1.7 GB for GLM-OCR, 1.3 GB for Nemotron).
 
 ### Docs
 

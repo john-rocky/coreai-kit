@@ -28,11 +28,15 @@ public final class KitGlmOcrReader: @unchecked Sendable {
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
         let entry = try await ModelCatalog.entry(forID: id, expecting: .ocr)
-        let vision = try await store.download(
-            ModelID(entry.repo, path: "vision"), progress: downloadProgress)
-        let decoder = try await store.download(
-            ModelID(entry.repo, path: "decoder"), progress: downloadProgress)
+        let bundles = Self.bundles(for: entry)
+        let vision = try await store.download(bundles.vision, progress: downloadProgress)
+        let decoder = try await store.download(bundles.decoder, progress: downloadProgress)
         try await self.init(visionDir: vision, decoderDir: decoder)
+    }
+
+    /// The two subtrees `init(catalog:)` downloads, at the revision the entry pins.
+    static func bundles(for entry: CatalogEntry) -> (vision: ModelID, decoder: ModelID) {
+        (entry.modelID(path: "vision"), entry.modelID(path: "decoder"))
     }
 
     /// Loads local directories: the vision bundle dir (one `*.aimodel`/`*.aimodelc`) and the decoder
