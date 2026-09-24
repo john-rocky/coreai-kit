@@ -43,6 +43,11 @@ jobs:
         run: python3 scripts/with-gpu-lock.py -- swift test
       - name: Catalog pins present
         run: python3 scripts/pin-catalog.py --check
+      - name: Catalog sizes match the Hub
+        # `sizeMB` is decimal MB of what a first run downloads, measured at the pinned revision.
+        # Typed by hand it drifted twice, the second time into MiB on about a third of the
+        # variants. Metadata requests only; a repo the Hub cannot answer for is skipped.
+        run: python3 scripts/measure-catalog-sizes.py --check
       - name: Built-in fallback carries the same pins
         # The offline fallback is what ships when the catalog fetch fails; an unpinned entry
         # there downloads from the model repo's main branch instead of the reviewed bytes.

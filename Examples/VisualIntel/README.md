@@ -39,7 +39,7 @@ Info.plist key or entitlement is required for the visual-search participation it
 query's out-of-process execution context** (a background app launch with a tighter memory
 budget than the foreground app). This example is built to minimize that:
 
-- defaults to **RF-DETR nano** (103 MB, one forward pass);
+- defaults to **RF-DETR nano** (108 MB, one forward pass);
 - **CLIP runs only when photos are indexed**, and only encodes the single incoming frame;
 - the photo index is **precomputed** (embeddings + cached thumbnails) at foreground time, so the
   query never touches PhotoKit or rebuilds anything;

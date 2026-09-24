@@ -9,7 +9,7 @@ import Foundation
 
 extension CoreAI {
     /// Default text-to-speech model: VoxCPM 0.5B — the catalog TTS published for both
-    /// iOS and macOS. On a Mac, `options: .model("kokoro-82m")` is a 341 MB download
+    /// iOS and macOS. On a Mac, `options: .model("kokoro-82m")` is a 361 MB download
     /// against VoxCPM's ~1.4 GB.
     public static let defaultVoiceModel = "voxcpm-0.5b"
 

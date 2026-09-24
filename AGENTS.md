@@ -92,6 +92,11 @@ like `qwen3-0.6b`, `qwen3.5-2b`, `youtu-llm-2b`, `lfm2.5-1.2b` — lowercase, hy
   and CI compares both byte for byte. Editing the catalog means re-running
   `scripts/gen-builtin-pins.py` and `scripts/gen_llms_txt.py` in the same commit. Run
   `scripts/install-hooks.sh` once per clone and a pre-commit hook checks this for you.
+- `sizeMB` is **decimal megabytes** (bytes / 1,000,000) of everything a first run downloads,
+  the subtrees a loader fetches beside the variant path included. Never type it.
+  `scripts/measure-catalog-sizes.py --write` measures it at the pinned revision and writes
+  catalog.json and the built-in literal together; CI's `--check` fails on a figure more than 2%
+  off. A multi-bundle entry also needs its loader's subtrees in that script's tables.
 
 ## What breaks on a real device
 

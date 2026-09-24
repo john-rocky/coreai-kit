@@ -89,7 +89,7 @@ public struct VLModelID: Sendable, Hashable {
         arch: .miniCPMV46)
 
     /// LFM2.5-VL-450M: a SigLIP2-NaFlex tower (host-patchified 512x512 → `image_embeds`
-    /// [256, 1024]) + the LFM2 hybrid decoder. The zoo's smallest VLM: 658 MB for the pair,
+    /// [256, 1024]) + the LFM2 hybrid decoder. The zoo's smallest VLM: 690 MB for the pair,
     /// device-gated on an iPhone 17 Pro — 112 tok/s decode with the image bound, 33.6 ms per
     /// encode.
     ///

@@ -7,10 +7,10 @@ which is the whole take-home core and imports no UI.
 
 | Tab | Call | Model | First-use download |
 |---|---|---|---|
-| **Detect** | `CoreAI.watch()` | RF-DETR nano / YOLOX-S (picker) | 103 MB / **36 MB** |
-| **Depth** | `CoreAI.watchDepth()` | Depth Anything 3 Small | **54 MB** |
-| **Trigger** | `CoreAI.watch(for: .label("person"))` | detector, plus Qwen3-VL on demand | 103 MB (+ 3.3 GB if you tap Describe) |
-| **Scan** | `CoreAI.scan(videoAt:)` | RF-DETR nano | 103 MB |
+| **Detect** | `CoreAI.watch()` | RF-DETR nano / YOLOX-S (picker) | 108 MB / **36 MB** |
+| **Depth** | `CoreAI.watchDepth()` | Depth Anything 3 Small | **55 MB** |
+| **Trigger** | `CoreAI.watch(for: .label("person"))` | detector, plus Qwen3-VL on demand | 108 MB (+ 3.3 GB if you tap Describe) |
+| **Scan** | `CoreAI.scan(videoAt:)` | RF-DETR nano | 108 MB |
 
 Detect, Depth and Scan are ordinary app assets. The VLM behind *Describe* is not, which is
 why it is a button rather than something the trigger does by itself.

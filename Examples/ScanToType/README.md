@@ -54,11 +54,11 @@ else. `Receipt` is in there as one example; replace it with yours.
 
 ## What it costs
 
-**About 4.1 GB on first use** — GLM-OCR (1.6 GB) reads the page, and a chat model (2.5 GB) fills
+**About 4.2 GB on first use** — GLM-OCR (1.7 GB) reads the page, and a chat model (2.5 GB) fills
 the type. That is a product decision, not an afternoon: fetch it behind a first-run screen with
 `CoreAI.prepare(.read, .extract)` and expect it once per install.
 
-Worth knowing what the 1.6 GB buys, because Apple's `VNRecognizeTextRequest` is free and already
+Worth knowing what the 1.7 GB buys, because Apple's `VNRecognizeTextRequest` is free and already
 on the device: Vision returns the **words**. This returns the **structure** — a table stays a
 table instead of collapsing into a stream of text, which is what makes a specific field findable
 rather than guessable. **If your documents are plain prose, Vision is the better trade** and you

@@ -435,7 +435,7 @@ its own tokens: 220 ms per decision against 1,297 ms from scratch in the table a
 published MLX checkpoint is not in the Hugging Face layout (18
 convolution kernels transposed, 61 RMSNorm scales stored without their +1); the zoo's converter
 puts them back, proved against the author's MLX bf16 readout (58/58, max |Δp| 0.012), and the
-bundle is that converted checkpoint. 2.9 GB int8, the size of `qwen3.5-2b`, so it ships to
+bundle is that converted checkpoint. 3.0 GB int8, the size of `qwen3.5-2b`, so it ships to
 iPhone too. **iPhone 17 Pro** (iOS 27.0, the same int8 bundle, 2026-09-23, the phone at thermal
 state "serious" throughout): the author's 58 rows are token- and slot-identical on the phone and
 argmax-identical to the fp32 reference on 58/58, max |Δp| 0.0070 (the Mac's 0.0079), the two

@@ -63,7 +63,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     public struct Variant: Sendable, Codable, Hashable {
         /// Subtree inside the repo holding the bundle.
         public let path: String
-        /// Approximate download size, for UI.
+        /// Download size in decimal megabytes (bytes / 1,000,000) of everything a first run
+        /// fetches for this entry, sibling subtrees its loader resolves included. Measured at the
+        /// pinned revision by `scripts/measure-catalog-sizes.py`, never typed by hand.
         public let sizeMB: Int?
 
         public init(path: String, sizeMB: Int? = nil) {
@@ -275,8 +277,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "qwen3-4b", name: "Qwen3 4B",
                 repo: "mlboydaisuke/qwen3-4b-CoreAI-official", kind: .chat,
                 variants: [
-                    "macos": .init(path: "macos", sizeMB: 2280),
-                    "ios": .init(path: "ios", sizeMB: 2498),
+                    "macos": .init(path: "macos", sizeMB: 2279),
+                    "ios": .init(path: "ios", sizeMB: 2502),
                 ],
                 thinking: true),
             CatalogEntry(
@@ -294,9 +296,9 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/qwen3.5-0.8B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym", sizeMB: 1338),
                     "ios": .init(
-                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                        path: "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym", sizeMB: 1338),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -304,9 +306,9 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/qwen3.5-2B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym", sizeMB: 2905),
+                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym", sizeMB: 3047),
                     "ios": .init(
-                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym", sizeMB: 2905),
+                        path: "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym", sizeMB: 3047),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -314,9 +316,9 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/Youtu-LLM-2B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa", sizeMB: 2058),
+                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa", sizeMB: 2157),
                     "ios": .init(
-                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa", sizeMB: 2058),
+                        path: "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa", sizeMB: 2157),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -325,13 +327,13 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-                        sizeMB: 1623),
+                        sizeMB: 1702),
                     "ios": .init(
                         path: "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-                        sizeMB: 1623),
+                        sizeMB: 1702),
                 ],
                 engine: "pipelined"),
-            // macOS only on purpose: int8hu is 3.4 GB and even int4lin is 2.0 GB, right at the
+            // macOS only on purpose: int8hu is 3.7 GB and even int4lin is 2.2 GB, right at the
             // iOS wall, and no device measurement has been taken. Add "ios" when one has.
             CatalogEntry(
                 id: "lfm2.5-2.6b", name: "LFM2.5 2.6B",
@@ -339,7 +341,7 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/lfm2_5_2_6b_decode_int8hu_block32_sym",
-                        sizeMB: 3474),
+                        sizeMB: 3655),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
@@ -349,10 +351,10 @@ public struct ModelCatalog: Sendable, Codable {
                     // Split ship: Mac ships int8lin (136.5 tok/s), the device ships the
                     // untied-int8-head variant (+17–21% decode on iPhone).
                     "macos": .init(
-                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1630),
+                        path: "gpu-pipelined/granite_4_0_h_1b_decode_int8lin", sizeMB: 1709),
                     "ios": .init(
                         path: "gpu-pipelined/granite_4_0_h_1b_decode_int8hu_block32_sym",
-                        sizeMB: 1786),
+                        sizeMB: 1873),
                 ],
                 engine: "pipelined"),
             CatalogEntry(
@@ -364,7 +366,7 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(
                         path: "gpu-pipelined/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
                     "ios": .init(
-                        path: "ios-h18p/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4626),
+                        path: "ios-h18p/nemotron_3_nano_4b_decode_int8hu", sizeMB: 4629),
                 ],
                 thinking: true, engine: "pipelined"),
             // ── MiniCPM5 1B / 2B carry the temperature typed decisions read them at (`decide-cli
@@ -394,50 +396,50 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/decider-0.8b-CoreAI", kind: .decision,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1338),
                     "ios": .init(
-                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1276),
+                        path: "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym", sizeMB: 1338),
                 ],
                 engine: "pipelined"),
             // ── OpenThai-SystemOne: a slot-head decision model (Thai + English) — the LM head
             //    replaced by a 256-way head read at a control token, so a choice may list 255
             //    options and every answer carries an abstain probability. The bundle's own
             //    metadata declares the head; `format` names the readout for the catalog's sake.
-            //    Ships to both platforms like decider-0.8b (1.0 GB int8; the phone number is
+            //    Ships to both platforms like decider-0.8b (1.1 GB int8; the phone number is
             //    still to be taken). ──
             CatalogEntry(
                 id: "openthai-systemone", name: "OpenThai-SystemOne 0.8B",
                 repo: "mlboydaisuke/OpenThai-SystemOne-CoreAI", kind: .decision,
                 variants: [
-                    "macos": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
-                    "ios": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1019),
+                    "macos": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1068),
+                    "ios": .init(path: "gpu-pipelined/openthai_systemone_decode_int8lin", sizeMB: 1068),
                 ],
                 engine: "pipelined", format: "slot"),
             // ── APUS Decision v1 4B (APUS AI Lab's Qwen3.5-4B decision model): a letter-readout
             //    model for browser actions and workflow steps — one `Shared state:` + JSON task
             //    turn under its chat template, read at A–P (`format: sharedState`). macOS only
-            //    on purpose: 5.5 GB int8hu and no device measurement. Add "ios" when one has
+            //    on purpose: 5.8 GB int8hu and no device measurement. Add "ios" when one has
             //    been taken. ──
             CatalogEntry(
                 id: "apus-decision-v1-4b", name: "APUS Decision v1 4B",
                 repo: "mlboydaisuke/APUS-Decision-v1-4B-CoreAI", kind: .decision,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined-b2/apus_decision_v1_4b_decode_int8hu_block32_sym", sizeMB: 5504),
+                        path: "gpu-pipelined-b2/apus_decision_v1_4b_decode_int8hu_block32_sym", sizeMB: 5771),
                 ],
                 engine: "pipelined", format: "sharedState"),
             // ── Qwen3.5-2B-Decision: a calibrated plain-text decision model (English) read at
             //    the space-prefixed letters after `Answer:` (`format: decisionFunction`); its
             //    temperature is folded into the weights. Ships to both platforms like qwen3.5-2b
-            //    (the same 2.9 GB int8hu graph); no iPhone number yet. ──
+            //    (the same 3.0 GB int8hu graph); no iPhone number yet. ──
             CatalogEntry(
                 id: "qwen3.5-2b-decision", name: "Qwen3.5 2B Decision",
                 repo: "mlboydaisuke/Qwen3.5-2B-Decision-CoreAI", kind: .decision,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 2905),
+                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 3047),
                     "ios": .init(
-                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 2905),
+                        path: "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym", sizeMB: 3047),
                 ],
                 engine: "pipelined", format: "decisionFunction"),
             // ── System One scorer 4B (pngwn): a scalar-head decision model — one row per
@@ -449,7 +451,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/system-one-qwen3.5-4b-scorer-CoreAI", kind: .decision,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin", sizeMB: 4859),
+                        path: "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin", sizeMB: 5095),
                 ],
                 engine: "pipelined", format: "scalar", license: "CC-BY-NC-4.0"),
             // ── laya multilingual: an encoder-type decision model (mmBERT-base with a typed
@@ -473,10 +475,10 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-                        sizeMB: 4387),
+                        sizeMB: 4600),
                     "ios": .init(
                         path: "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-                        sizeMB: 4387),
+                        sizeMB: 4600),
                 ],
                 thinking: true, engine: "pipelined"),
             // First community-contributed model (zoo PR #6, @ukint-vs) — recurrent
@@ -487,17 +489,17 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
-                        sizeMB: 4702),
+                        sizeMB: 4931),
                     "ios": .init(
                         path: "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
-                        sizeMB: 4702),
+                        sizeMB: 4931),
                 ],
                 thinking: true, engine: "pipelined"),
             // ── More official-recipe chat (stock runtime, macOS) ──
             CatalogEntry(
                 id: "qwen3-8b", name: "Qwen3 8B",
                 repo: "mlboydaisuke/qwen3-8b-CoreAI-official", kind: .chat,
-                variants: ["macos": .init(path: "macos", sizeMB: 4400)],
+                variants: ["macos": .init(path: "macos", sizeMB: 4624)],
                 thinking: true),
             CatalogEntry(
                 id: "gemma-3-12b-it", name: "Gemma 3 12B",
@@ -510,37 +512,37 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "qwen3.6-35b-a3b", name: "Qwen3.6-35B-A3B (MoE)",
                 repo: "mlboydaisuke/Qwen3.6-35B-A3B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/qwen3_6_35b_a3b_decode_sym8_gather", sizeMB: 35000)],
+                    path: "gpu-pipelined/qwen3_6_35b_a3b_decode_sym8_gather", sizeMB: 37349)],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "qwen3.6-27b", name: "Qwen3.6-27B (dense)",
                 repo: "mlboydaisuke/Qwen3.6-27B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym", sizeMB: 28000)],
+                    path: "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym", sizeMB: 29803)],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "qwen3.8-27b", name: "Qwen3.8-27B (dense)",
                 repo: "mlboydaisuke/Qwen3.8-27B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/qwen3_8_27b_decode_int8hu_block32_sym", sizeMB: 28000)],
+                    path: "gpu-pipelined/qwen3_8_27b_decode_int8hu_block32_sym", sizeMB: 29803)],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "glm-4.7-flash", name: "GLM-4.7-Flash (MoE+MLA)",
                 repo: "mlboydaisuke/GLM-4.7-Flash-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/glm_4_7_flash_decode_sym8_gather", sizeMB: 30000)],
+                    path: "gpu-pipelined/glm_4_7_flash_decode_sym8_gather", sizeMB: 32140)],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "lfm2.5-8b-a1b", name: "LFM2.5-8B-A1B (MoE)",
                 repo: "mlboydaisuke/LFM2.5-8B-A1B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/lfm2_5_8b_a1b_decode_sym8_gather", sizeMB: 9000)],
+                    path: "gpu-pipelined/lfm2_5_8b_a1b_decode_sym8_gather", sizeMB: 9448)],
                 engine: "pipelined"),
             CatalogEntry(
                 id: "gemma-4-12b", name: "Gemma 4 12B",
                 repo: "mlboydaisuke/Gemma-4-12B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8", sizeMB: 14699)],
+                    path: "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8", sizeMB: 14698)],
                 engine: "pipelined"),
             CatalogEntry(
                 id: "gemma-4-31b", name: "Gemma 4 31B",
@@ -562,10 +564,10 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/gemma-4-E2B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl", sizeMB: 4929),
+                        path: "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl", sizeMB: 4930),
                     "ios": .init(
                         path: "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p",
-                        sizeMB: 4931),
+                        sizeMB: 4932),
                 ],
                 engine: "pipelined"),
             // (gemma-4-e2b-metal removed here to match catalog.json — the raw-Metal pack's
@@ -574,7 +576,7 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "gemma-4-e4b", name: "Gemma 4 E4B",
                 repo: "mlboydaisuke/gemma-4-E4B-CoreAI", kind: .chat,
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/gemma4_e4b_qat_decode_int4lin_tbl", sizeMB: 7589)],
+                    path: "gpu-pipelined/gemma4_e4b_qat_decode_int4lin_tbl", sizeMB: 7590)],
                 engine: "pipelined"),
             // ── Vision-language (image + prompt → answer). A VL model is TWO bundles
             //    (decoder + vision tower); `path` names the decoder (the primary artifact,
@@ -624,11 +626,11 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/MiniCPM-V-4.6-CoreAI", kind: .vlm,
                 variants: [
                     "macos": .init(
-                        path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2145),
+                        path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2146),
                     "ios": .init(
-                        path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2145),
+                        path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2146),
                 ]),
-            // LFM2.5-VL-450M: the smallest VLM in the catalog (658 MB for the pair). A
+            // LFM2.5-VL-450M: the smallest VLM in the catalog (690 MB for the pair). A
             // SigLIP2-NaFlex tower fed host-flattened patches + the LFM2 hybrid decoder with
             // one image_embeds static input. iPhone-gated (112 tok/s, image bound) via the
             // ios-h18p AOT bundle; the macOS variant is the JIT .aimodel.
@@ -638,9 +640,9 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     // sizeMB is what the first run downloads: decoder + vision tower.
                     "macos": .init(
-                        path: "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin", sizeMB: 658),
+                        path: "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin", sizeMB: 690),
                     "ios": .init(
-                        path: "ios-h18p/lfm2_5_vl_450m_decode_int8lin", sizeMB: 653),
+                        path: "ios-h18p/lfm2_5_vl_450m_decode_int8lin", sizeMB: 690),
                 ]),
             // LFM2.5-VL-3B: the detail tier of the same family, on both platforms but at
             // different precision — iOS takes int4 because the int8 AOT bundle (3.13 GiB)
@@ -651,9 +653,9 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     // sizeMB is decoder + vision tower, what the first run downloads.
                     "macos": .init(
-                        path: "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin", sizeMB: 3915),
+                        path: "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin", sizeMB: 4231),
                     "ios": .init(
-                        path: "ios-h18p/lfm2_5_vl_3b_decode_int4lin", sizeMB: 2815),
+                        path: "ios-h18p/lfm2_5_vl_3b_decode_int4lin", sizeMB: 3056),
                 ]),
             // North-Micro-Vision (Cohere, Apache-2.0): 11 languages, int8 on both platforms
             // (int4 craters on this model), device-gated at 24/24 tokens vs fp32.
@@ -661,13 +663,13 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "north-micro-vision", name: "North Micro Vision",
                 repo: "mlboydaisuke/North-Micro-Vision-CoreAI", kind: .vlm,
                 variants: [
-                    // decoder 2.4 GB + vision tower 1.0 GB.
+                    // decoder 2.6 GB + vision tower 1.1 GB.
                     "macos": .init(
                         path: "gpu-pipelined/north_micro_vision_instruct_decode_int8lin",
-                        sizeMB: 3400),
+                        sizeMB: 3666),
                     "ios": .init(
                         path: "ios-h18p/north_micro_vision_instruct_decode_int8lin",
-                        sizeMB: 3500),
+                        sizeMB: 3647),
                 ]),
             // ── Text-to-speech. A VoxCPM voice is a family of graphs (base/res LM,
             //    diffusion, VAE, vocoder) plus tokenizer + host-glue tables; the variant
@@ -677,8 +679,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "voxcpm-0.5b", name: "VoxCPM 0.5B",
                 repo: "mlboydaisuke/VoxCPM-0.5B-CoreAI", kind: .tts,
                 variants: [
-                    "macos": .init(path: "macos", sizeMB: 1373),
-                    "ios": .init(path: "ios", sizeMB: 1679),
+                    "macos": .init(path: "macos", sizeMB: 1374),
+                    "ios": .init(path: "ios", sizeMB: 1378),
                 ]),
             // Kokoro is three stateless graph bundles + host glue at the repo root (no
             // platform dir); the variant path is empty and KitSpeaker resolves the subtrees.
@@ -687,14 +689,14 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "kokoro-82m", name: "Kokoro 82M",
                 repo: "mlboydaisuke/Kokoro-82M-CoreAI", kind: .tts,
                 variants: [
-                    "macos": .init(path: "", sizeMB: 341)
+                    "macos": .init(path: "", sizeMB: 361)
                 ]),
             CatalogEntry(
                 id: "voxcpm2-2b", name: "VoxCPM2 2B",
                 repo: "mlboydaisuke/VoxCPM2-CoreAI", kind: .tts,
                 variants: [
-                    "macos": .init(path: "macos", sizeMB: 4719),
-                    "ios": .init(path: "ios", sizeMB: 5658),
+                    "macos": .init(path: "macos", sizeMB: 4721),
+                    "ios": .init(path: "ios", sizeMB: 4727),
                 ]),
             // ── Text-to-music: prompt → 44.1 kHz audio (T5 cond + DiT + VAE, one subtree). ──
             CatalogEntry(
@@ -733,8 +735,8 @@ public struct ModelCatalog: Sendable, Codable {
                 // is pointed there, not the catalog download), so the ios variant just makes the
                 // entry selectable in the picker.
                 variants: [
-                    "macos": .init(path: "", sizeMB: 1980),
-                    "ios": .init(path: "", sizeMB: 1980)
+                    "macos": .init(path: "", sizeMB: 2643),
+                    "ios": .init(path: "", sizeMB: 2643)
                 ]),
             // GLM-OCR (GLM-4.V small, MIT) document OCR behind KitGlmOcrReader — the VL rope-shift
             // rider, fixed portrait 32×24 grid, letterbox + CLIP norm. Bundles sideloaded into
@@ -743,8 +745,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "glm-ocr", name: "GLM-OCR",
                 repo: "mlboydaisuke/GLM-OCR-CoreAI", kind: .ocr,
                 variants: [
-                    "macos": .init(path: "", sizeMB: 1600),
-                    "ios": .init(path: "", sizeMB: 1600)
+                    "macos": .init(path: "", sizeMB: 1677),
+                    "ios": .init(path: "", sizeMB: 1677)
                 ]),
             // ── Diffusion LM: parallel canvas denoising behind KitDiffusionLM (its own
             //    surface — snapshots, not append-only streams — so not a ChatSession). ──
@@ -752,7 +754,7 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "llada-8b", name: "LLaDA-8B (diffusion)",
                 repo: "mlboydaisuke/LLaDA-8B-dLLM-CoreAI", kind: .dllm,
                 variants: [
-                    "macos": .init(path: "macos", sizeMB: 5265)
+                    "macos": .init(path: "macos", sizeMB: 5264)
                 ]),
             // ── Speech-to-text ──
             CatalogEntry(
@@ -761,8 +763,8 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     // macos = stock JIT .aimodel; ios = AOT-compiled (h18p) — the on-device JIT
                     // aborts on the 1.6 GB graph. Driven by `KitWhisperModel`.
-                    "macos": .init(path: "macos", sizeMB: 1620),
-                    "ios": .init(path: "ios", sizeMB: 3240),
+                    "macos": .init(path: "macos", sizeMB: 1623),
+                    "ios": .init(path: "ios", sizeMB: 3235),
                 ]),
             CatalogEntry(
                 id: "qwen3-asr-1.7b", name: "Qwen3-ASR 1.7B",
@@ -771,14 +773,14 @@ public struct ModelCatalog: Sendable, Codable {
                 // paired AuT encoder internally, and sizeMB covers both downloads. macOS-only:
                 // the JIT decoder graph has no device-verified iOS path.
                 variants: ["macos": .init(
-                    path: "gpu-pipelined/qwen3_asr_1.7b_decode_int8hu_n390_s1", sizeMB: 3100)]),
+                    path: "gpu-pipelined/qwen3_asr_1.7b_decode_int8hu_n390_s1", sizeMB: 3102)]),
             CatalogEntry(
                 id: "parakeet-tdt-0.6b-v3", name: "Parakeet-TDT 0.6B v3",
                 repo: "mlboydaisuke/Parakeet-TDT-0.6B-CoreAI", kind: .asr,
                 // Flat repo (path ""): three JIT .aimodel graphs + tokenizer.json, driven by
                 // `KitParakeetModel`. macOS-only: the published iPhone numbers rode an AOT
                 // encoder this repo doesn't carry yet.
-                variants: ["macos": .init(path: "", sizeMB: 1290)]),
+                variants: ["macos": .init(path: "", sizeMB: 1293)]),
             // Streaming ASR (cache-aware FastConformer + pure-RNNT, 40 locales, any-length
             // audio) driven by `KitNemotronModel`; platform subtrees like Whisper — `ios/`
             // carries the AOT h18p conformer halves (the device JIT is avoided).
@@ -786,7 +788,7 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "nemotron-3.5-asr-streaming-0.6b", name: "Nemotron 3.5 ASR Streaming 0.6B",
                 repo: "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI", kind: .asr,
                 variants: [
-                    "macos": .init(path: "macos", sizeMB: 1340),
+                    "macos": .init(path: "macos", sizeMB: 1335),
                     "ios": .init(path: "ios", sizeMB: 1336),
                 ]),
             // ── ASR text normalization: the piece the ASR models above do not have. S1-mini
@@ -814,7 +816,7 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "sortformer-diar-v2", name: "Streaming Sortformer v2 (4-spk)",
                 repo: "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", kind: .diarization,
                 variants: [
-                    "macos": .init(path: "sortformer_float16.aimodel", sizeMB: 226),
+                    "macos": .init(path: "sortformer_float16.aimodel", sizeMB: 237),
                     "ios": .init(path: "sortformer_float16.h18p.aimodelc", sizeMB: 238),
                 ]),
             // ── Multi-speaker / dialogue TTS (VibeVoice-Realtime-0.5B): five fp16 graphs in the
@@ -824,8 +826,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "vibevoice-realtime-0.5b", name: "VibeVoice-Realtime 0.5B (multi-speaker)",
                 repo: "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI", kind: .tts,
                 variants: [
-                    "macos": .init(path: "macos", sizeMB: 1420),
-                    "ios": .init(path: "ios", sizeMB: 1420),
+                    "macos": .init(path: "macos", sizeMB: 1859),
+                    "ios": .init(path: "ios", sizeMB: 1859),
                 ]),
             // ── Music source separation (Mel-Band RoFormer, Kim Vocal). One graph with STFT +
             //    iSTFT folded in; the host only frames and overlap-adds. Driven by `KitSeparator`. ──
@@ -833,22 +835,22 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "melband-roformer-vocal", name: "Mel-Band RoFormer (Kim Vocal)",
                 repo: "mlboydaisuke/MelBandRoformer-Vocal-CoreAI", kind: .separation,
                 variants: [
-                    "macos": .init(path: "mbr_full_fp16.aimodel", sizeMB: 470),
-                    "ios": .init(path: "mbr_full_fp16.h18p.aimodelc", sizeMB: 470),
+                    "macos": .init(path: "mbr_full_fp16.aimodel", sizeMB: 493),
+                    "ios": .init(path: "mbr_full_fp16.h18p.aimodelc", sizeMB: 493),
                 ]),
             CatalogEntry(
                 id: "clip-vit-b32", name: "CLIP ViT-B/32",
                 repo: "mlboydaisuke/clip-vit-base-patch32-CoreAI-official", kind: .imageText,
                 variants: [
-                    "macos": .init(path: "model", sizeMB: 291),
-                    "ios": .init(path: "model", sizeMB: 291),
+                    "macos": .init(path: "model", sizeMB: 305),
+                    "ios": .init(path: "model", sizeMB: 305),
                 ]),
             CatalogEntry(
                 id: "depth-anything-3-small", name: "Depth Anything 3 Small",
                 repo: "mlboydaisuke/Depth-Anything-3-CoreAI", kind: .depth,
                 variants: [
-                    "macos": .init(path: "small/da3-small_float16.aimodel", sizeMB: 54),
-                    "ios": .init(path: "small/da3-small_float16.aimodel", sizeMB: 54),
+                    "macos": .init(path: "small/da3-small_float16.aimodel", sizeMB: 55),
+                    "ios": .init(path: "small/da3-small_float16.aimodel", sizeMB: 55),
                 ]),
             // ── Safety classification: one static graph, (input_ids, attention_mask) ->
             //    probs[1,2] = softmax([no, yes]). Same 2.53 GB weights at both grids; the
@@ -860,17 +862,17 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: [
                     "macos": .init(
                         path: "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s512",
-                        sizeMB: 2530),
+                        sizeMB: 2526),
                     "ios": .init(
                         path: "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s256",
-                        sizeMB: 2530),
+                        sizeMB: 2526),
                 ]),
             CatalogEntry(
                 id: "embeddinggemma-300m", name: "EmbeddingGemma 300m",
                 repo: "mlboydaisuke/embeddinggemma-300m-CoreAI", kind: .textEmbedding,
                 variants: [
-                    "macos": .init(path: "model", sizeMB: 1230),
-                    "ios": .init(path: "model", sizeMB: 1230),
+                    "macos": .init(path: "model", sizeMB: 1278),
+                    "ios": .init(path: "model", sizeMB: 1278),
                 ]),
             // ── Visual document retrieval: two fp16 graph bundles (query encoder +
             //    tokenizer, doc encoder). The variant path names the doc encoder;
@@ -880,8 +882,8 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "colmodernvbert", name: "ColModernVBERT",
                 repo: "mlboydaisuke/ColModernVBERT-CoreAI", kind: .retrieval,
                 variants: [
-                    "macos": .init(path: "doc", sizeMB: 741),
-                    "ios": .init(path: "doc", sizeMB: 741),
+                    "macos": .init(path: "doc", sizeMB: 743),
+                    "ios": .init(path: "doc", sizeMB: 743),
                 ]),
             CatalogEntry(
                 id: "yolox-s", name: "YOLOX-S",
@@ -897,15 +899,15 @@ public struct ModelCatalog: Sendable, Codable {
                 // nano tier (DetectCamera's default); the other tiers stay reachable through
                 // the `ModelID.rfdetr*` presets.
                 variants: [
-                    "macos": .init(path: "rfdetr-nano_float32.aimodel", sizeMB: 103),
-                    "ios": .init(path: "rfdetr-nano_float32.aimodel", sizeMB: 103),
+                    "macos": .init(path: "rfdetr-nano_float32.aimodel", sizeMB: 108),
+                    "ios": .init(path: "rfdetr-nano_float32.aimodel", sizeMB: 108),
                 ]),
             CatalogEntry(
                 id: "adcsr-x4", name: "AdcSR ×4 Super-Resolution",
                 repo: "mlboydaisuke/AdcSR-CoreAI", kind: .superResolution,
                 variants: [
-                    "macos": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1740),
-                    "ios": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1740),
+                    "macos": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1825),
+                    "ios": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1825),
                 ]),
             // ── Time-series forecasting: one stateless transformer graph (fixed context 2048;
             //    KitForecaster front-pads + masks shorter series host-side) + host RevIN/flip DSP. ──
