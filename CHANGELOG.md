@@ -25,6 +25,21 @@ policy.
   `decide-cli ask | bench | filter | serve --backend fm` answer on it (the model id is
   `apple-foundation-model`). No catalog model's path changes.
 
+### Fixed
+
+- **`ChatSession(model:)` stopped the process on a zoo decode-only model.** With the default
+  `.auto` engine, loading a catalog model by its `ModelID` (as the quickstart does), or a local
+  bundle through `init(bundleAt:)`, left prompt chunking on. On the zoo's decode-only ports, whose
+  bundle names carry `_decode_` (`qwen3.5-2b`, `lfm2.5-1.2b`, `granite-4.0-h-1b` and the other chat
+  models among them), the first prompt of more than one token then ended in a fatal
+  shape-substitution error. `ChatSession(catalog:)` was not affected: it takes the catalog's
+  `pipelined` hint, which already turned chunking off. Those bundles now prefill one token per step
+  on every engine, the rule `TypedDecisions` already applied. `ChatSessionSmokeTests` on the
+  `qwen3.5-2b` bundle crashed before the change and passes after it.
+- **The examples' lockfiles pinned swift-huggingface 0.9.0**, below the package's own
+  `from: "0.11.0"`, so building an example rewrote its `Package.resolved`. They pin 0.11.0, as the
+  root does.
+
 ## [0.7.1] — 2026-09-24
 
 A patch: a macOS app that links CoreAIKit builds in Release again, and the ChatDemo and Speak
