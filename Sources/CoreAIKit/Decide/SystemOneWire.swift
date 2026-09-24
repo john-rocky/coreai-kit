@@ -246,12 +246,15 @@ public enum SystemOne {
     /// The response: `model`, `answers` keyed as the request was, `usage` (`input_tokens` =
     /// the prompt tokens of every decision summed, as a hosted endpoint counts them;
     /// `output_tokens` = one answer slot per decision) and `timing_ms` (this machine's wall clock).
+    /// `metadata`, when a backend gives one, comes last: what its probabilities are
+    /// (`FoundationModelDecisions` writes `probabilities: one-hot`, `calibration: none`).
     public static func response(
-        model: String, answers: [(id: String, question: Decision.Question, answer: Decision.Answer)]
+        model: String, answers: [(id: String, question: Decision.Question, answer: Decision.Answer)],
+        metadata: JSONValue? = nil
     ) -> JSONValue {
         let inputTokens = answers.map(\.answer.timing.promptTokens).reduce(0, +)
         let milliseconds = answers.map(\.answer.timing.milliseconds).reduce(0, +)
-        return .object([
+        var members: [JSONValue.Member] = [
             .init("model", .string(model)),
             .init("answers", .object(answers.map { .init($0.id, answerValue($0.question, $0.answer)) })),
             .init("usage", .object([
@@ -259,7 +262,9 @@ public enum SystemOne {
                 .init("output_tokens", .int(answers.count)),
             ])),
             .init("timing_ms", rounded(milliseconds)),
-        ])
+        ]
+        if let metadata { members.append(.init("metadata", metadata)) }
+        return .object(members)
     }
 
     /// `GET /v1/models` in the hosted form — `models`, each `name` / `description` /

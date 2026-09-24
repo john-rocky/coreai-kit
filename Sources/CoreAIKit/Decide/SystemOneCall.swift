@@ -65,12 +65,18 @@ extension SystemOne {
         public let stateTokens: Int
         /// What prefilling that prefix cost.
         public let prefill: Decision.Timing
+        /// What the backend says beside its answers, or nil: `FoundationModelDecisions` names
+        /// itself and says its probabilities are one-hot; `TypedDecisions` adds nothing.
+        public let metadata: JSONValue?
 
-        public init(model: String, answers: [Answer], stateTokens: Int, prefill: Decision.Timing) {
+        public init(
+            model: String, answers: [Answer], stateTokens: Int, prefill: Decision.Timing, metadata: JSONValue? = nil
+        ) {
             self.model = model
             self.answers = answers
             self.stateTokens = stateTokens
             self.prefill = prefill
+            self.metadata = metadata
         }
 
         /// The answer to the question the request keyed `id`; nil for an id it did not ask.
@@ -95,10 +101,10 @@ extension SystemOne {
             prefill.milliseconds + answers.map(\.answer.timing.milliseconds).reduce(0, +)
         }
 
-        /// The wire object — `model`, `answers`, `usage`, `timing_ms` — exactly as
-        /// `SystemOne.response(model:answers:)` writes it.
+        /// The wire object — `model`, `answers`, `usage`, `timing_ms`, and `metadata` when the
+        /// backend gave one — exactly as `SystemOne.response(model:answers:metadata:)` writes it.
         public var value: JSONValue {
-            SystemOne.response(model: model, answers: answers.map { ($0.id, $0.question, $0.answer) })
+            SystemOne.response(model: model, answers: answers.map { ($0.id, $0.question, $0.answer) }, metadata: metadata)
         }
 
         /// The wire object as text, the way the servers write it.

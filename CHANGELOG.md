@@ -7,6 +7,24 @@ policy.
 
 ## [Unreleased]
 
+### Added
+
+- **Apple's on-device foundation model as a decision backend.** `FoundationModelDecisions`
+  (`Sources/CoreAIKit/Decide`) answers typed questions on the FoundationModels framework's
+  `SystemLanguageModel.default` by guided generation: a choice is an enumeration of its option
+  ids, a noul a Bool, a score an Int within its levels, sampled greedily, so the model can only
+  answer with a listed value. Nothing is scored — the framework exposes no logits — so an answer's
+  probabilities are one-hot (1 on the generated value), its confidence 1, and a `SystemOne.Response`
+  from it carries `metadata` (`probabilities: one-hot`, `calibration: none`). The state goes into
+  the session's instructions once; consecutive questions on the same state continue one
+  transcript (`Configuration.shareSession`, the analogue of `sharePrefix`), or each starts a new
+  session. A guardrail violation, a model refusal and a prompt past the context window are
+  `DecisionError.refused`, a server's 422. `init` throws with the reason when Apple Intelligence
+  is unavailable. `DecisionBackend` is the protocol both it and `TypedDecisions` satisfy;
+  `SystemOneServer` takes either (`init(backend:)`; `decider` is now optional), and
+  `decide-cli ask | bench | filter | serve --backend fm` answer on it (the model id is
+  `apple-foundation-model`). No catalog model's path changes.
+
 ## [0.7.1] — 2026-09-24
 
 A patch: a macOS app that links CoreAIKit builds in Release again, and the ChatDemo and Speak
