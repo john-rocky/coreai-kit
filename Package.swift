@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "coreai-kit",
-    platforms: [.macOS("27.0"), .iOS("27.0")],
+    platforms: [.macOS("26.0"), .iOS("26.0")],
     products: [
         // LLM: ModelStore + ChatSession + FoundationModels provider (tool calling).
         .library(name: "CoreAIKit", targets: ["CoreAIKit"]),
@@ -44,8 +44,8 @@ let package = Package(
         // (4.4-5.9x per decision on three hybrid decision models, macOS; iOS not measured).
         // The move from 0.2.4-zoo also brings 0.2.5-zoo (the engine stops at a stop sequence
         // instead of decoding to maxTokens) and 0.2.6-zoo (a macOS 26 / iOS 26 floor with
-        // @available(macOS 27, iOS 27, *) on everything that touches Core AI; this package's
-        // floor stays 27). 0.2.4-zoo is
+        // @available(macOS 27, iOS 27, *) on everything that touches Core AI; this package
+        // does the same). 0.2.4-zoo is
         // upstream main through #207 (2026-08-28) plus the zoo patches to the pipelined
         // engine: hybrid/SSM extra states so Qwen3.5/3.6, LFM2.5 and Granite 4 load,
         // chunked prefill via a static-chunk "prefill" function, per-token/static inputs,

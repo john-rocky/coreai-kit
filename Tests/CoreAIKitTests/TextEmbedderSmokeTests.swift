@@ -9,6 +9,7 @@ import XCTest
 ///
 /// The bundle directory holds the *.aimodel, tokenizer/, and the reference.json the
 /// export script wrote (torch-side cosines for fixed text pairs).
+@available(macOS 27, iOS 27, *)
 final class TextEmbedderSmokeTests: XCTestCase {
     private struct Reference: Decodable {
         struct Entry: Decodable {

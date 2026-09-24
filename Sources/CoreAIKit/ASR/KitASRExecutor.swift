@@ -11,6 +11,7 @@ import Foundation
 import FoundationModels
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 public struct KitASRExecutor: LanguageModelExecutor {
     public typealias Model = KitASRModel
 

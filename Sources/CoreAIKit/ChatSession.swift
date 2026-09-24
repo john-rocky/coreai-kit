@@ -20,6 +20,7 @@ import Tokenizers
 /// engines that can't rewind fall back to a full re-prefill, losslessly). Assistant
 /// turns feed back only the final answer; thinking output is surfaced as `.thinking` events
 /// and on `Message.thinking` but never re-prompted. One generation at a time per session.
+@available(macOS 27, iOS 27, *)
 public actor ChatSession {
     public struct Configuration: Sendable {
         /// Sampling temperature; nil = greedy decoding.

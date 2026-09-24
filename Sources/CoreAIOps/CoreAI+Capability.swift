@@ -67,6 +67,7 @@ extension CoreAI {
     ///
     /// Never throws: "I could not tell" is an honest `unsupportedDevice(reason:)` rather than
     /// an error a caller has to `catch` in the middle of building a view.
+    @available(macOS 27, iOS 27, *)
     public static func capability(
         _ op: Op, options: OpOptions = OpOptions(), store: ModelStore = .default
     ) async -> Capability {
@@ -120,6 +121,7 @@ extension CoreAI {
     }
 
     /// Capability for every op at once, for a gallery or a settings screen. Still no network.
+    @available(macOS 27, iOS 27, *)
     public static func capabilities(store: ModelStore = .default) async -> [Op: Capability] {
         var result: [Op: Capability] = [:]
         for op in Op.allCases {
@@ -133,6 +135,7 @@ extension CoreAI {
     /// `transcribe` moved to `SpeechAnalyzer`, so the honest answer to "how big is
     /// transcription" changed from 3.2 GB to nothing. A capability API that could not say so
     /// would be reporting the wrong number for the op adopters reach for first.
+    @available(macOS 27, iOS 27, *)
     private static func systemSpeechCapability(
         locale: Locale = .current
     ) async -> Capability {

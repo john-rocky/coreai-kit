@@ -65,6 +65,7 @@ public struct DotsTTSPaths: Sendable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 public final class DotsTTS: @unchecked Sendable {
     public static let sampleRate = 48_000
     private static let hidden = 1536

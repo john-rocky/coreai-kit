@@ -11,6 +11,7 @@ import Foundation
 /// let model = try await GraphModel(contentsOf: aimodelURL, computeUnits: .neuralEngine)
 /// let out = try await model.run(["pixel_values": .float32(pixels, shape: [1, 3, 224, 224])])
 /// ```
+@available(macOS 27, iOS 27, *)
 public final class GraphModel: @unchecked Sendable {
     public enum ComputeUnits: Sendable {
         /// `neuralEngine`/`gpu`/`cpu` express a *preference* over the full allowed set

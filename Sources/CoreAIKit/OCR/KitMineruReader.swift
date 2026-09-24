@@ -20,6 +20,7 @@ import ImageIO          // CGImagePropertyOrientation (macOS: not re-exported by
 import Tokenizers
 
 /// MinerU2.5-Pro document reader: one image → structured markdown.
+@available(macOS 27, iOS 27, *)
 public final class KitMineruReader: @unchecked Sendable {
     private let runtime: VLRuntime           // 768 portrait — single-pass + per-region recognition
     private let arch = VLArchitecture.mineru

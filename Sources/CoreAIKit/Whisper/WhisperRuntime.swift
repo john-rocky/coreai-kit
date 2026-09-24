@@ -30,6 +30,7 @@ public enum KitWhisperError: Error, LocalizedError {
 }
 
 /// Owns a Whisper graph + mel frontend + tokenizer. Serial use (one transcription at a time).
+@available(macOS 27, iOS 27, *)
 public final class WhisperRuntime: @unchecked Sendable {
     public let arch: WhisperArchitecture
     private let graph: GraphModel
@@ -61,6 +62,7 @@ public final class WhisperRuntime: @unchecked Sendable {
         guard sampleRate == arch.sampleRate else {
             throw KitWhisperError.unsupportedSampleRate(sampleRate)
         }
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let feat = TensorValue.float16(melFeatures(samples), shape: [1, arch.melBins, arch.melFrames])
         let task = translate ? arch.translate : arch.transcribe
 
@@ -108,6 +110,9 @@ public final class WhisperRuntime: @unchecked Sendable {
         let text = tokenizer.decode(tokens: textTokens)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return Transcription(language: detectedLang, text: text)
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     // MARK: - Internals
@@ -136,6 +141,7 @@ public final class WhisperRuntime: @unchecked Sendable {
         return Int32(best)
     }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// Pad/trim the waveform to the 30 s window, log-mel it, and pack into `input_features`
     /// `[melBins, melFrames]` (row-major, mel-major) as fp16.
     private func melFeatures(_ samples: [Float]) -> [Float16] {
@@ -156,6 +162,7 @@ public final class WhisperRuntime: @unchecked Sendable {
         }
         return feats
     }
+    #endif
 
     /// "<|ja|>" -> "ja".
     private func cleanLanguage(_ token: String) -> String {

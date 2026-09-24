@@ -46,6 +46,7 @@ public struct Transcription: Sendable, Hashable {
 
 /// Owns an ASR model's engine + AuT encoder + the static `audio_embeds` buffer. Serial use (one
 /// transcription at a time) — the underlying engine traps on concurrent generate calls.
+@available(macOS 27, iOS 27, *)
 public final class ASRRuntime: @unchecked Sendable {
     public let arch: ASRArchitecture
     let engine: any InferenceEngine
@@ -71,6 +72,7 @@ public final class ASRRuntime: @unchecked Sendable {
         if getenv("COREAI_CHUNK_THRESHOLD") == nil { setenv("COREAI_CHUNK_THRESHOLD", "1", 1) }
         self.arch = arch
 
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         guard let device = MTLCreateSystemDefaultDevice() else { throw KitASRError.noMetalDevice }
         let byteCount = arch.audioEmbedsCount * MemoryLayout<Float16>.size
         guard let buffer = device.makeBuffer(length: byteCount, options: .storageModeShared) else {
@@ -101,6 +103,9 @@ public final class ASRRuntime: @unchecked Sendable {
             contentsOf: try GraphBundle.resolve(in: encoderURL),
             computeUnits: encoderComputeUnits)
         self.mel = try AudioMelPreprocessor.qwen2_5Omni()  // same Whisper frontend (128 mel, 400/160)
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     public var audioAttached: Bool { attachedTokenCount.withLock { $0 > 0 } }
@@ -108,6 +113,7 @@ public final class ASRRuntime: @unchecked Sendable {
 
     // MARK: - Audio attach (AuT encoder -> static buffer)
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// Encode host-prepared `inputFeatures`/`attnBias` through the AuT encoder and write its first
     /// `n` rows into the decoder's static buffer (the rest is zeroed; the decoder gathers `0..<N`).
     public func attach(inputFeatures: [Float16], attnBias: [Float16], audioTokenCount n: Int) async throws {
@@ -124,16 +130,21 @@ public final class ASRRuntime: @unchecked Sendable {
         }
         writeEmbeds(embeds.floats(), audioTokenCount: n)
     }
+    #endif
 
     /// Encode a raw 16 kHz mono waveform: Whisper log-mel -> AuT encoder -> static buffer. The clip
     /// is trimmed to the bundle's max duration (≈30 s).
     public func attach(samples: [Float], sampleRate: Int = 16000) async throws {
         guard sampleRate == 16000 else { throw KitASRError.unsupportedSampleRate(sampleRate) }
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let maxSamples = arch.melFrames * 160  // melFrames * hop(160) ≈ 30 s @ 16 kHz
         let clip = samples.count > maxSamples ? Array(samples[0..<maxSamples]) : samples
         let (logmel, frames) = mel.logMel(clip)
         let (feats, bias, n) = arch.encoderInputs(fromMel: logmel, frames: frames)
         try await attach(inputFeatures: feats, attnBias: bias, audioTokenCount: n)
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     public func detach() {
@@ -143,10 +154,14 @@ public final class ASRRuntime: @unchecked Sendable {
 
     private func writeEmbeds(_ values: [Float], audioTokenCount n: Int) {
         memset(audioBuffer.contents(), 0, audioBuffer.length)
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let pointer = audioBuffer.contents().assumingMemoryBound(to: Float16.self)
         let valid = min(n * arch.hidden, values.count, arch.audioEmbedsCount)
         for i in 0..<valid { pointer[i] = Float16(values[i]) }
         attachedTokenCount.withLock { $0 = n }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     // MARK: - Transcribe (direct, low-level)

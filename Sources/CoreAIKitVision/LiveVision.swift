@@ -96,6 +96,7 @@ public final class LiveVision: @unchecked Sendable {
     ///
     /// Closing that is a `TODO` on `LiveResult` — until it is closed, this call has not
     /// removed the coordinate work it was supposed to.
+    @available(macOS 27, iOS 27, *)
     public func detections(
         with detector: KitDetector, scoreThreshold: Float = 0.5, maxDetections: Int = 50
     ) async throws -> AsyncThrowingStream<LiveResult<[Detection]>, any Error> {
@@ -112,6 +113,7 @@ public final class LiveVision: @unchecked Sendable {
     }
 
     /// Live monocular depth — the capability Apple ships no answer for, at 54 MB.
+    @available(macOS 27, iOS 27, *)
     public func depth(
         with estimator: DepthEstimator, dataOutputSize: CGSize? = nil
     ) async throws -> AsyncThrowingStream<LiveResult<DepthMap>, any Error> {

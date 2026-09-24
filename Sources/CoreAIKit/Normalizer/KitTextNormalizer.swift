@@ -81,6 +81,7 @@ public enum KitTextNormalizerError: Error, LocalizedError, Sendable {
 ///
 /// An actor because a chunked rewrite is many generations over one engine: two concurrent
 /// callers sharing a `KitTextNormalizer` would interleave their prompts into the same KV cache.
+@available(macOS 27, iOS 27, *)
 public actor KitTextNormalizer {
     /// The catalog id this loads by default.
     public static let defaultCatalogID = "s1-mini"

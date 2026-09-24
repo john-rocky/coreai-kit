@@ -60,6 +60,7 @@ public struct AudioModelID: Sendable, Hashable {
 }
 
 /// A Core AI audio-understanding bundle as a `LanguageModelSession` provider.
+@available(macOS 27, iOS 27, *)
 public struct KitAudioModel: LanguageModel {
     public typealias Executor = KitAudioExecutor
 

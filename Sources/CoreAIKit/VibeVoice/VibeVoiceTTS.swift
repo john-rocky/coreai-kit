@@ -97,11 +97,16 @@ private func readF16(_ url: URL) throws -> [Float] {
     guard let d = try? Data(contentsOf: url) else {
         throw VibeVoiceError.assetMissing(url.lastPathComponent)
     }
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     return d.withUnsafeBytes { $0.bindMemory(to: Float16.self).map { Float($0) } }
+    #else
+    fatalError("Float16 is not supported on this platform")
+    #endif
 }
 
 /// The VibeVoice engine. Prefer `KitDialogue` (scripts) or `KitSpeaker` (one line of text);
 /// this is the direct handle when you want per-voice control.
+@available(macOS 27, iOS 27, *)
 public actor VibeVoiceTTS {
     private let mainLM: StatefulGraphModel
     private let ttsLM: StatefulGraphModel
@@ -269,6 +274,7 @@ public actor VibeVoiceTTS {
     // MARK: - Graph steps
 
     private func step(_ lm: StatefulGraphModel, _ embedding: [Float], pos: Int) async throws -> [Float] {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let out = try await lm.step([
             "inputs_embeds": .float16(embedding.map { Float16($0) }, shape: [1, 1, glue.hidden]),
             "pos": .int32([Int32(pos)], shape: [1]),
@@ -277,25 +283,37 @@ public actor VibeVoiceTTS {
             throw VibeVoiceError.assetMissing("hidden")
         }
         return hidden
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     private func connect(_ latent: [Float]) async throws -> [Float] {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let out = try await connector.run(["features": .float16(latent.map { Float16($0) }, shape: [1, 1, glue.vae_dim])])
         guard let e = out["embed"]?.floats() else { throw VibeVoiceError.assetMissing("embed") }
         return e
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     private func decode(_ latents: [Float]) async throws -> [Float] {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let out = try await decoder.run([
             "latents": .float16(latents.map { Float16($0) }, shape: [1, glue.vae_dim, glue.decoder_frames])
         ])
         guard let a = out["audio"]?.floats() else { throw VibeVoiceError.assetMissing("audio") }
         return a
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// DPMSolver++ (v-prediction, multistep) over the 64-dim latent, with classifier-free guidance:
     /// the head runs cond and uncond as one batch of 2. Kept in Double — the schedule tables are.
     private func ddpm(_ noise: [Float], cond: [Float], negCond: [Float]) async throws -> [Float] {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let VD = glue.vae_dim, S = glue.schedule
         var x = noise.map { Double($0) }
         let cond2 = cond + negCond
@@ -332,6 +350,9 @@ public actor VibeVoiceTTS {
             mPrev = m0
         }
         return x.map { Float($0) }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// The 2-layer EOS classifier (host-side): ReLU(W1·h + b1) → σ(W2·x + b2).
@@ -350,12 +371,16 @@ public actor VibeVoiceTTS {
 
     /// One row of the mmapped fp16 embedding table — no 272 MB read, no torch.
     private func embedding(_ tokenID: Int) -> [Float] {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let H = glue.hidden
         let start = tokenID * H * MemoryLayout<Float16>.size
         return embedTokens.withUnsafeBytes { raw -> [Float] in
             let base = raw.baseAddress!.advanced(by: start).assumingMemoryBound(to: Float16.self)
             return (0..<H).map { Float(base[$0]) }
         }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// `"Speaker 2: hi there"` → `("Speaker 2: ", "hi there")`; no tag → `("", text)`.

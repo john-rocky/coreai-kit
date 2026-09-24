@@ -14,6 +14,7 @@
 import Foundation
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 public final class SafetyClassifier: @unchecked Sendable {
     /// What to flag, and the question asked of the content. Both are plain language: this is the
     /// whole point of the model, not a convenience wrapper over a fixed taxonomy.

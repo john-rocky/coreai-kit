@@ -207,6 +207,7 @@ struct DecisionReadoutTests {
     /// `CoreAI.decide` with no model option must resolve on a Mac and on an iPhone alike, so the
     /// default is a catalog model published for both. A Mac-only model (no `ios` variant) as the
     /// default would fail every call on the phone.
+    @available(macOS 27, iOS 27, *)
     @Test func defaultDecisionModelIsPublishedForBothPlatforms() throws {
         let entry = try #require(ModelCatalog.builtin.entry(id: CoreAI.defaultDecisionModel))
         #expect(entry.variants["macos"] != nil)
@@ -751,6 +752,7 @@ struct LabelTableTests {
 
     /// `TypedDecisions.maxOptions` is the model's own count: the decider's label table's, a chat
     /// model's number run past its letters (else its 26 letters), its letter set's or its head's.
+    @available(macOS 27, iOS 27, *)
     @Test func eachFormReportsItsOwnOptionCount() {
         let none = LabelTable(names: [], ids: [])
         let letters = StubVocabulary().table(.chat, LabelTable.letters)

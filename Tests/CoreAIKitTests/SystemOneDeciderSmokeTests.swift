@@ -16,6 +16,7 @@ import XCTest
 @testable import CoreAIKit
 @testable import CoreAIOps
 
+@available(macOS 27, iOS 27, *)
 final class SystemOneDeciderSmokeTests: XCTestCase {
     /// The card's ship bar for |Δp| against the author's fp32 readout (int8hu measured 0.0084).
     static let bar = 0.02

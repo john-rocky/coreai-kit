@@ -41,6 +41,7 @@ public enum KitVisionError: Error, LocalizedError {
 /// Owns a VL model's engine + vision tower + the static multimodal buffers, for the engine's
 /// lifetime. One runtime assumes serial use (one `LanguageModelSession` at a time) — the
 /// underlying engine traps on concurrent generate calls, same as the text path.
+@available(macOS 27, iOS 27, *)
 public final class VLRuntime: @unchecked Sendable {
     public let arch: VLArchitecture
     let engine: any InferenceEngine
@@ -77,6 +78,7 @@ public final class VLRuntime: @unchecked Sendable {
         }
         self.arch = arch
 
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw KitVisionError.noMetalDevice
         }
@@ -136,6 +138,9 @@ public final class VLRuntime: @unchecked Sendable {
             contentsOf: try GraphBundle.resolve(in: visionURL), computeUnits: .gpu)
 
         setTextOnlyShift()
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// Whether image embeds are currently resident in the buffers.
@@ -151,6 +156,7 @@ public final class VLRuntime: @unchecked Sendable {
     ) async throws {
         if let segmentID, attachedSegmentID.withLock({ $0 == segmentID }) { return }
 
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let upright = cgImage.upright(orientation)
         let outputs: [String: TensorValue]
         switch arch.visionInput {
@@ -177,6 +183,9 @@ public final class VLRuntime: @unchecked Sendable {
             write(deepstack.floats(), into: deepstackBuffer, capacity: arch.deepstackEmbedCount)
         }
         attachedSegmentID.withLock { $0 = segmentID ?? "<anonymous>" }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// Clears the resident image and reverts to the text-only rope shift.
@@ -190,9 +199,13 @@ public final class VLRuntime: @unchecked Sendable {
     }
 
     private func write(_ values: [Float], into buffer: any MTLBuffer, capacity: Int) {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let pointer = buffer.contents().assumingMemoryBound(to: Float16.self)
         let count = min(values.count, capacity)
         for i in 0..<count { pointer[i] = Float16(values[i]) }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     // MARK: - Rope shift

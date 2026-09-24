@@ -16,6 +16,7 @@ extension CoreAI {
     /// Text → synthesized speech: mono PCM in [-1, 1] plus its sample rate — hand it to
     /// `AVAudioEngine` or write it out as a file. First use downloads and loads the model
     /// (cached afterwards); utterances on the same model serialize behind each other.
+    @available(macOS 27, iOS 27, *)
     public static func speak(
         _ text: String, options: OpOptions = OpOptions()
     ) async throws -> SpokenAudio {
@@ -27,6 +28,7 @@ extension CoreAI {
 /// Process-wide cache of loaded speakers, keyed by catalog id — same contract as
 /// `OpModels`: concurrent first calls share one load, a failed load is not cached,
 /// utterances on one engine serialize behind each other.
+@available(macOS 27, iOS 27, *)
 actor SpeechOpModels {
     static let shared = SpeechOpModels()
 

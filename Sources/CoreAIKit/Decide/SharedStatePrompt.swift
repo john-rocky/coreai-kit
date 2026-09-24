@@ -89,6 +89,7 @@ enum SharedStatePrompt {
     }
 
     /// The prompt tokens for one question on one state, and the letter token per criterion.
+    @available(macOS 27, iOS 27, *)
     static func render(state: String, question: Decision.Question, tokenizer: any Tokenizer) throws -> DecisionPrompt.Rendered {
         let row = row(for: question)
         guard row.descriptions.count <= maxOptions else {
@@ -101,6 +102,7 @@ enum SharedStatePrompt {
 
     /// The longest token prefix every question on `state` shares: two renderings that differ
     /// from the first character after the state.
+    @available(macOS 27, iOS 27, *)
     static func statePrefix(state: String, tokenizer: any Tokenizer) throws -> [Int32] {
         let a = try DecisionPrompt.tokens(
             messages: messages(state: state, row: Row(primitive: "choice", instructions: "A", options: ["a", "b"])),

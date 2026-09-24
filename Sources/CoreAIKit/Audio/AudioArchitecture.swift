@@ -73,6 +73,7 @@ public struct AudioArchitecture: Sendable, Hashable {
         melValidFrames <= 0 ? 0 : ((melValidFrames - 1) / 2 + 1 - 2) / 2 + 1
     }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// Pack a Whisper log-mel `[melBins, frames]` (row-major) into the encoder's fixed inputs:
     /// `input_features [1, melBins, melFrames]` (mel left-aligned, zero-padded to K whole chunks) +
     /// `attn_bias [chunks,1,1,headsFrames]` (−30000 on each chunk's padded post-CNN frames) + the
@@ -97,6 +98,7 @@ public struct AudioArchitecture: Sendable, Hashable {
         }
         return (feats, bias, audioTokenCount(melValidFrames: frames))
     }
+    #endif
 
     /// Qwen2.5-Omni-3B: 2048-wide, K=15 encoder (≈30 s, 750 audio-embed rows). Mac-class.
     public static let qwen2_5Omni3B = AudioArchitecture(

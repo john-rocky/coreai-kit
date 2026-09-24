@@ -13,6 +13,7 @@ import CoreAIKitVision
 import Foundation
 
 /// Short local name for the marshalling namespace defined at the bottom of this file.
+@available(macOS 27, iOS 27, *)
 private typealias ND = PocketTTSND
 
 enum PocketTTSError: Error, CustomStringConvertible {
@@ -26,6 +27,7 @@ enum PocketTTSError: Error, CustomStringConvertible {
 /// KV cache through host-owned `NDArray`s handed over as `MutableViews`, so it is the buffers
 /// that carry the state, not the `AIModel` identity. What a second load would duplicate is
 /// the weights.
+@available(macOS 27, iOS 27, *)
 final class PocketTTSAsset {
     let url: URL
     let unit: GraphModel.ComputeUnits
@@ -60,6 +62,7 @@ final class PocketTTSAsset {
 /// cannot be instantiated, and it exists only to qualify the members inside it. Consumers
 /// shorten it back with a file-private `typealias ND = PocketTTSND`, which keeps call sites
 /// as readable as they were while leaving the bare names free for everyone else.
+@available(macOS 27, iOS 27, *)
 enum PocketTTSND {
     @inline(__always) static func nowNanos() -> UInt64 {
         clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
@@ -78,7 +81,11 @@ enum PocketTTSND {
     /// decoder assets are the fp16 export — the graph's declared input dtype must be matched
     /// exactly or the runtime rejects the call.
     static func ndHalf(_ values: [Float], _ shape: [Int]) -> NDArray {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         NDArray(scalars: values.map { Float16($0) }, shape: shape)
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     /// Allocate an NDArray of the given scalar type and fill it from float32 source data.
@@ -90,10 +97,14 @@ enum PocketTTSND {
     static func makeState(_ values: [Float], shape: [Int], half: Bool) -> NDArray {
         var a = NDArray(shape: shape, scalarType: half ? .float16 : .float32)
         if half {
+            #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
             var mv = a.mutableView(as: Float16.self)
             mv.withUnsafeMutablePointer { p, _, _ in
                 for i in 0..<values.count { p[i] = Float16(values[i]) }
             }
+            #else
+            fatalError("Float16 is not supported on this platform")
+            #endif
         } else {
             var mv = a.mutableView(as: Float.self)
             mv.withUnsafeMutablePointer { p, _, _ in
@@ -106,7 +117,9 @@ enum PocketTTSND {
     /// Flatten any float output to `[Float]`, row-major, widening fp16.
     static func flat(_ array: NDArray) -> [Float] {
         switch array.scalarType {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         case .float16: return flatten(array, as: Float16.self)
+        #endif
         case .float32: return flatten(array, as: Float.self)
         default: preconditionFailure("unsupported output scalar type \(array.scalarType)")
         }

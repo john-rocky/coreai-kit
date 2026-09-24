@@ -48,6 +48,7 @@ extension CoreAI {
     ///
     /// First use downloads and loads the model (cached afterwards); calls on the same model
     /// serialize behind each other.
+    @available(macOS 27, iOS 27, *)
     public static func tidyTranscript(
         _ transcript: String,
         styling: TranscriptStyling = .semiFormal,
@@ -65,6 +66,7 @@ extension CoreAI {
 /// Process-wide cache of loaded normalizers, keyed by catalog id — same contract as
 /// `OpModels`: concurrent first calls share one load, a failed load is not cached, and calls
 /// on one engine serialize behind each other.
+@available(macOS 27, iOS 27, *)
 actor TidyOpModels {
     static let shared = TidyOpModels()
 

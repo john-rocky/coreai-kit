@@ -135,6 +135,7 @@ enum LetterListPrompt {
     }
 
     /// The prompt tokens for one question on one state, and the letter token per option.
+    @available(macOS 27, iOS 27, *)
     static func render(state: String, question: Decision.Question, tokenizer: any Tokenizer) throws -> DecisionPrompt.Rendered {
         let row = row(for: question)
         let tokens = try DecisionPrompt.tokens(messages: messages(state: state, row: row), tokenizer: tokenizer)
@@ -144,6 +145,7 @@ enum LetterListPrompt {
 
     /// The longest token prefix every question on `state` shares: two renderings that differ
     /// from the first character after the state.
+    @available(macOS 27, iOS 27, *)
     static func statePrefix(state: String, tokenizer: any Tokenizer) throws -> [Int32] {
         let a = try DecisionPrompt.tokens(
             messages: messages(state: state, row: Row(instructions: "A", options: [("a", ""), ("b", "")])),

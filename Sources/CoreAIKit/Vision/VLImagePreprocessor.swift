@@ -15,6 +15,7 @@ enum VLImagePreprocessor {
     private static let clipMean: (Float, Float, Float) = (0.48145466, 0.4578275, 0.40821073)
     private static let clipStd: (Float, Float, Float) = (0.26862954, 0.26130258, 0.27577711)
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// `[patches · patchDim]` f16, row-major per the ViT's expected layout. Supports square or
     /// non-square (`arch.imageWidth × arch.imageSide`) grids, `.stretch`/`.aspectFitPad` fit,
     /// and `.symmetric`/`.clip` normalization — the square/stretch/symmetric default is the
@@ -117,7 +118,9 @@ enum VLImagePreprocessor {
         }
         return out
     }
+    #endif
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// `[1 · 3 · imageSide · imageSide]` f16, plain CHW — for towers that patchify in-graph
     /// (MiniCPM-V's SigLIP). Same resize + x/127.5 − 1 numerics as the patch path above,
     /// mirroring the gated reference preprocess (mean/std 0.5 overrides ImageNet).
@@ -151,6 +154,7 @@ enum VLImagePreprocessor {
         }
         return out
     }
+    #endif
 }
 
 extension CGImage {

@@ -48,6 +48,7 @@ extension CoreAI {
 
     /// Image → description. First use downloads and loads the model (cached afterwards);
     /// captions on the same model serialize behind each other.
+    @available(macOS 27, iOS 27, *)
     public static func caption(
         _ image: CGImage, style: CaptionStyle = .concise, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -57,6 +58,7 @@ extension CoreAI {
     }
 
     /// Image file → description (any format the system decodes; EXIF orientation honored).
+    @available(macOS 27, iOS 27, *)
     public static func caption(
         imageAt url: URL, style: CaptionStyle = .concise, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -71,6 +73,7 @@ extension CoreAI {
 
     /// Image → labeled bounding boxes (preprocessing included). Results are sorted by
     /// descending confidence; `box` is normalized with origin at the top-left.
+    @available(macOS 27, iOS 27, *)
     public static func detect(
         in image: CGImage, scoreThreshold: Float = 0.5, options: OpOptions = OpOptions()
     ) async throws -> [Detection] {
@@ -83,6 +86,7 @@ extension CoreAI {
 
     /// Image file → labeled bounding boxes. EXIF orientation is baked into the bitmap
     /// first, so boxes are normalized to the upright image.
+    @available(macOS 27, iOS 27, *)
     public static func detect(
         inImageAt url: URL, scoreThreshold: Float = 0.5, options: OpOptions = OpOptions()
     ) async throws -> [Detection] {
@@ -108,6 +112,7 @@ extension CoreAI {
 
     /// Document image → markdown text — headings and tables survive as markup where
     /// the model emits them (`options: .model("mineru2.5-pro")` / `"unlimited-ocr"`).
+    @available(macOS 27, iOS 27, *)
     public static func read(
         _ image: CGImage, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -116,6 +121,7 @@ extension CoreAI {
     }
 
     /// Document image file → markdown text (any format the system decodes).
+    @available(macOS 27, iOS 27, *)
     public static func read(
         documentAt url: URL, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -126,6 +132,7 @@ extension CoreAI {
     public static let defaultUpscaleModel = "adcsr-x4"
 
     /// Image → ×4 upscaled image (tiled internally, so large photos are fine).
+    @available(macOS 27, iOS 27, *)
     public static func upscale(
         _ image: CGImage, options: OpOptions = OpOptions()
     ) async throws -> CGImage {
@@ -141,6 +148,7 @@ extension CoreAI {
 
     /// Image → relative depth map. `DepthMap.cgImage()` renders it as a normalized
     /// grayscale image.
+    @available(macOS 27, iOS 27, *)
     public static func estimateDepth(
         in image: CGImage, options: OpOptions = OpOptions()
     ) async throws -> DepthMap {
@@ -156,6 +164,7 @@ extension CoreAI {
 /// `OpModels`: concurrent first calls share one load, a failed load is not cached.
 /// Caption and read turns on one model serialize behind each other — a VL runtime holds
 /// one attached image / KV state at a time.
+@available(macOS 27, iOS 27, *)
 actor ImageOpModels {
     static let shared = ImageOpModels()
 

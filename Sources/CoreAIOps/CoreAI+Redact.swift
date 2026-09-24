@@ -24,6 +24,7 @@ extension CoreAI {
     /// Text → text with every detected entity replaced by its label — "Call Dana at
     /// 555-0123" becomes "Call [PERSON] at [PHONE NUMBER]". Labels are zero-shot; the
     /// default set sweeps common PII.
+    @available(macOS 27, iOS 27, *)
     public static func redact(
         _ text: String, labels: [String] = piiLabels, threshold: Float? = nil
     ) async throws -> String {
@@ -32,6 +33,7 @@ extension CoreAI {
 
     /// Text → entities for zero-shot `labels`: label → matched substrings,
     /// confidence-descending. Typed extraction into a `@Generable` value is `extract`.
+    @available(macOS 27, iOS 27, *)
     public static func extractEntities(
         from text: String, labels: [String], threshold: Float? = nil
     ) async throws -> [String: [String]] {
@@ -41,6 +43,7 @@ extension CoreAI {
 
 /// Process-wide GLiNER2 instance. Turns serialize behind each other — two extractions
 /// running concurrently on one instance corrupt the shared graph.
+@available(macOS 27, iOS 27, *)
 actor RedactOpModels {
     static let shared = RedactOpModels()
 

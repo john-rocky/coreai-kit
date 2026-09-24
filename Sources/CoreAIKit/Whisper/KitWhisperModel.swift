@@ -50,6 +50,7 @@ public struct WhisperModelID: Sendable, Hashable {
 /// A Core AI Whisper transcription bundle. Primary use is the direct `transcribe()`.
 /// `Sendable` is explicit: a public struct doesn't infer it across modules, and the app's
 /// `@MainActor` view model sends the value into `transcribe`'s non-isolated async context.
+@available(macOS 27, iOS 27, *)
 public struct KitWhisperModel: Sendable {
     public let runtime: WhisperRuntime
 

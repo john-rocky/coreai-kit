@@ -248,6 +248,7 @@ public struct SystemOneMCP: Sendable {
     }
 
     /// `models`: the catalog ids `TypedDecisions` loads on this platform.
+    @available(macOS 27, iOS 27, *)
     public static func modelsResult(catalog: ModelCatalog = .builtin, default defaultID: String, loaded: String?) -> JSONValue {
         let entries = catalog.available().filter { TypedDecisions.supports($0) }
         return .object([

@@ -7,6 +7,7 @@ import XCTest
 /// runs the sequential engine):
 ///
 ///     KIT_SMOKE_BUNDLE=/path/to/bundle swift test --filter GuidedGenerationSmoke
+@available(macOS 27, iOS 27, *)
 final class GuidedGenerationSmokeTests: XCTestCase {
     struct CityFacts: Codable {
         let name: String

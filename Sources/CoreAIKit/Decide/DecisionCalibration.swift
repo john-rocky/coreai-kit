@@ -35,6 +35,7 @@ struct DecisionTemperatures: Sendable, Equatable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 extension TypedDecisions {
     /// The temperature per question type, in the order above. A catalog temperature that is not
     /// a positive number fails the load, as a bundle's own declaration does.

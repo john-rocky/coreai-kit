@@ -15,6 +15,7 @@ import Foundation
 import FoundationModels
 import Tokenizers
 
+@available(macOS 27, iOS 27, *)
 enum TranscriptRenderer {
     struct Rendered {
         let tokens: [Int32]

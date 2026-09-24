@@ -15,6 +15,7 @@ import CoreAIKitEmbeddings
 import Foundation
 import XCTest
 
+@available(macOS 27, iOS 27, *)
 final class SafetyClassifierSmokeTests: XCTestCase {
     private struct ShieldRef: Decodable {
         struct Case: Decodable {

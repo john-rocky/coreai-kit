@@ -29,6 +29,7 @@ extension CoreAI {
     /// A request in the hosted form, answered whole: the state prefilled once, every question
     /// decided in request order, the response with the typed answers and the wire object
     /// (`response.value`, `response.dumps()`).
+    @available(macOS 27, iOS 27, *)
     public static func systemOne(
         _ request: SystemOne.Request, options: OpOptions = OpOptions()
     ) async throws -> SystemOne.Response {
@@ -44,6 +45,7 @@ extension CoreAI {
     /// throws `SystemOne.WireError` before any model loads; one the model refuses (a choice
     /// wider than it reads, an empty instruction) throws `DecisionError`. A server answers
     /// both as a 422.
+    @available(macOS 27, iOS 27, *)
     public static func systemOne(
         json data: Data, options: OpOptions = OpOptions()
     ) async throws -> SystemOne.Response {
@@ -52,6 +54,7 @@ extension CoreAI {
 
     /// A state and questions keyed by ids of the caller's choosing, in the order the answers
     /// should come back.
+    @available(macOS 27, iOS 27, *)
     public static func systemOne(
         state: String, questions: KeyValuePairs<String, Decision.Question>, options: OpOptions = OpOptions()
     ) async throws -> SystemOne.Response {

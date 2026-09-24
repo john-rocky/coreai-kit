@@ -95,6 +95,7 @@ public struct ASRArchitecture: Sendable, Hashable {
         return n
     }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// Pack a Whisper log-mel `[melBins, frames]` (row-major) into the AuT encoder's fixed inputs:
     /// `input_features [1, melBins, melFrames]` (mel left-aligned, zero-padded to K chunks) +
     /// `attn_bias [1, S, S]` (0 in-window & both-valid, −65504 else) + the clip's token count N.
@@ -123,6 +124,7 @@ public struct ASRArchitecture: Sendable, Hashable {
         }
         return (feats, bias, n)
     }
+    #endif
 
     /// Qwen3-ASR-1.7B: 2048-wide, K=30 AuT encoder (≤30 s, 390 audio-embed rows). Apache-2.0.
     public static let qwen3ASR1_7B = ASRArchitecture(

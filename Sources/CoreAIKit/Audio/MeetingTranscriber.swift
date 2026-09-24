@@ -60,6 +60,7 @@ public struct MeetingTranscript: Sendable {
 
 /// Speaker-attributed transcription behind one `transcribe(samples:)` call, composed from any
 /// diarization + any speech-to-text catalog model. Serial use (one clip at a time).
+@available(macOS 27, iOS 27, *)
 public struct MeetingTranscriber: Sendable {
     /// Widen each turn slightly so word onsets at the boundary aren't clipped.
     static let turnPadSec = 0.1

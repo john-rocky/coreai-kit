@@ -23,6 +23,7 @@ extension CoreAI {
     /// with is Apple's and free. `options: .model(...)` swaps in a catalog ASR and takes the
     /// feature from 238 MB to over 3 GB; do it when Apple's locale coverage or determinism is
     /// genuinely not enough.
+    @available(macOS 27, iOS 27, *)
     public static func transcribeMeeting(
         _ audioURL: URL, language: String? = nil, options: OpOptions = OpOptions()
     ) async throws -> MeetingTranscript {
@@ -44,6 +45,7 @@ extension CoreAI {
     public static let defaultAudioModel = "qwen2.5-omni-3b-audio"
 
     /// Audio file → description of the sounds and setting, not just a transcript.
+    @available(macOS 27, iOS 27, *)
     public static func describeAudio(
         _ audioURL: URL, options: OpOptions = OpOptions()
     ) async throws -> String {
@@ -57,6 +59,7 @@ extension CoreAI {
 
     /// Prompt → generated music (44.1 kHz stereo, interleaved L/R). Prompts name
     /// genre, instruments, and mood — "warm lo-fi hip hop loop, vinyl crackle, 90 BPM".
+    @available(macOS 27, iOS 27, *)
     public static func compose(
         _ prompt: String, seconds: Float = 11, options: OpOptions = OpOptions()
     ) async throws -> SpokenAudio {
@@ -68,6 +71,7 @@ extension CoreAI {
     public static let defaultSeparationModel = "melband-roformer-vocal"
 
     /// Song → vocal and instrumental stems (44.1 kHz stereo).
+    @available(macOS 27, iOS 27, *)
     public static func separate(
         _ audioURL: URL, options: OpOptions = OpOptions()
     ) async throws -> Stems {
@@ -84,6 +88,7 @@ extension CoreAI {
 /// first calls share one load, a failed load is not cached. `describeAudio` and `compose`
 /// turns on one model serialize behind each other (one attached clip / one generation at
 /// a time); the separator is an actor over an immutable graph and needs no turn chain.
+@available(macOS 27, iOS 27, *)
 actor AudioOpModels {
     static let shared = AudioOpModels()
 

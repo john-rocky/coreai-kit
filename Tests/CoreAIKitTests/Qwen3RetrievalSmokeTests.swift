@@ -12,6 +12,7 @@ import XCTest
 ///
 /// Each bundle directory holds the *.aimodel, tokenizer/, and the reference.json the export
 /// scripts wrote (torch-side embeddings / scores), so this checks Swift-runtime ≡ torch.
+@available(macOS 27, iOS 27, *)
 final class Qwen3RetrievalSmokeTests: XCTestCase {
 
     // MARK: Embedder

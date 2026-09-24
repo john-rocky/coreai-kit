@@ -171,6 +171,7 @@ public struct VLModelID: Sendable, Hashable {
 }
 
 /// A Core AI VL bundle as a `LanguageModelSession` provider.
+@available(macOS 27, iOS 27, *)
 public struct KitVisionModel: LanguageModel {
     public typealias Executor = KitVisionExecutor
 

@@ -24,6 +24,7 @@ public struct StableAudioPaths: Sendable {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 public final class StableAudioMusic: @unchecked Sendable {
     public static let sampleRate = 44100
     public static let audioSamples = 524288         // ~11.9 s

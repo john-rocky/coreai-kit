@@ -5,6 +5,7 @@ import XCTest
 /// End-to-end smoke over a real local bundle. Opt-in (loads a model, runs the GPU):
 ///
 ///     KIT_SMOKE_BUNDLE=/path/to/bundle swift test --filter ChatSessionSmoke
+@available(macOS 27, iOS 27, *)
 final class ChatSessionSmokeTests: XCTestCase {
     func testTwoTurnChat() async throws {
         guard let path = ProcessInfo.processInfo.environment["KIT_SMOKE_BUNDLE"] else {

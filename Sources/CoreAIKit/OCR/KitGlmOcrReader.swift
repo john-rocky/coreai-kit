@@ -16,6 +16,7 @@ import ImageIO
 import Tokenizers
 
 /// GLM-OCR document reader: one image → recognized text (single "Text Recognition:" pass).
+@available(macOS 27, iOS 27, *)
 public final class KitGlmOcrReader: @unchecked Sendable {
     private let runtime: VLRuntime
     private let arch = VLArchitecture.glmOcr

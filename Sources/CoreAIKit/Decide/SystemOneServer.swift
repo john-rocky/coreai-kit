@@ -129,6 +129,7 @@ public final class SystemOneServer: @unchecked Sendable {
     /// What answers: a `TypedDecisions` or a `FoundationModelDecisions`.
     public let backend: any DecisionBackend
     /// The backend when it is a `TypedDecisions`; nil over the system model.
+    @available(macOS 27, iOS 27, *)
     public var decider: TypedDecisions? { backend as? TypedDecisions }
     /// One line per event (listening, each request served); stderr by default.
     public let log: @Sendable (String) -> Void
@@ -143,6 +144,7 @@ public final class SystemOneServer: @unchecked Sendable {
     ///   - models: the `GET /v1/models` body; `SystemOne.modelsValue(id:description:revision:)`
     ///     with the catalog entry's name and pin says what a hosted client expects. Left nil,
     ///     the id stands in for the description and the revision is empty.
+    @available(macOS 27, iOS 27, *)
     public convenience init(
         host: String = "127.0.0.1", port: UInt16 = 8090, modelID: String, models: JSONValue? = nil,
         decider: TypedDecisions,

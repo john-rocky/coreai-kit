@@ -19,6 +19,7 @@ import Foundation
 import Tokenizers
 
 /// Unlimited-OCR document reader: one image → markdown.
+@available(macOS 27, iOS 27, *)
 public final class KitDocReader: @unchecked Sendable {
     // Locked spec from the verified conversion recipe (Base mode, 640px, 10×10 grid).
     private enum Spec {
@@ -34,9 +35,11 @@ public final class KitDocReader: @unchecked Sendable {
 
     private let vision: GraphModel
     private let decoder: DocDecoder
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     private let embed: [Float16]            // [vocab*hidden] embed_tokens table (host gather)
     private let imageNewline: [Float16]     // [hidden]
     private let viewSeperator: [Float16]    // [hidden]
+    #endif
     private let promptIDs: [Int32]          // [prefixLen]
     private let tokenizer: any Tokenizer
 
@@ -75,9 +78,11 @@ public final class KitDocReader: @unchecked Sendable {
         vision = try await GraphModel(
             contentsOf: try GraphBundle.resolve(in: visionDir), computeUnits: .gpu)
         decoder = try await DocDecoder(contentsOf: try GraphBundle.resolve(in: decoderDir))
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         embed = try Self.readF16(assetsDir.appendingPathComponent("embed_tokens.f16"))
         imageNewline = try Self.readF16(assetsDir.appendingPathComponent("image_newline.f16"))
         viewSeperator = try Self.readF16(assetsDir.appendingPathComponent("view_seperator.f16"))
+        #endif
         promptIDs = try Self.readI32(assetsDir.appendingPathComponent("prompt_input_ids.i32"))
         tokenizer = try await AutoTokenizer.from(modelFolder: tokenizerDir)
     }
@@ -89,6 +94,7 @@ public final class KitDocReader: @unchecked Sendable {
 
     /// OCR one image → structured markdown (special tokens kept so table markup survives).
     public func read(_ image: CGImage, maxTokens: Int = 1024) async throws -> String {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         // 1) preprocess: aspect-fit into 640², gray pad, x/127.5 - 1, CHW fp16
         let pixels = Self.padTo640CHW(image)
 
@@ -148,6 +154,9 @@ public final class KitDocReader: @unchecked Sendable {
         // 6) detokenize, special tokens kept (<table>/<tr>/<td> structure survives)
         let ids = generated.filter { $0 != Spec.eos }.map { Int($0) }
         return tokenizer.decode(tokens: ids, skipSpecialTokens: false)
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 
     // MARK: - sampling guards (match the verified oracle: no_repeat_ngram=35, run cap 6)
@@ -183,6 +192,7 @@ public final class KitDocReader: @unchecked Sendable {
 
     // MARK: - preprocessing (PIL ImageOps.pad(640, gray) + normalize(mean=std=0.5))
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     private static func padTo640CHW(_ image: CGImage) -> [Float16] {
         let side = Spec.imageSide
         let scale = min(
@@ -218,13 +228,16 @@ public final class KitDocReader: @unchecked Sendable {
         }
         return out
     }
+    #endif
 
     // MARK: - assets
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     private static func readF16(_ url: URL) throws -> [Float16] {
         let data = try Data(contentsOf: url)
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float16.self)) }
     }
+    #endif
 
     private static func readI32(_ url: URL) throws -> [Int32] {
         let data = try Data(contentsOf: url)
@@ -237,6 +250,7 @@ public final class KitDocReader: @unchecked Sendable {
 /// `StatefulGraphModel` loads one function per instance; the OCR decoder is ONE bundle with
 /// `prefill` + `decode` sharing the KV cache, so this wrapper holds both functions and the
 /// two state buffers itself (loading the 3.4 GB bundle twice is not an option).
+@available(macOS 27, iOS 27, *)
 private final class DocDecoder: @unchecked Sendable {
     private let model: AIModel
     private let prefillFn: InferenceFunction
@@ -292,6 +306,7 @@ private final class DocDecoder: @unchecked Sendable {
         zeroF16(&valueCache)
     }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// Prefill the assembled prefix → last-token logits; seeds the KV cache.
     func prefill(
         prefixEmbeds: [Float16], prefixLen: Int, hidden: Int, vocab: Int
@@ -304,7 +319,9 @@ private final class DocDecoder: @unchecked Sendable {
         return try await runLogits(
             prefillFn, prefillDesc, inputs: ["inputs_embeds": input], vocab: vocab)
     }
+    #endif
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     /// One decode step: the current token's embedding at absolute position `pos`.
     func decode(
         tokenEmbed: [Float16], pos: Int32, hidden: Int, vocab: Int
@@ -321,6 +338,7 @@ private final class DocDecoder: @unchecked Sendable {
             decodeFn, decodeDesc, inputs: ["inputs_embeds": embeds, "pos": position],
             vocab: vocab)
     }
+    #endif
 
     private func ndArray(
         _ descriptor: InferenceFunctionDescriptor, _ name: String, shape: [Int],
@@ -338,6 +356,7 @@ private final class DocDecoder: @unchecked Sendable {
         _ function: InferenceFunction, _ descriptor: InferenceFunctionDescriptor,
         inputs: [String: NDArray], vocab: Int
     ) async throws -> [Float] {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         let logitsName = descriptor.outputNames[0]
         guard case .ndArray(let ld) = descriptor.outputDescriptor(of: logitsName) else {
             throw VisionError.missingOutput(logitsName)
@@ -361,11 +380,19 @@ private final class DocDecoder: @unchecked Sendable {
             }
         }
         return out.map { Float($0) }
+        #else
+        fatalError("Float16 is not supported on this platform")
+        #endif
     }
 }
 
+@available(macOS 27, iOS 27, *)
 private func zeroF16(_ array: inout NDArray) {
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     let count = array.shape.reduce(1, *)
     var view = array.mutableView(as: Float16.self)
     view.copyElements(fromContentsOf: [Float16](repeating: 0, count: count))
+    #else
+    fatalError("Float16 is not supported on this platform")
+    #endif
 }

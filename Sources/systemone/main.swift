@@ -140,6 +140,7 @@ let id = modelID
 
 // MARK: - models
 
+@available(macOS 27, iOS 27, *)
 @MainActor func runModels() async {
     let catalog = await ModelCatalog.load()
     let store = ModelStore.default
@@ -170,6 +171,7 @@ func describe(_ answer: Decision.Answer) -> String {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 @MainActor func runAsk() async throws {
     var text = state
     if text == nil, let stateFile {
@@ -195,6 +197,7 @@ func describe(_ answer: Decision.Answer) -> String {
 
 // MARK: - serve
 
+@available(macOS 27, iOS 27, *)
 @MainActor func runServe() async throws {
     let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
     let entry = try await ModelCatalog.entry(forID: id)
@@ -220,6 +223,7 @@ func describe(_ answer: Decision.Answer) -> String {
 
 /// One JSON-RPC message per line on stdin and stdout for the MCP client that spawned us; the
 /// model loads on the first `decide` (`--preload`: at launch). Ends when stdin closes.
+@available(macOS 27, iOS 27, *)
 @MainActor func runMCP() async throws {
     signal(SIGPIPE, SIG_IGN)  // a client that closed its end is an error to report, not a signal
     let server = SystemOneMCPServer(
@@ -232,6 +236,7 @@ func describe(_ answer: Decision.Answer) -> String {
 }
 
 do {
+    guard #available(macOS 27, iOS 27, *) else { fail("systemone requires macOS 27 or later") }
     switch command {
     case "serve": try await runServe()
     case "ask": try await runAsk()

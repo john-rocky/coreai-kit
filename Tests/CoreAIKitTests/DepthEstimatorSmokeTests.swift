@@ -6,6 +6,7 @@ import XCTest
 /// End-to-end smoke over a real Depth Anything bundle. Opt-in:
 ///
 ///     KIT_DEPTH_BUNDLE=/path/to/dir swift test --filter DepthEstimatorSmoke
+@available(macOS 27, iOS 27, *)
 final class DepthEstimatorSmokeTests: XCTestCase {
     /// A scene-ish synthetic image: horizon gradient + a dark block "object".
     private func syntheticScene() throws -> CGImage {

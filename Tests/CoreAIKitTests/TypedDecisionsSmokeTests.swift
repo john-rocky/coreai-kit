@@ -10,6 +10,7 @@ import XCTest
 
 @testable import CoreAIKit
 
+@available(macOS 27, iOS 27, *)
 final class TypedDecisionsSmokeTests: XCTestCase {
     func testLogitsAgreeWithDecideAndAccountForThePrefix() async throws {
         guard let path = ProcessInfo.processInfo.environment["KIT_SMOKE_BUNDLE"] else {

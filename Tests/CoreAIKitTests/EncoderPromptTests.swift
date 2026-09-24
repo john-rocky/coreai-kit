@@ -121,6 +121,7 @@ struct EncoderPromptTests {
         #expect(EncoderPrompt.unmasked("<mask>\u{0301}", "<mask>") == " \u{0301}")
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func formatRoundTripsAndAnEncoderEntryCanDecide() {
         #expect(Decision.Format(rawValue: "encoder") == .encoder)
         #expect(EncoderPrompt.maxOptions == 20)
@@ -173,6 +174,7 @@ struct EncoderQuestionCacheTests {
         #expect(Decision.Question.noul("caf\u{e9}?") == Decision.Question.noul("cafe\u{301}?"))  // why the key is not `==`
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func theLeastRecentlyAskedIsDroppedPastSixteen() {
         var cache = EncoderPrompt.QuestionCache(capacity: 16)
         let questions = (0..<17).map { Decision.Question.noul("Question \($0)?") }
@@ -323,6 +325,7 @@ struct EncoderBundleTests {
         }
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func anEncoderBundleIsNotReadAsALanguageBundle() async throws {
         // No graph in the directory: the encoder path fails on the missing graph — a language
         // bundle read would have failed on its metadata instead.
@@ -334,6 +337,7 @@ struct EncoderBundleTests {
         await #expect(throws: DecisionError.self) { try await TypedDecisions(bundleAt: dir, configuration: chat) }
     }
 
+    @available(macOS 27, iOS 27, *)
     @Test func theNeuralEngineIsRefusedBeforeAnythingLoads() async throws {
         // Refused from the metadata alone: with no graph in the directory, anything past the check
         // would fail on the missing graph (KitBundleError) instead.

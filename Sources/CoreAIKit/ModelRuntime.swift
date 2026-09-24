@@ -44,6 +44,7 @@ enum PromptRenderer: Sendable {
     case gemma(GemmaArchitecture)
 }
 
+@available(macOS 27, iOS 27, *)
 struct ModelRuntime: Sendable {
     let engine: any InferenceEngine
     let tokenizer: any Tokenizer

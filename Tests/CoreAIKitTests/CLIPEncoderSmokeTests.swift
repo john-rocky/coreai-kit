@@ -8,6 +8,7 @@ import XCTest
 ///     KIT_CLIP_BUNDLE=/path/to/dir swift test --filter CLIPEncoderSmoke
 ///
 /// The bundle directory holds one *.aimodel plus an HF tokenizer.json.
+@available(macOS 27, iOS 27, *)
 final class CLIPEncoderSmokeTests: XCTestCase {
     private func solidImage(red: CGFloat, green: CGFloat, blue: CGFloat) throws -> CGImage {
         let size = 256

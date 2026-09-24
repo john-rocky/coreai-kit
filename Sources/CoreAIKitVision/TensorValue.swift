@@ -7,7 +7,9 @@ import Foundation
 
 public struct TensorValue: Sendable, Equatable {
     enum Storage: Equatable {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         case float16([Float16])
+        #endif
         case float32([Float])
         case int32([Int32])
     }
@@ -17,10 +19,12 @@ public struct TensorValue: Sendable, Equatable {
 
     public var count: Int { shape.reduce(1, *) }
 
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     public static func float16(_ scalars: [Float16], shape: [Int]) -> TensorValue {
         precondition(scalars.count == shape.reduce(1, *), "scalar count must match shape")
         return TensorValue(storage: .float16(scalars), shape: shape)
     }
+    #endif
 
     public static func float32(_ scalars: [Float], shape: [Int]) -> TensorValue {
         precondition(scalars.count == shape.reduce(1, *), "scalar count must match shape")
@@ -35,7 +39,9 @@ public struct TensorValue: Sendable, Equatable {
     /// Converting accessor: the scalars as Float, row-major.
     public func floats() -> [Float] {
         switch storage {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         case .float16(let v): return v.map(Float.init)
+        #endif
         case .float32(let v): return v
         case .int32(let v): return v.map(Float.init)
         }
@@ -44,14 +50,17 @@ public struct TensorValue: Sendable, Equatable {
 
 // MARK: - NDArray bridge (internal)
 
+@available(macOS 27, iOS 27, *)
 extension TensorValue {
     /// Fills a fresh NDArray for the (resolved) descriptor, converting scalar type as needed.
     func makeNDArray(descriptor: NDArrayDescriptor, inputName: String) throws -> NDArray {
         var array = NDArray(descriptor: descriptor)
         switch (storage, descriptor.scalarType) {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         case (.float16(let v), .float16): fill(&array, with: v)
         case (.float32(let v), .float16): fill(&array, with: v.map(Float16.init))
         case (.float16(let v), .float32): fill(&array, with: v.map(Float.init))
+        #endif
         case (.float32(let v), .float32): fill(&array, with: v)
         case (.int32(let v), .int32): fill(&array, with: v)
         default:
@@ -66,8 +75,10 @@ extension TensorValue {
         let shape = array.shape
         let count = shape.reduce(1, *)
         switch array.scalarType {
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         case .float16:
             self.init(storage: .float16(read(array, Float16.self, count)), shape: shape)
+        #endif
         case .float32:
             self.init(storage: .float32(read(array, Float.self, count)), shape: shape)
         case .int32:
@@ -78,11 +89,13 @@ extension TensorValue {
     }
 }
 
+@available(macOS 27, iOS 27, *)
 private func fill<T: BitwiseCopyable>(_ array: inout NDArray, with values: [T]) {
     var view = array.mutableView(as: T.self)
     view.copyElements(fromContentsOf: values)
 }
 
+@available(macOS 27, iOS 27, *)
 private func read<T: BitwiseCopyable>(_ array: NDArray, _ type: T.Type, _ count: Int) -> [T] {
     array.view(as: T.self).withUnsafePointer { ptr, _, _ in
         Array(UnsafeBufferPointer(start: ptr, count: count))

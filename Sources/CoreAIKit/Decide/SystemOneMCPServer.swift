@@ -19,6 +19,7 @@
 
 import Foundation
 
+@available(macOS 27, iOS 27, *)
 public final class SystemOneMCPServer: @unchecked Sendable {
     public enum Failure: Error, LocalizedError, Equatable {
         /// A reply could not be written: the client closed the pipe.
@@ -210,6 +211,7 @@ public final class SystemOneMCPServer: @unchecked Sendable {
 private struct CallCancelled: Error {}
 
 /// The one resident model.
+@available(macOS 27, iOS 27, *)
 private actor ModelSlot {
     private var decider: TypedDecisions?
     private(set) var loaded: String?
