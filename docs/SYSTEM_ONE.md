@@ -101,13 +101,15 @@ MCP server itself.
 | Twenty tickets × three columns, 60 decisions | 3,963 ms | 7,420 ms |
 | A `/v1/systemone` request, 2 questions on a 59-token state, end to end | 204 ms | — |
 | One decision, `laya-multilingual` (an encoder, 256-token window, GPU, state shared) | 11.5 ms | 47 ms |
-| One decision, `openthai-systemone` (0.8B, its own answer head; a recurrent hybrid, so every question re-prefills its ~150-token row) | 688 ms† | 1,527 ms |
-| One decision, `qwen3.5-2b-decision` (2B, the same S = 1 prefill of ~190 tokens) | 1,275 ms† | 6,063 ms |
+| One decision, `openthai-systemone` (0.8B, its own answer head; a recurrent hybrid on an S = 1 graph, the state checkpointed after its prefix) | 120 ms† | 1,527 ms‡ |
+| One decision, `qwen3.5-2b-decision` (2B, the same S = 1 graph and checkpoint) | 220 ms† | 6,063 ms‡ |
 
 Measured 2026-09-22/24 on the runs in `Examples/Decide/README.md`, which says what each
 number is and what else was running; the phone at thermal state "nominal" for the last three rows.
-† `decide-cli bench --repeat 3` with the Mac's GPU shared with three model conversions (2026-09-24);
-the two models' quiet-Mac figures are their fixture medians, 354 ms and 986 ms per question.
+† `decide-cli bench --repeat 6`, eight questions on one state, nothing else on the GPU
+(2026-09-24); with every prompt from scratch they take 696 ms and 1,297 ms.
+‡ Before the checkpoint, when every question re-prefilled its whole row; the phone has not been
+measured with it yet.
 
 ## What it gets right, and what it does not
 
@@ -128,17 +130,17 @@ decision on the phone (1.9 s per fixture question when the phone was hot).
 `apus-decision-v1-4b`, a Qwen3.5-4B decision model for browser and workflow steps read at the
 letters A–P under its chat template, is token-identical to its author's compiled prompts on the
 40 choice and yes/no fixture rows (max |Δp| 0.0055) and scores 0.906 on the same 144 rows, at
-about 2 s per decision on the Mac.
+about 2 s per decision on the Mac (1.2 s for a later question on a state it has read).
 `qwen3.5-2b-decision`, a Qwen3.5-2B decision model with its calibration folded into the weights and
 read at space-prefixed letters after a plain-text prompt, is token-identical to its author's rows and
 argmax-identical to its fp32 reference on all 58 fixture rows (int8 max |Δp| 0.0079; on the iPhone 17
 Pro the same 58/58 at 0.0070) and scores 0.798 on the same 144 rows, at about 1 s per decision on the
-Mac and about 6 s on the phone (11 s when the phone is hot), where its S = 1 prefill runs at the
-phone's rate.
+Mac (0.2 s for a later question on a state it has read) and about 6 s on the phone (11 s when the
+phone is hot), where its S = 1 prefill runs at the phone's rate.
 `system-one-scorer-4b`, a Qwen3.5-4B scoring head that reads one row per option at its author's
 temperature (CC BY-NC 4.0), is token-identical to its author's 280 fixture rows and argmax-identical
 on all 48 questions (int8 max |Δp| 0.011) and scores 0.844 on the same 144 rows, at about 2 s per
-three-option decision on the Mac.
+three-option decision on the Mac (0.7 s per decision on a state it has read).
 `laya-multilingual`, an encoder-type decision model (convaiinnovations' laya, the multilingual
 checkpoint: an mmBERT-base encoder with a typed decision head, Apache-2.0), reads the whole question
 in one forward pass and answers at a mask marker in front of each option; nothing is generated or

@@ -33,7 +33,15 @@ let package = Package(
         .trait(name: "Xet", description: "Enable Xet transport for model downloads.")
     ],
     dependencies: [
-        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.4-zoo is
+        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.7-zoo adds a
+        // checkpoint of a hybrid model's recurrent state to the sequential engine
+        // (InferenceEngine.checkpoint()): TypedDecisions checkpoints after a state's prefix
+        // and each later question restores it instead of re-prefilling the whole prompt
+        // (4.4-5.9x per decision on three hybrid decision models, macOS; iOS not measured).
+        // The move from 0.2.4-zoo also brings 0.2.5-zoo (the engine stops at a stop sequence
+        // instead of decoding to maxTokens) and 0.2.6-zoo (a macOS 26 / iOS 26 floor with
+        // @available(macOS 27, iOS 27, *) on everything that touches Core AI; this package's
+        // floor stays 27). 0.2.4-zoo is
         // upstream main through #207 (2026-08-28) plus the zoo patches to the pipelined
         // engine: hybrid/SSM extra states so Qwen3.5/3.6, LFM2.5 and Granite 4 load,
         // chunked prefill via a static-chunk "prefill" function, per-token/static inputs,
@@ -47,7 +55,7 @@ let package = Package(
         // descriptor; garbled text at temperature > 0 under pipelined decode).
         // For local engine work swap in .package(path: "../coreai-models") — branch
         // zoo-0.4 matches this tag.
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.4-zoo"),
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.7-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
         .package(
             url: "https://github.com/huggingface/swift-huggingface.git",

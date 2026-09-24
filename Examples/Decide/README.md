@@ -245,17 +245,31 @@ listing, the git log and the API doc sit at 0.85–1.04 and stay. The line is 0.
 **Typing** (2026-09-23): "just got the job offer!! dinner tonight to celebrate?", typed by
 the hands-off run — positive, sharing news, 😀; three decisions in 279 ms at the last pause.
 
-**Per decision, shared vs from scratch** (2026-09-21; a 150-token state and eight questions of
-40–60 tokens each; median of 3 runs):
+**Per decision, shared vs from scratch** (`decide-cli bench`: one state, eight questions; the
+first three rows 2026-09-21, a 150-token state and questions of 40–60 tokens, median of 3 runs;
+the recurrent hybrids below them 2026-09-24 with nothing else on the GPU, median of 6 runs, the
+state 111–139 tokens in each model's own prompt form):
 
 | Model (catalog id) | ms per decision, state shared | ms per decision, every prompt from scratch | prefill + 8 decisions on one state |
 |---|---:|---:|---:|
 | MiniCPM5 2B int8 (`minicpm5-2b`) | 64.5 | 108.8 | 541 ms vs 1013 ms |
 | MiniCPM5 1B int8 (`minicpm5-1b`) | 24.8 | 48.2 | 273 ms vs 468 ms |
 | Qwen3 0.6B 4-bit (`qwen3-0.6b`) | 15.8 | 33.6 | 163 ms vs 308 ms |
+| decider 0.8B int8 (`decider-0.8b`) | 186.1 | 824.7 | 3,157 ms vs 11,421 ms |
+| OpenThai-SystemOne 0.8B int8 (`openthai-systemone`) | 119.8 | 695.9 | 1,568 ms vs 6,180 ms |
+| Qwen3.5 2B Decision int8 (`qwen3.5-2b-decision`) | 220.0 | 1,297.2 | 2,816 ms vs 11,429 ms |
+| APUS Decision v1 4B int8 (`apus-decision-v1-4b`) | 1,210.8 | 3,080.8 | 11,400 ms vs 25,741 ms |
+| System One scorer 4B int8 (`system-one-scorer-4b`) | 719.2 | 5,850.7 | 6,979 ms vs 43,730 ms |
 
 **Shared** = the state is prefilled once and each question rewinds the engine to it
-(`Decision.Timing.reusedTokens` = 150 here); **from scratch** = the whole prompt every time.
+(`Decision.Timing.reusedTokens` = the state's tokens); **from scratch** = the whole prompt every
+time. A recurrent hybrid (the last five rows) cannot rewind its state, so the kit checkpoints it
+after the state's prefix — the recurrent state copied, 10 MB in under 1 ms on the 0.8B–2B
+models — and each question returns there and prefills only its own tokens, one per step on
+these decode-only graphs. The answers are bit-identical to the from-scratch path on the
+fixtures of the first three (44, 50 and 58 rows) and, for the two 4B models, on eight questions
+over two states with one revisited. Before coreai-models 0.2.7-zoo the two columns were the same
+on the hybrids: every question replayed its prompt from the first token.
 
 **The same command on the iPhone 17 Pro** (iOS 27.0, 2026-09-24, the phone at thermal state
 "nominal" from start to finish, the app in front, the catalog's own bundles; `decide-cli bench
@@ -265,13 +279,15 @@ the hands-off run — positive, sharing news, 😀; three decisions in 279 ms at
 |---|---:|---:|---:|
 | MiniCPM5 2B int8 (`minicpm5-2b`) | 106.0 | 208.2 | 1,019 ms vs 1,850 ms |
 | laya multilingual (`laya-multilingual`, 256-token window) | 47.1 | 46.4 | 390 ms vs 458 ms |
-| OpenThai-SystemOne 0.8B int8 (`openthai-systemone`) | 1,527 | 1,713 | 13.5 s vs 15.2 s (0 reused: a recurrent hybrid re-prefills every row) |
-| Qwen3.5 2B Decision int8 (`qwen3.5-2b-decision`) | 6,063 | 6,150 | 53.2 s vs 54.2 s (0 reused) |
+| OpenThai-SystemOne 0.8B int8 (`openthai-systemone`) | 1,527 | 1,713 | 13.5 s vs 15.2 s (0 reused: before the checkpoint a recurrent hybrid re-prefilled every row) |
+| Qwen3.5 2B Decision int8 (`qwen3.5-2b-decision`) | 6,063 | 6,150 | 53.2 s vs 54.2 s (0 reused, before the checkpoint) |
 
 The phone reads MiniCPM5 2B at about 1.6× the Mac's time per shared decision and laya at 4×;
 the two decision models pay their S = 1 prefill at the phone's rate, about 30 ms per token,
 so a question on them is seconds there — the hot-phone figures in their paragraphs below are
-about twice these.
+about twice these. These two rows predate the checkpoint described under the Mac table, which
+leaves a later question on a state only its own tokens to prefill; the phone has not been
+measured with it yet.
 
 Agreement with the published bf16 readout of the same models on the same 144 authored rows
 (SemIf's `authored144` fixture, its `direct` rendering byte for byte, its `evaluate.py` metric):
@@ -335,10 +351,12 @@ form and reads it at its card's temperature. On the model's 44-row fixture (`dec
 parity`, 2026-09-23, int8 bundle): all 44 rows, the 255-option one included, are
 token-identical, slot-identical and argmax-identical to the author's fp32 readout, max |Δp|
 0.0088, mean 0.0010. The 255-option row is 1,965 tokens and takes 11–14 s. It ships as a
-decode-only graph on a recurrent hybrid, so every
-row re-prefills its whole prompt one token at a time: median 343 ms per fixture question
-here, about 490 ms per clipboard kind and 710 ms per sorter need — five to seven times
-`minicpm5-2b`'s shared-prefix figures. On the two demo questions it was not more accurate
+decode-only graph on a recurrent hybrid, so a prompt is prefilled one token at a time. Before
+the checkpoint every row was prefilled whole: median 343 ms per fixture question, about 490 ms
+per clipboard kind and 710 ms per sorter need — five to seven times `minicpm5-2b`'s
+shared-prefix figures (2026-09-23). With the state's prefix checkpointed, a later question on
+the same state prefills only its own tokens: 186 ms per decision against 825 ms from scratch in
+the table above. On the two demo questions it was not more accurate
 than the chat model (kinds 5/8, needs 11/12). Its place is where the probability must mean
 what the model's own API would report; the screens default to `minicpm5-2b`.
 
@@ -353,11 +371,13 @@ the author's 50-row fixture (`decide-cli parity`, 2026-09-23, Thai, English and 
 rows of 2–16, 40 and 255 options): tokens, slots and argmax identical on 50/50 for both the
 int8 bundle (max |Δp| 0.0226 on one two-option row, mean 0.0009) and the fp16 reference
 (0.0051 / 0.0003). On SemIf's 144 English authored rows, its own form, the same evaluator as
-the table above: mean family balanced accuracy 0.725 (int8). Speed on the Mac: a
-three-question Thai ticket 351, 316 and 429 ms for its 57-, 63- and 83-token rows; over the
-fixture's 50 rows 354 ms median per question; the 255-option row 7.2 s. Like `decider-0.8b`
-it is a decode-only graph on a recurrent hybrid, so every row is prefilled from its first
-token, one token at a time — nothing is reused between questions on the same state. Two things to know: its author's API lays several questions in one
+the table above: mean family balanced accuracy 0.725 (int8). Speed on the Mac, each row
+prefilled from its first token (2026-09-23): a three-question Thai ticket 351, 316 and 429 ms
+for its 57-, 63- and 83-token rows; over the fixture's 50 rows 354 ms median per question; the
+255-option row 7.2 s. Like `decider-0.8b` it is a decode-only graph on a recurrent hybrid, one
+token per step; with the state's prefix checkpointed, a later question on the same state
+prefills only its own tokens — 120 ms per decision against 696 ms from scratch in the table
+above. Two things to know: its author's API lays several questions in one
 sequence and answers them in one pass, and those answers can differ from the one-question
 rows the kit sends (up to 0.375 on the fixture's requests) — the kit's rows equal the
 author's single-question API exactly; and Thai is cut the way the reference tokenizer cuts it
@@ -382,9 +402,11 @@ author's third primitive (`score_level`, a yes/no on one proposition under anoth
 outside the kit's kinds. On SemIf's 144 English rows, each rendered as a choice, the same
 evaluator as the table above: mean family balanced accuracy 0.906 (MiniCPM5 2B 0.681 and
 Qwen3.5-4B zero-shot 0.821 on the same rows). The price is the prompt: a 4B on a decode-only
-graph reads about 15 ms per token on the Mac and reuses nothing between questions — a
-two-question workflow request took 2,069 and 1,540 ms for its 134- and 107-token rows, a
-SemIf row 1.96 s median. Mac only until an iPhone number exists (the bundle is 5.8 GB).
+graph reads about 15 ms per token on the Mac. Prefilled whole, a two-question workflow request
+took 2,069 and 1,540 ms for its 134- and 107-token rows and a SemIf row 1.96 s median
+(2026-09-23); with the state's prefix checkpointed, a later question on the same state pays
+only its own tokens — 1,211 ms per decision against 3,081 ms from scratch in the table above.
+Mac only until an iPhone number exists (the bundle is 5.8 GB).
 
 **A calibrated decision model in plain text.** `qwen3.5-2b-decision` (catalog kind `decision`,
 `Decision.Format.decisionFunction`; chaoliangUNSW's Jev-Style-Qwen3.5-2B-Decision, a
@@ -402,11 +424,13 @@ On SemIf's 144 English rows, each rendered in the author's form, the same evalua
 above: mean family balanced accuracy 0.798 (int8), 872 ms median per decision. The author's own
 card example, a chipmaker news sentence over four sections, comes back Business 0.684 /
 Science/Technology 0.309 / World 0.005 / Sports 0.002 through the kit; the card quotes 0.70 /
-0.29 / 0.005 / 0.002 from MLX bf16. Speed on the Mac: a three-question request on that sentence
-(a choice, a yes/no, a five-level score) 817, 633 and 766 ms for its 82-, 73- and 88-token
-rows, 0 tokens reused; over the fixture 986 ms median per question, the two 1,500–2,000-token
-rows up to 13.6 s — a recurrent hybrid on a decode-only graph, about 10 ms per token, nothing
-shared between questions. The published MLX checkpoint is not in the Hugging Face layout (18
+0.29 / 0.005 / 0.002 from MLX bf16. Speed on the Mac, each row prefilled whole (2026-09-23): a
+three-question request on that sentence (a choice, a yes/no, a five-level score) 817, 633 and
+766 ms for its 82-, 73- and 88-token rows; over the fixture 986 ms median per question, the two
+1,500–2,000-token rows up to 13.6 s — a recurrent hybrid on a decode-only graph, about 10 ms per
+token. With the state's prefix checkpointed, a later question on the same state prefills only
+its own tokens: 220 ms per decision against 1,297 ms from scratch in the table above. The
+published MLX checkpoint is not in the Hugging Face layout (18
 convolution kernels transposed, 61 RMSNorm scales stored without their +1); the zoo's converter
 puts them back, proved against the author's MLX bf16 readout (58/58, max |Δp| 0.012), and the
 bundle is that converted checkpoint. 2.9 GB int8, the size of `qwen3.5-2b`, so it ships to
@@ -416,7 +440,8 @@ argmax-identical to the fp32 reference on 58/58, max |Δp| 0.0070 (the Mac's 0.0
 1,700-token rows included; the sentence above with a choice, a yes/no and a five-level score comes
 back Business 0.729 / Science/Technology 0.254 / World 0.012 / Sports 0.005 on the phone and
 0.731 / 0.253 / 0.012 / 0.005 on the Mac for the same three rows (the card example's own row
-is two tokens longer, hence its 0.684). The price is the same S = 1 prefill at the phone's rate:
+is two tokens longer, hence its 0.684). The price is the same S = 1 prefill at the phone's rate,
+each row prefilled whole (the checkpoint is not measured there yet):
 2.7, 6.0 and 7.4 s for those 80-, 71- and 82-token rows, 11.3 s median per fixture question (the
 Mac's 986 ms), the 1,743-token row 155 s — a question a second on the Mac is a question every ten
 on the phone, so on the phone this model is for a decision that can wait.
@@ -440,8 +465,10 @@ option a row, the same evaluator as the table above: 121/144, mean family balanc
 0.844 (int8), 2.3 s median per three-option decision with the GPU shared with a conversion run.
 A support ticket with three questions — which team, is the customer angry, how urgent on four
 levels — took 1,862, 1,094 and 2,198 ms for its 3, 2 and 4 rows (123, 80 and 163 tokens in
-all), 0 reused: a 4B on a decode-only graph pays every row from its first token, and a choice
-costs one row per option. Mac only (5.1 GB int8); no iPhone number.
+all) with every row prefilled from its first token (2026-09-23). A choice costs one row per
+option; with the state's prefix checkpointed, each row prefills only its question and option —
+719 ms per decision against 5,851 ms from scratch in the table above. Mac only (5.1 GB int8);
+no iPhone number.
 
 **An encoder instead of a language model.** `laya-multilingual` (`Decision.Format.encoder`;
 convaiinnovations' laya, the multilingual checkpoint — an mmBERT-base encoder with a typed decision

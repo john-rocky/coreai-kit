@@ -161,8 +161,10 @@ entry records (`CatalogEntry.calibration`, 2.93 for `minicpm5-2b`, fitted on lab
 `TypedDecisions.Configuration.temperature` overrides it; `nil` takes the catalog's, and a model
 without a record reads at its own. Decisions need the logits at the answer slot, so the model loads
 on the sequential engine (or the static-shape engine for a Neural Engine bundle) rather
-than the pipelined one; recurrent hybrids (Qwen3.5, LFM2.5, Granite 4) cannot rewind, so on
-them every decision re-prefills its whole prompt — correct, and `timing.reusedTokens` says 0.
+than the pipelined one. A recurrent hybrid (Qwen3.5, LFM2.5, Granite 4) cannot rewind its
+state, so the kit checkpoints it after the state's prefix — `prefill(_:)`, or the first
+question on a new state — and each later question on the state returns there and prefills only
+its own tokens; `timing.reusedTokens` says what was kept.
 `Examples/Decide` runs the shapes as whole uses — copy an email and a checkout form fills at
 once, a contract read once and answered as a checklist, a folder sorted with what needs you
 first, a passage reranker, a speech gate — on a Mac and on an iPhone from the same sources,
@@ -211,9 +213,10 @@ renders it in the plain form it was trained on (`Decision.Format.decider`, chose
 catalog kind) at its card's temperature. Its probabilities follow the model's own fp32
 readout on the model's fixture (`decide-cli parity`: 43/43 rows token-identical and
 argmax-identical, max |Δp| 0.0088). It ships as a decode-only
-graph on a recurrent hybrid, so every row re-prefills its whole prompt one token at a time —
-correct, and slower per decision than `minicpm5-2b`'s shared prefix; pick it when the
-probability has to mean something and the chat model's zero-shot answer does not.
+graph on a recurrent hybrid, prefilled one token at a time: with the state checkpointed a
+decision takes 186 ms on an M4 Max against `minicpm5-2b`'s 51 ms (825 ms with every prompt from
+scratch; 2026-09-24); pick it when the probability has to mean something and the chat model's
+zero-shot answer does not.
 
 ```swift
 let trained = try await TypedDecisions(catalog: "decider-0.8b")   // Format.decider, T = 1.03
@@ -308,7 +311,11 @@ scored.timing.reusedTokens     // what the engine kept from the previous call
 
 The KV cache is the one `decide` uses: the longest prefix in common with the previous call
 is kept and only the tail runs, and `prefill(tokens:)` loads a shared prefix ahead of the
-first question. Recurrent hybrids re-prefill the whole prompt and report 0 reused, as above.
+first question. A recurrent hybrid keeps less: a call that extends the previous one continues
+from it, and one that starts with the state prefix a decision or `prefill(_:)` checkpointed
+returns there; anything else is prefilled whole and reports 0 reused. `prefill(tokens:)` takes
+no checkpoint, so on a hybrid it saves only the call right after it, when that call starts
+with the prefilled tokens.
 
 ## Chat, tools, and guided JSON
 

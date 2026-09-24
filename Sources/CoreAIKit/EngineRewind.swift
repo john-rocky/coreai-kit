@@ -8,14 +8,18 @@
 // keeps the older contract here, because a full reset costs a re-prefill of the prompt and
 // nothing else — the caller feeds the full sequence either way. Reproduced before this landed:
 // the second turn of every Qwen3.5 chat failed with that error on the 0.2.3-zoo pin.
+// An engine holding a checkpoint (`InferenceEngine.checkpoint()`: the sequential engine on a
+// hybrid) returns to it for a rewind at or past its position, so it can keep fewer tokens than
+// asked for: the count reported is the engine's own after the reset.
 
 import CoreAILanguageModels
 
 extension InferenceEngine {
     /// Rewinds the KV cache to `tokenIndex`, falling back to a full reset on engines that
     /// cannot rewind mid-sequence. Returns the index the engine actually kept — `tokenIndex`,
-    /// or 0 after the fallback — so callers report cached tokens truthfully. Any other error
-    /// from the engine propagates unchanged.
+    /// a checkpoint's position below it, or 0 after the fallback — so callers report cached
+    /// tokens truthfully and feed from there. Any other error from the engine propagates
+    /// unchanged.
     func rewind(to tokenIndex: Int) async throws -> Int {
         guard tokenIndex > 0 else {
             try await reset(to: 0)
@@ -23,7 +27,7 @@ extension InferenceEngine {
         }
         do {
             try await reset(to: tokenIndex)
-            return tokenIndex
+            return processedTokenCount
         } catch InferenceRuntimeError.invalidState {
             try await reset(to: 0)
             return 0

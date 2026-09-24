@@ -50,7 +50,7 @@ swift build && swift test
 plus the hybrid two-turn check from [AGENTS.md](../AGENTS.md): two `ChatSession` turns
 on a hybrid bundle (Qwen3.5 / LFM2.5 / Granite 4) on the Mac — the second turn is where
 an engine-visible change shows, and an SDK generation flip is exactly the kind of change
-the hermetic tests cannot see. The `coreai-models` pin (`exact: "0.2.4-zoo"`) does not
+the hermetic tests cannot see. The `coreai-models` pin (`exact: "0.2.7-zoo"`) does not
 move for GA.
 
 ## 5. Push and watch

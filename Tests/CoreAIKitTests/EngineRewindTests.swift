@@ -5,7 +5,8 @@
 // ChatSession and KitExecutor ask for exactly that partial reset on every second turn, so
 // without the fallback the second turn of every hybrid chat fails — reproduced on
 // Qwen3.5-0.8B before EngineRewind.swift landed. The fake below is the smallest engine that
-// behaves like the fork: partial reset throws, full reset works, everything is recorded.
+// behaves like the fork: partial reset throws, full reset works, everything is recorded — and,
+// given a checkpoint, a partial reset at or past it lands there, as the sequential engine's does.
 
 import CoreAILanguageModels
 import Foundation
@@ -27,6 +28,15 @@ struct EngineRewindTests {
         let kept = try await engine.rewind(to: 12)
         #expect(kept == 0)
         #expect(engine.resets == [12, 0])
+    }
+
+    /// A hybrid engine holding a checkpoint returns to it for a rewind past it: the index
+    /// reported is where the engine is, not the one asked for.
+    @Test func checkpointedEngineReportsItsCheckpoint() async throws {
+        let engine = FakeEngine(rewindable: false, checkpoint: 8)
+        let kept = try await engine.rewind(to: 12)
+        #expect(kept == 8)
+        #expect(engine.resets == [12])
     }
 
     @Test func zeroIsAlwaysAFullReset() async throws {
@@ -51,6 +61,7 @@ struct EngineRewindTests {
 
 private final class ResetLog: Sendable {
     let calls = Mutex<[Int]>([])
+    let processed = Mutex<Int>(40)
 }
 
 private struct FakeEngine: InferenceEngine {
@@ -65,11 +76,14 @@ private struct FakeEngine: InferenceEngine {
     }
 
     let rewindable: Bool
+    /// Where a partial reset at or past it lands on a non-rewindable engine; nil for none.
+    let checkpoint: Int?
     let failWith: (any Error)?
     private let log = ResetLog()
 
-    init(rewindable: Bool, failWith: (any Error)? = nil) {
+    init(rewindable: Bool, checkpoint: Int? = nil, failWith: (any Error)? = nil) {
         self.rewindable = rewindable
+        self.checkpoint = checkpoint
         self.failWith = failWith
     }
 
@@ -83,15 +97,20 @@ private struct FakeEngine: InferenceEngine {
         Sequence()
     }
 
-    var processedTokenCount: Int { 40 }
+    var processedTokenCount: Int { log.processed.withLock { $0 } }
 
     func reset(to tokenIndex: Int) async throws {
         log.calls.withLock { $0.append(tokenIndex) }
         if let failWith { throw failWith }
         if tokenIndex > 0, !rewindable {
-            throw InferenceRuntimeError.invalidState(
-                "Partial reset is not supported for hybrid models with recurrent state.")
+            guard let checkpoint, tokenIndex >= checkpoint else {
+                throw InferenceRuntimeError.invalidState(
+                    "Partial reset is not supported for hybrid models with recurrent state.")
+            }
+            log.processed.withLock { $0 = checkpoint }
+            return
         }
+        log.processed.withLock { $0 = tokenIndex }
     }
 
     func warmup(queryLength: Int, sampling: SamplingConfiguration?) async throws {}
