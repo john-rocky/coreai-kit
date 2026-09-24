@@ -7,6 +7,13 @@ policy.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-09-24
+
+A patch: a macOS app that links CoreAIKit builds in Release again, and the ChatDemo and Speak
+Xcode projects resolve the release they ship in. The `coreai-models` pin moves from 0.2.7-zoo to
+0.2.8-zoo: the same arm64 code, plus an x86_64 guard. `exact: "0.7.0"` resolvers move to `0.7.1`;
+`from:` resolvers pick it up. Built and gated on macOS 27.0 (26A428) and Xcode 27 (27A266a).
+
 ### Fixed
 
 - **A macOS app that links `CoreAIKit` failed its Release build.** A Release build compiles every
@@ -18,6 +25,15 @@ policy.
   coreai-models is pinned to `0.2.8-zoo`, which adds upstream's own x86_64 guard to those files.
   The arm64 code is unchanged: `decider-0.8b`'s fixture reads bit-identical, 44 of 44 rows. CI now
   builds `Examples/Transcribe` that way (`example-app-release`).
+- **The ChatDemo and Speak apps were built against CoreAIKit 0.4.1.** Since 0.4.2, every release
+  moved the examples' `Package.swift` (their CLIs) to the new tag but left `project.yml` and the
+  generated Xcode project at `exactVersion: 0.4.1`. The apps opened from a 0.7.0 checkout therefore
+  built against 0.4.1. Both projects now resolve 0.7.1, and their READMEs name it.
+
+### Docs
+
+- `Examples/Decide/README.md`: JevBench's 231 public items on eight catalog models (Mac,
+  2026-09-24), with a one-line link from `docs/SYSTEM_ONE.md`.
 
 ## [0.7.0] — 2026-09-24
 

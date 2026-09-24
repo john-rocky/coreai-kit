@@ -8,7 +8,7 @@ let package = Package(
     name: "Speak",
     platforms: [.macOS("27.0")],
     dependencies: [
-        .package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.0")
+        .package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.1")
     ],
     targets: [
         .executableTarget(
