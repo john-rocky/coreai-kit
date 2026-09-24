@@ -15,7 +15,7 @@ final class UpscaleEngine: ObservableObject {
 
     private func ensureLoaded() async throws {
         if resolver != nil { return }
-        status = "Downloading AdcSR (~1.7 GB)…"
+        status = "Downloading AdcSR (~1.8 GB)…"
         // Same gesture as the model card: the catalog id resolves the bundle.
         let r = try await SuperResolver(catalog: "adcsr-x4") { [weak self] p in
             Task { @MainActor in self?.downloadFraction = p.fraction }

@@ -54,11 +54,11 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 2280
+          "sizeMB": 2279
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 2498
+          "sizeMB": 2502
         }
       },
       "thinking": true
@@ -98,11 +98,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym",
-          "sizeMB": 1276
+          "sizeMB": 1338
         },
         "ios": {
           "path": "gpu-pipelined/qwen3_5_0_8b_decode_int8hu_block32_sym",
-          "sizeMB": 1276
+          "sizeMB": 1338
         }
       },
       "thinking": true,
@@ -117,11 +117,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym",
-          "sizeMB": 2905
+          "sizeMB": 3047
         },
         "ios": {
           "path": "gpu-pipelined/qwen3_5_2b_decode_int8hu_block32_sym",
-          "sizeMB": 2905
+          "sizeMB": 3047
         }
       },
       "thinking": true,
@@ -136,11 +136,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa",
-          "sizeMB": 2058
+          "sizeMB": 2157
         },
         "ios": {
           "path": "gpu-pipelined/youtu_llm_2b_decode_absorbed_int8_msdpa",
-          "sizeMB": 2058
+          "sizeMB": 2157
         }
       },
       "thinking": true,
@@ -155,11 +155,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-          "sizeMB": 1623
+          "sizeMB": 1702
         },
         "ios": {
           "path": "gpu-pipelined/lfm2_5_1_2b_instruct_decode_int8hu_block32_sym",
-          "sizeMB": 1623
+          "sizeMB": 1702
         }
       },
       "engine": "pipelined"
@@ -173,7 +173,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm2_5_2_6b_decode_int8hu_block32_sym",
-          "sizeMB": 3474
+          "sizeMB": 3655
         }
       },
       "thinking": true,
@@ -188,11 +188,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8lin",
-          "sizeMB": 1630
+          "sizeMB": 1709
         },
         "ios": {
           "path": "gpu-pipelined/granite_4_0_h_1b_decode_int8hu_block32_sym",
-          "sizeMB": 1786
+          "sizeMB": 1873
         }
       },
       "engine": "pipelined"
@@ -210,7 +210,7 @@
         },
         "ios": {
           "path": "ios-h18p/nemotron_3_nano_4b_decode_int8hu",
-          "sizeMB": 4626
+          "sizeMB": 4629
         }
       },
       "thinking": true,
@@ -315,11 +315,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym",
-          "sizeMB": 1276
+          "sizeMB": 1338
         },
         "ios": {
           "path": "gpu-pipelined/decider_0_8b_decode_int8hu_block32_sym",
-          "sizeMB": 1276
+          "sizeMB": 1338
         }
       },
       "engine": "pipelined"
@@ -333,11 +333,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/openthai_systemone_decode_int8lin",
-          "sizeMB": 1019
+          "sizeMB": 1068
         },
         "ios": {
           "path": "gpu-pipelined/openthai_systemone_decode_int8lin",
-          "sizeMB": 1019
+          "sizeMB": 1068
         }
       },
       "engine": "pipelined",
@@ -352,7 +352,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined-b2/apus_decision_v1_4b_decode_int8hu_block32_sym",
-          "sizeMB": 5504
+          "sizeMB": 5771
         }
       },
       "engine": "pipelined",
@@ -367,11 +367,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym",
-          "sizeMB": 2905
+          "sizeMB": 3047
         },
         "ios": {
           "path": "gpu-pipelined/qwen3_5_2b_decision_decode_int8hu_block32_sym",
-          "sizeMB": 2905
+          "sizeMB": 3047
         }
       },
       "engine": "pipelined",
@@ -386,7 +386,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/system_one_qwen3_5_4b_scorer_decode_int8lin",
-          "sizeMB": 4859
+          "sizeMB": 5095
         }
       },
       "engine": "pipelined",
@@ -420,11 +420,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-          "sizeMB": 4387
+          "sizeMB": 4600
         },
         "ios": {
           "path": "gpu-pipelined/nanbeige4_1_3b_decode_int8hu_block32_sym_s1",
-          "sizeMB": 4387
+          "sizeMB": 4600
         }
       },
       "thinking": true,
@@ -439,11 +439,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
-          "sizeMB": 4702
+          "sizeMB": 4931
         },
         "ios": {
           "path": "gpu-pipelined/nanbeige4_2_3b_decode_int8hu_block32_sym_s1",
-          "sizeMB": 4702
+          "sizeMB": 4931
         }
       },
       "thinking": true,
@@ -458,7 +458,7 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 4400
+          "sizeMB": 4624
         }
       },
       "thinking": true
@@ -485,7 +485,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/qwen3_6_35b_a3b_decode_sym8_gather",
-          "sizeMB": 35000
+          "sizeMB": 37349
         }
       },
       "thinking": true,
@@ -500,7 +500,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/qwen3_6_27b_decode_int8hu_block32_sym",
-          "sizeMB": 28000
+          "sizeMB": 29803
         }
       },
       "thinking": true,
@@ -515,7 +515,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/qwen3_8_27b_decode_int8hu_block32_sym",
-          "sizeMB": 28000
+          "sizeMB": 29803
         }
       },
       "thinking": true,
@@ -530,7 +530,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/glm_4_7_flash_decode_sym8_gather",
-          "sizeMB": 30000
+          "sizeMB": 32140
         }
       },
       "thinking": true,
@@ -545,7 +545,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm2_5_8b_a1b_decode_sym8_gather",
-          "sizeMB": 9000
+          "sizeMB": 9448
         }
       },
       "engine": "pipelined"
@@ -559,7 +559,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/gemma4_12b_qat_decode_int8lin_msdpa_g8",
-          "sizeMB": 14699
+          "sizeMB": 14698
         }
       },
       "engine": "pipelined"
@@ -587,11 +587,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl",
-          "sizeMB": 4929
+          "sizeMB": 4930
         },
         "ios": {
           "path": "gpu-pipelined-b2/gemma4_e2b_qat_decode_int4lin_tbl_aotc_h18p",
-          "sizeMB": 4931
+          "sizeMB": 4932
         }
       },
       "engine": "pipelined"
@@ -605,7 +605,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/gemma4_e4b_qat_decode_int4lin_tbl",
-          "sizeMB": 7589
+          "sizeMB": 7590
         }
       },
       "engine": "pipelined"
@@ -683,11 +683,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/minicpmv46_vlm_decode_int8lin",
-          "sizeMB": 2145
+          "sizeMB": 2146
         },
         "ios": {
           "path": "gpu-pipelined/minicpmv46_vlm_decode_int8lin",
-          "sizeMB": 2145
+          "sizeMB": 2146
         }
       }
     },
@@ -700,11 +700,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm2_5_vl_450m_decode_int8lin",
-          "sizeMB": 658
+          "sizeMB": 690
         },
         "ios": {
           "path": "ios-h18p/lfm2_5_vl_450m_decode_int8lin",
-          "sizeMB": 653
+          "sizeMB": 690
         }
       }
     },
@@ -717,11 +717,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm2_5_vl_3b_decode_int8lin",
-          "sizeMB": 3915
+          "sizeMB": 4231
         },
         "ios": {
           "path": "ios-h18p/lfm2_5_vl_3b_decode_int4lin",
-          "sizeMB": 2815
+          "sizeMB": 3056
         }
       }
     },
@@ -734,11 +734,11 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/north_micro_vision_instruct_decode_int8lin",
-          "sizeMB": 3400
+          "sizeMB": 3666
         },
         "ios": {
           "path": "ios-h18p/north_micro_vision_instruct_decode_int8lin",
-          "sizeMB": 3500
+          "sizeMB": 3647
         }
       }
     },
@@ -751,11 +751,11 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 1373
+          "sizeMB": 1374
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1679
+          "sizeMB": 1378
         }
       }
     },
@@ -768,7 +768,7 @@
       "variants": {
         "macos": {
           "path": "",
-          "sizeMB": 341
+          "sizeMB": 361
         }
       }
     },
@@ -781,11 +781,11 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 4719
+          "sizeMB": 4721
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 5658
+          "sizeMB": 4727
         }
       }
     },
@@ -854,11 +854,11 @@
       "variants": {
         "macos": {
           "path": "",
-          "sizeMB": 1980
+          "sizeMB": 2643
         },
         "ios": {
           "path": "",
-          "sizeMB": 1980
+          "sizeMB": 2643
         }
       }
     },
@@ -871,11 +871,11 @@
       "variants": {
         "macos": {
           "path": "",
-          "sizeMB": 1600
+          "sizeMB": 1677
         },
         "ios": {
           "path": "",
-          "sizeMB": 1600
+          "sizeMB": 1677
         }
       }
     },
@@ -888,7 +888,7 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 5265
+          "sizeMB": 5264
         }
       }
     },
@@ -901,11 +901,11 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 1620
+          "sizeMB": 1623
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 3240
+          "sizeMB": 3235
         }
       }
     },
@@ -918,7 +918,7 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/qwen3_asr_1.7b_decode_int8hu_n390_s1",
-          "sizeMB": 3100
+          "sizeMB": 3102
         }
       }
     },
@@ -931,7 +931,7 @@
       "variants": {
         "macos": {
           "path": "",
-          "sizeMB": 1290
+          "sizeMB": 1293
         }
       }
     },
@@ -944,7 +944,7 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 1340
+          "sizeMB": 1335
         },
         "ios": {
           "path": "ios",
@@ -979,7 +979,7 @@
       "variants": {
         "macos": {
           "path": "sortformer_float16.aimodel",
-          "sizeMB": 226
+          "sizeMB": 237
         },
         "ios": {
           "path": "sortformer_float16.h18p.aimodelc",
@@ -996,11 +996,11 @@
       "variants": {
         "macos": {
           "path": "macos",
-          "sizeMB": 1420
+          "sizeMB": 1859
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1420
+          "sizeMB": 1859
         }
       }
     },
@@ -1013,11 +1013,11 @@
       "variants": {
         "macos": {
           "path": "mbr_full_fp16.aimodel",
-          "sizeMB": 470
+          "sizeMB": 493
         },
         "ios": {
           "path": "mbr_full_fp16.h18p.aimodelc",
-          "sizeMB": 470
+          "sizeMB": 493
         }
       }
     },
@@ -1030,11 +1030,11 @@
       "variants": {
         "macos": {
           "path": "model",
-          "sizeMB": 291
+          "sizeMB": 305
         },
         "ios": {
           "path": "model",
-          "sizeMB": 291
+          "sizeMB": 305
         }
       }
     },
@@ -1047,11 +1047,11 @@
       "variants": {
         "macos": {
           "path": "small/da3-small_float16.aimodel",
-          "sizeMB": 54
+          "sizeMB": 55
         },
         "ios": {
           "path": "small/da3-small_float16.aimodel",
-          "sizeMB": 54
+          "sizeMB": 55
         }
       }
     },
@@ -1064,11 +1064,11 @@
       "variants": {
         "macos": {
           "path": "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s512",
-          "sizeMB": 2530
+          "sizeMB": 2526
         },
         "ios": {
           "path": "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s256",
-          "sizeMB": 2530
+          "sizeMB": 2526
         }
       }
     },
@@ -1081,11 +1081,11 @@
       "variants": {
         "macos": {
           "path": "model",
-          "sizeMB": 1230
+          "sizeMB": 1278
         },
         "ios": {
           "path": "model",
-          "sizeMB": 1230
+          "sizeMB": 1278
         }
       }
     },
@@ -1098,11 +1098,11 @@
       "variants": {
         "macos": {
           "path": "doc",
-          "sizeMB": 741
+          "sizeMB": 743
         },
         "ios": {
           "path": "doc",
-          "sizeMB": 741
+          "sizeMB": 743
         }
       }
     },
@@ -1132,11 +1132,11 @@
       "variants": {
         "macos": {
           "path": "rfdetr-nano_float32.aimodel",
-          "sizeMB": 103
+          "sizeMB": 108
         },
         "ios": {
           "path": "rfdetr-nano_float32.aimodel",
-          "sizeMB": 103
+          "sizeMB": 108
         }
       }
     },
@@ -1149,11 +1149,11 @@
       "variants": {
         "macos": {
           "path": "adcsr_x4_float32.aimodel",
-          "sizeMB": 1740
+          "sizeMB": 1825
         },
         "ios": {
           "path": "adcsr_x4_float32.aimodel",
-          "sizeMB": 1740
+          "sizeMB": 1825
         }
       }
     },

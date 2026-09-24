@@ -264,7 +264,7 @@ template (`Decision.Format.decisionFunction`, named by the catalog entry's `form
 temperature is already in the weights, so T = 1. A choice takes up to 26 options, a yes/no is a choice
 over `yes` / `no`, a score a choice over its levels. Token-identical to the author's rows on the
 fixture's 58 (int8 max |Δp| 0.0079 against the fp32 reference); about 1 s per decision on the Mac,
-2.9 GB int8, the size of `qwen3.5-2b`.
+3.0 GB int8, the size of `qwen3.5-2b`.
 
 ```swift
 let calibrated = try await TypedDecisions(catalog: "qwen3.5-2b-decision")   // Format.decisionFunction, T = 1

@@ -257,7 +257,7 @@ team id) before `xcodegen generate` and every example picks it up.
 ```swift
 import CoreAIKitVision
 
-let encoder = try await ImageTextEncoder()   // downloads CLIP ViT-B/32 (~290 MB) on first use
+let encoder = try await ImageTextEncoder()   // downloads CLIP ViT-B/32 (~305 MB) on first use
 let imageVec = try await encoder.encode(image: cgImage)        // preprocessing included
 let textVec  = try await encoder.encode(text: "red bike at the beach")
 let score = ImageTextEncoder.cosineSimilarity(imageVec, textVec)

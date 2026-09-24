@@ -25,6 +25,23 @@ policy.
   `decide-cli ask | bench | filter | serve --backend fm` answer on it (the model id is
   `apple-foundation-model`). No catalog model's path changes.
 
+### Fixed
+
+- **Download sizes are in one unit, and measured.** `systemone models` showed
+  `apus-decision-v1-4b` as a 5.5 GB download. It is 5,770,814,420 bytes: 5.8 GB. Everything that
+  reads `sizeMB` counts decimal megabytes: `capability()`, the residency estimate, `systemone
+  models`, the docs. 34 of the catalog's 111 variant sizes were MiB instead (bytes / 1,048,576),
+  4.9% low. Another 21 were more than 2% off for other reasons, among them round-number
+  estimates, subtrees a loader downloads left out (VibeVoice's glue, voices and embedding table,
+  369 MB), and iOS figures above what the iOS subtree holds (VoxCPM2: 5,658 MB declared, 4,727 MB
+  downloaded).
+  `scripts/measure-catalog-sizes.py` now measures all 111 at the pinned revision and writes
+  `catalog.json` and the built-in copy together. CI runs its `--check`, which fails on a size more
+  than 2% off. `systemone models` and apps that load the live catalog show the new sizes once this
+  merges; `capability()`, the residency estimate and the MCP `models` tool read the built-in copy,
+  which carries them from the next release. Docs and examples that quoted an old size quote the
+  new one.
+
 ### Docs
 
 - `docs/SYSTEM_ONE.md` "Which model": JevBench's public items on eight catalog models on a Mac
