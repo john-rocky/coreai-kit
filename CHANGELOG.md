@@ -69,6 +69,13 @@ policy.
   platforms. Whisper, Nemotron 3.5 ASR and VibeVoice keep `ios` as their path; at their pins it
   still holds the iPhone 17 Pro's graphs, and the Hub is to replace them with the JIT ones.
 
+- **The Nemotron-3-Diarization graph compiles for x86_64 again.** `N3DGraph` read and wrote
+  `Float16` arrays without the guard the other ten files carry
+  (`#if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))`), so a Release build of
+  any macOS app linking CoreAIKit failed on the Intel slice (`'Float16' is unavailable in macOS`)
+  since 0.7.3's diarizer (CI's `example-app-release` was red from #56). On an Intel Mac a float16
+  N3D bundle now throws the contract error instead; the float32 bundle is unaffected.
+
 - **`ModelID.gliner2PII` is pinned.** Its `ios/` carried the iPhone 17 Pro's compiled files beside
   the JIT graph, which the iPhone 18 Pro refuses; since 2026-09-26 it holds the JIT graph alone
   (627 MB). The preset read `main`, and an app that had downloaded the old `ios/` kept it, since

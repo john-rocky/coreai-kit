@@ -102,9 +102,11 @@ struct N3DGraph: Sendable {
         case .float32:
             var view = array.mutableView(as: Float.self)
             view.copyElements(fromContentsOf: values)
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         case .float16:
             var view = array.mutableView(as: Float16.self)
             view.copyElements(fromContentsOf: values.map { Float16($0) })
+        #endif
         default:
             throw N3DError.contract("input scalar type \(descriptor.scalarType)")
         }
@@ -117,8 +119,10 @@ struct N3DGraph: Sendable {
         switch array.scalarType {
         case .float32:
             return array.view(as: Float.self).withUnsafePointer { ptr, _, _ in gather(ptr, shape, strides) { $0 } }
+        #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         case .float16:
             return array.view(as: Float16.self).withUnsafePointer { ptr, _, _ in gather(ptr, shape, strides) { Float($0) } }
+        #endif
         default:
             throw N3DError.graphOutput("scalar type \(array.scalarType)")
         }
