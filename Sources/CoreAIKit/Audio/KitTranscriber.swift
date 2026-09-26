@@ -1,9 +1,9 @@
 // KitTranscriber.swift — one speech-to-text entry point for any `asr` catalog id. The catalog
 // speaks ids while each speech family has its own driving class (Whisper = stateless graph,
-// Qwen3-ASR = LLM engine + AuT encoder, Parakeet = TDT transducer), so somebody must own the
-// id → class dispatch. It lives here, next to the per-class id registries, so consumers and
-// example apps only ever hold a catalog id — a picker or CLI flag away from the model card —
-// never an engine name.
+// Qwen3-ASR = LLM engine + AuT encoder, Parakeet = TDT transducer, Fun-ASR = LLM engine + SAN-M
+// encoder), so somebody must own the id → class dispatch. It lives here, next to the per-class id
+// registries, so consumers and example apps only ever hold a catalog id — a picker or CLI flag
+// away from the model card — never an engine name.
 //
 // ```swift
 // let transcriber = try await KitTranscriber(catalog: "whisper-large-v3-turbo")
@@ -15,13 +15,15 @@ import Foundation
 
 /// Any speech-to-text model in the catalog (`ModelCatalog.builtin.available(.asr)`) behind one
 /// `transcribe(samples:)` call. Use the concrete types (`KitWhisperModel`, `KitASRModel`,
-/// `KitParakeetModel`) when you need family-specific control (translate, compute units, …).
+/// `KitParakeetModel`, `KitFunASRModel`) when you need family-specific control (translate, compute
+/// units, hotwords, …).
 @available(macOS 27, iOS 27, *)
 public struct KitTranscriber: Sendable {
     enum Engine: Sendable {
         case whisper(KitWhisperModel)
         case qwenASR(KitASRModel)
         case parakeet(KitParakeetModel)
+        case funASR(KitFunASRModel)
     }
 
     let engine: Engine
@@ -48,6 +50,10 @@ public struct KitTranscriber: Sendable {
             engine = .parakeet(
                 try await KitParakeetModel(
                     catalog: id, store: store, downloadProgress: downloadProgress))
+        } else if FunASRModelID.byCatalogID[id] != nil {
+            engine = .funASR(
+                try await KitFunASRModel(
+                    catalog: id, store: store, downloadProgress: downloadProgress))
         } else if let entry = ModelCatalog.builtin.models.first(where: { $0.id == id }),
             entry.kind != .asr
         {
@@ -60,7 +66,8 @@ public struct KitTranscriber: Sendable {
     }
 
     /// Transcribe a raw 16 kHz mono waveform. `language` nil = auto-detect (Parakeet has no
-    /// language control and ignores it). Pass `onPartial` to stream the running transcript.
+    /// language control and ignores it; Fun-ASR writes it into its prompt, e.g. "中文" or "ja").
+    /// Pass `onPartial` to stream the running transcript.
     public func transcribe(
         samples: [Float], language: String? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil
@@ -74,6 +81,9 @@ public struct KitTranscriber: Sendable {
                 samples: samples, language: language, onPartial: onPartial)
         case .parakeet(let model):
             return try await model.transcribe(samples: samples, onPartial: onPartial)
+        case .funASR(let model):
+            return try await model.transcribe(
+                samples: samples, language: language, onPartial: onPartial)
         }
     }
 }
