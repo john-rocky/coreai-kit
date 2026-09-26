@@ -685,7 +685,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/VoxCPM-0.5B-CoreAI", kind: .tts,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1374),
-                    "ios": .init(path: "ios", sizeMB: 1374),
+                    "ios": .init(path: "ios", sizeMB: 1378),
                 ]),
             // Kokoro is three stateless graph bundles + host glue at the repo root (no
             // platform dir); the variant path is empty and KitSpeaker resolves the subtrees.
@@ -841,9 +841,10 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "n3d_streaming_float16.aimodel", sizeMB: 200),
                 ]),
             // ── Multi-speaker / dialogue TTS (VibeVoice-Realtime-0.5B): five fp16 graphs in the
-            //    platform dir (`ios/` = the JIT graphs since Hub revision b4480f87, 2026-09-26; the
-            //    iPhone 17 Pro's compiled ones moved to `ios-h18p/`) + `coreai_host/` (voice
-            //    prefill caches, glue, tokenizer) + the fp16
+            //    platform dir + `coreai_host/` (voice prefill caches, glue, tokenizer) + the fp16
+            //    embedding table. Pinned to the revision whose `ios/` still holds the h18p bundles by
+            //    name: a kit built before 0.7.4 opens `ios/<name>.h18p.aimodelc` and would stop on the
+            //    iPhone 17 Pro at the JIT layout (b4480f87); the pin moves after that release. The
             //    embedding table at the repo root. Driven by `KitDialogue`. ──
             CatalogEntry(
                 id: "vibevoice-realtime-0.5b", name: "VibeVoice-Realtime 0.5B (multi-speaker)",
