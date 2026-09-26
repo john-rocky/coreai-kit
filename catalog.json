@@ -746,7 +746,7 @@
       "id": "voxcpm-0.5b",
       "name": "VoxCPM 0.5B",
       "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",
-      "revision": "38fc0aea6fe067aff9132b5bd79208e45858b69f",
+      "revision": "9920f9599f98ad257f09cd606240d79282db3991",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -755,7 +755,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1374
+          "sizeMB": 1378
         }
       }
     },
@@ -1008,7 +1008,7 @@
       "id": "vibevoice-realtime-0.5b",
       "name": "VibeVoice-Realtime 0.5B (multi-speaker)",
       "repo": "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI",
-      "revision": "b4480f875ba9464b33f2f141516fa6c439e5d237",
+      "revision": "889897cdc1df88428a3eed24e89f1814e580c033",
       "kind": "tts",
       "variants": {
         "macos": {
