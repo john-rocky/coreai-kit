@@ -1090,6 +1090,23 @@
       }
     },
     {
+      "id": "gliner2.5-decide",
+      "name": "GLiNER2.5-Decide",
+      "repo": "mlboydaisuke/GLiNER2.5-Decide-CoreAI",
+      "revision": "7464c910699075674e00c5f423ca11a3a64eb26b",
+      "kind": "moderation",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 1756
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 1958
+        }
+      }
+    },
+    {
       "id": "embeddinggemma-300m",
       "name": "EmbeddingGemma 300m",
       "repo": "mlboydaisuke/embeddinggemma-300m-CoreAI",

@@ -156,6 +156,18 @@ public final class TextClassifier: @unchecked Sendable {
             modelFolder: url.appendingPathComponent("tokenizer"))
     }
 
+    /// Downloads the bundle from the Hub if needed (or uses a sideloaded copy already at the store
+    /// path), then loads it. Defaults to the catalog's `gliner2.5-decide`.
+    public convenience init(
+        model: ModelID = .gliner25Decide,
+        store: ModelStore = .default,
+        computeUnits: GraphModel.ComputeUnits = .gpu,
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws {
+        let url = try await store.download(model, progress: downloadProgress)
+        try await self.init(bundleAt: url, computeUnits: computeUnits)
+    }
+
     // MARK: - Classification
 
     /// Answers every task about `text` in one forward. Returns task name -> result. The labels of

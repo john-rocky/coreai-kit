@@ -72,6 +72,10 @@ extension ModelID {
     // graph, a layout every other iPhone refuses; it now holds the JIT graph alone. The pin moves
     // the cache path, so an app that downloaded the old `ios/` fetches the new one.
     private static let gliner2PIIRevision = "74fb5c19e7eba2d4ebad95f90eeb6d996432575d"
+    // GLiNER2.5-Decide at this revision: `macos/` holds the JIT graphs, `ios/` the iPhone 18 Pro's
+    // AOT graphs (h19p), which no other iPhone loads. `ios/` is to become the JIT graphs; the pin
+    // (here and in catalog.json) moves when it does.
+    private static let gliner25DecideRevision = "7464c910699075674e00c5f423ca11a3a64eb26b"
 
     /// CLIP ViT-B/32 joint image+text encoder (fp16). Same bundle on both platforms.
     public static let clipViTB32 = ModelID(
@@ -208,4 +212,11 @@ extension ModelID {
     /// moved to `ios-h18p/`. Driven by `InformationExtractor`.
     public static let gliner2PII = ModelID(
         "mlboydaisuke/GLiNER2-PII-CoreAI", revision: gliner2PIIRevision)
+    /// GLiNER2.5-Decide (fastino, Apache-2.0) — zero-shot text classification: any tasks and
+    /// labels at call time, several decisions from one forward. DeBERTa-v3-large + the label head
+    /// in one static graph per sequence length (256 and 512 tokens, fp16), with `classifier.json`
+    /// and `tokenizer/` beside them in each platform subtree. `path` is nil so `resolvedPath`
+    /// picks the platform's. Driven by `TextClassifier`.
+    public static let gliner25Decide = ModelID(
+        "mlboydaisuke/GLiNER2.5-Decide-CoreAI", revision: gliner25DecideRevision)
 }

@@ -325,6 +325,7 @@ Text & chat
 - `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
 - `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
 - `Examples/InfoExtract` — schema-driven extraction / PII redaction with GLiNER2 (iPhone + Mac)
+- `Examples/TextClassify` — zero-shot text classification: labels named at call time, several questions in one forward (GLiNER2.5-Decide, `swift run`)
 
 Typed decisions — the System One shape, on device
 
@@ -374,7 +375,7 @@ See `docs/GETTING_STARTED.md`.
 ## How the catalog is verified — and how you re-check it yourself
 
 The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 68 catalog entries:
+this is *what was checked, by whom, and can you check it again.* All 69 catalog entries:
 
 - **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
   that were gated — never "whatever is on `main` today." CI re-checks every pin

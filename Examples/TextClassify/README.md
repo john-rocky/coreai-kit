@@ -8,7 +8,7 @@ The model is [GLiNER2.5-Decide](https://huggingface.co/fastino/GLiNER2.5-Decide)
 Apache-2.0) exported to Core AI. The whole ML surface is one call:
 
 ```swift
-let classifier = try await TextClassifier(bundleAt: bundleURL)
+let classifier = try await TextClassifier()   // the catalog's gliner2.5-decide, downloaded once
 let answers = try await classifier.classify(text, tasks: [
     ClassificationTask("intent", labels: ["order_status", "refund_request", "cancel_subscription"]),
     ClassificationTask("aspects", labels: ["battery", "keyboard", "screen"], multiLabel: true, threshold: 0.4),
@@ -29,18 +29,19 @@ A task can also carry a `prompt` (the question to answer about the text) and `de
 ## Run
 
 ```bash
-swift run textclassify-cli --bundle <dir> --text "Can I get that charge refunded?" \
+swift run textclassify-cli --text "Can I get that charge refunded?" \
     --task intent=order_status,refund_request,cancel_subscription
-swift run textclassify-cli --bundle <dir> --text "Battery dies before lunch, but the screen is great." \
+swift run textclassify-cli --text "Battery dies before lunch, but the screen is great." \
     --task aspects=battery,keyboard,screen --multi --threshold 0.4 --task sentiment=positive,negative,mixed
 swift run textclassify-cli --bundle <dir> --readme readme21.json     # the model card's 21 examples
 swift run textclassify-cli --bundle <dir> --gate <oracle fixtures> --pygpu <gate_s256_gpu.json> <gate_s512_gpu.json>
 ```
 
-`--bundle` is the directory the zoo's GLiNER2.5-Decide export writes: `classifier.json`, a
-`tokenizer/` folder, and one `.aimodel` per sequence length (256 and 512 tokens). There is no
-catalog entry yet, so the path is required. `--multi`, `--threshold`, `--prompt` and
-`--describe label=text` apply to the `--task` before them.
+Without `--bundle` the CLI downloads the catalog's `gliner2.5-decide` on first use and caches it
+(`TextClassifier()` does the same in an app). `--bundle` takes a local export instead, the directory
+the zoo's GLiNER2.5-Decide export writes: `classifier.json`, a `tokenizer/` folder, and one graph
+per sequence length (256 and 512 tokens). `--multi`, `--threshold`, `--prompt` and `--describe label=text` apply to the
+`--task` before them.
 
 ## Notes
 

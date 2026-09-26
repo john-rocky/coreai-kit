@@ -887,6 +887,21 @@ public struct ModelCatalog: Sendable, Codable {
                         path: "gpu-classify/shieldstral_1_0_3b_classify_int4lin_s256",
                         sizeMB: 2526),
                 ]),
+            // ── Zero-shot text classification (GLiNER2.5-Decide): text + tasks, each with the
+            //    labels to choose from, -> a probability per label from ONE forward of a static
+            //    graph (S = 256 and 512 in each platform subtree, with classifier.json and the
+            //    tokenizer). Driven by `TextClassifier`, not by `TypedDecisions`. `moderation` is
+            //    the nearest kind (a one-forward classifier whose labels the caller writes);
+            //    `decision` would put it in front of `TypedDecisions`, which cannot load it.
+            //    `ios/` at this pin holds the graphs compiled for the iPhone 18 Pro (h19p), which
+            //    no other iPhone loads; it is to become the JIT graphs, and the pin moves then. ──
+            CatalogEntry(
+                id: "gliner2.5-decide", name: "GLiNER2.5-Decide",
+                repo: "mlboydaisuke/GLiNER2.5-Decide-CoreAI", kind: .moderation,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 1756),
+                    "ios": .init(path: "ios", sizeMB: 1958),
+                ]),
             CatalogEntry(
                 id: "embeddinggemma-300m", name: "EmbeddingGemma 300m",
                 repo: "mlboydaisuke/embeddinggemma-300m-CoreAI", kind: .textEmbedding,

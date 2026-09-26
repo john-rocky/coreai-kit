@@ -31,6 +31,17 @@ policy.
   `--asr system` and `diarize-gate`, which checks a diarizer against a reference's per-frame
   probabilities.
 
+- **Zero-shot text classification: `gliner2.5-decide`.** fastino's GLiNER2.5-Decide (Apache-2.0)
+  answers any tasks with any labels, named at call time, from one forward: `TextClassifier()`
+  downloads it (`ModelID.gliner25Decide`), `classify(_:tasks:)` returns every label's probability
+  per task. The host follows gliner2 2.0.0's collator and decision rule; `textclassify-cli --gate`
+  checks both against the zoo's fixtures. Before this, `TextClassifier` loaded only a local export.
+  `Examples/TextClassify` downloads the catalog model when no `--bundle` is given. The
+  entry's kind is `moderation`, the nearest one: `decision` would list it in `systemone models`,
+  whose `TypedDecisions` cannot load it. Download: 1,756 MB on macOS, 1,958 MB on iOS. At the
+  pinned revision (`7464c91`) `ios/` holds graphs compiled for the iPhone 18 Pro (h19p), which no
+  other iPhone loads; `ios/` is to become the JIT graphs, and the pin moves with it.
+
 ### Fixed
 
 - **A graph compiled for one iPhone is picked only on that iPhone.** The loaders that pick their

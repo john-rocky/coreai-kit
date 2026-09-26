@@ -10,7 +10,8 @@
 //   swift run textclassify-cli --bundle <dir> --gate <fixture.json>... [--pygpu <gate_s<S>_gpu.json>...]
 //
 // --bundle is a directory holding classifier.json, tokenizer/ and the .aimodel files classifier.json
-// names. --multi / --threshold / --prompt / --describe apply to the --task before them. --gate compares
+// names; without it the catalog's gliner2.5-decide is downloaded on first use and cached. --multi /
+// --threshold / --prompt / --describe apply to the --task before them. --gate compares
 // the collated input with the gliner2 oracle's (input_ids, pieces, [P]/[L] positions, shape), then runs
 // the graph and compares decisions and logits (--collate-only stops after the first part); --pygpu
 // adds the zoo's Python engine gate on the same bundle, matched by case id and S. Exit 0 = all equal,
@@ -23,10 +24,11 @@ func err(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
 func fail(_ s: String) -> Never { err(s); exit(1) }
 
 let usage = """
-    usage: textclassify-cli --bundle <dir> --text <str> --task name=l1,l2,... [--multi] [--threshold 0.4]
+    usage: textclassify-cli [--bundle <dir>] --text <str> --task name=l1,l2,... [--multi] [--threshold 0.4]
                             [--prompt <str>] [--describe label=<description>]... [--task ...]
-           textclassify-cli --bundle <dir> --readme <readme21.json>
-           textclassify-cli --bundle <dir> --gate <fixture.json>... [--pygpu <gate.json>...] [--collate-only]
+           textclassify-cli [--bundle <dir>] --readme <readme21.json>
+           textclassify-cli [--bundle <dir>] --gate <fixture.json>... [--pygpu <gate.json>...] [--collate-only]
+    (no --bundle: the catalog's gliner2.5-decide, downloaded on first use)
     """
 
 var bundle: String?
@@ -71,7 +73,6 @@ while let a = args.popFirst() {
     default: fail("unknown arg \(a)\n\(usage)")
     }
 }
-guard let bundlePath = bundle else { fail(usage) }
 
 // MARK: - output
 
@@ -222,10 +223,14 @@ func pad(_ s: String, _ n: Int) -> String { s.count >= n ? s : s + String(repeat
 
 // MARK: - main
 
-err("[textclassify] loading \(bundlePath) …")
+err("[textclassify] loading \(bundle ?? "gliner2.5-decide (catalog)") …")
 let classifier: TextClassifier
 do {
-    classifier = try await TextClassifier(bundleAt: URL(fileURLWithPath: bundlePath))
+    if let bundle {
+        classifier = try await TextClassifier(bundleAt: URL(fileURLWithPath: bundle))
+    } else {
+        classifier = try await TextClassifier(model: .gliner25Decide)
+    }
 } catch { fail("[textclassify] load failed: \(error)") }
 err("[textclassify] ready: S \(classifier.sequenceLengths), MMAX \(classifier.maxLabels) (graphs load on first use)")
 
