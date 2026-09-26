@@ -76,6 +76,18 @@ policy.
   pinned revision (`7464c91`) `ios/` holds graphs compiled for the iPhone 18 Pro (h19p), which no
   other iPhone loads; `ios/` is to become the JIT graphs, and the pin moves with it.
 
+- **`Examples/TextClassify` gains the inbox app.** A support inbox of synthetic messages, sorted on
+  one tap: every message gets an intent, an urgency and a sentiment from one forward of
+  `gliner2.5-decide`, and the counts and the measured time (the median milliseconds per message,
+  messages per second, the total) are on screen, on iPhone and Mac. `textclassify-cli --inbox
+  <count>` sorts the same inbox headless through the same `InboxSorter` and prints the same
+  numbers. The inbox is generated from a seed (an invented shop, plain item names, first names
+  only). `-autoplay 1 -log 1` runs it unattended and writes the result as JSON, for a recording or
+  a phone read back over `devicectl`. 1,000 messages took 40.9 s on an iPhone 18 Pro (iOS 27.0,
+  GPU, 39.2 ms median per message; the phone holds about 38 ms for the first 20 s of a run and
+  slows from there, 1.25–1.5× by 41 s over five runs) and 30.1 s on an M4 Max (30.0 ms),
+  2026-09-26.
+
 ### Fixed
 
 - **A graph compiled for one iPhone is picked only on that iPhone.** The loaders that pick their
