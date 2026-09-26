@@ -762,8 +762,10 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "whisper-large-v3-turbo", name: "Whisper large-v3-turbo",
                 repo: "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official", kind: .asr,
                 variants: [
-                    // macos = stock JIT .aimodel; ios = AOT-compiled (h18p) — the on-device JIT
-                    // aborts on the 1.6 GB graph. Driven by `KitWhisperModel`.
+                    // macos = stock JIT .aimodel; ios = the graph compiled for the iPhone 17 Pro
+                    // (h18p), which no other iPhone loads. An iPhone 18 Pro specializes the 1.6 GB
+                    // JIT graph itself (4.4 s first load, 0.3 s after), so ios/ is to become the
+                    // JIT graph and this pin moves with it. Driven by `KitWhisperModel`.
                     "macos": .init(path: "macos", sizeMB: 1623),
                     "ios": .init(path: "ios", sizeMB: 3235),
                 ]),
@@ -784,7 +786,8 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: ["macos": .init(path: "", sizeMB: 1293)]),
             // Streaming ASR (cache-aware FastConformer + pure-RNNT, 40 locales, any-length
             // audio) driven by `KitNemotronModel`; platform subtrees like Whisper — `ios/`
-            // carries the AOT h18p conformer halves (the device JIT is avoided).
+            // carries the conformer halves compiled for the iPhone 17 Pro (h18p), which no other
+            // iPhone loads; it is to become the JIT graphs.
             CatalogEntry(
                 id: "nemotron-3.5-asr-streaming-0.6b", name: "Nemotron 3.5 ASR Streaming 0.6B",
                 repo: "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI", kind: .asr,
@@ -809,20 +812,21 @@ public struct ModelCatalog: Sendable, Codable {
                 ],
                 engine: "pipelined"),
             // ── Speaker diarization: clip → who spoke when (up to 4 speakers, 80 ms frames).
-            //    Flat repo, one graph per platform: the variant path names the JIT .aimodel
-            //    (macOS) / AOT h18p .aimodelc (iOS) directly, so each platform downloads only
-            //    its own form. The 128-mel frontend filterbank ships inside CoreAIKit (the
-            //    Parakeet resource — same NeMo family). Driven by `KitDiarizer`. ──
+            //    Flat repo: both platforms name the JIT .aimodel, which every device specializes
+            //    itself; the repo's .h18p.aimodelc loads on the iPhone 17 Pro only. The 128-mel
+            //    frontend filterbank ships inside CoreAIKit (the Parakeet resource — same NeMo
+            //    family). Driven by `KitDiarizer`. ──
             CatalogEntry(
                 id: "sortformer-diar-v2", name: "Streaming Sortformer v2 (4-spk)",
                 repo: "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", kind: .diarization,
                 variants: [
                     "macos": .init(path: "sortformer_float16.aimodel", sizeMB: 237),
-                    "ios": .init(path: "sortformer_float16.h18p.aimodelc", sizeMB: 238),
+                    "ios": .init(path: "sortformer_float16.aimodel", sizeMB: 237),
                 ]),
             // Up to 8 speakers at 10 ms (NVIDIA Nemotron-3-Diarization, a streaming Sortformer):
-            // the same flat layout — the variant path names the platform's graph (T = 541, low
-            // latency) — plus the `host/` subtree `KitDiarizer` downloads beside it: the 8-frame
+            // the same flat layout — the variant path names the JIT graph (T = 541, low latency;
+            // an iPhone 18 Pro specializes it in 0.8 s on the first load, 0.2 s after) — plus
+            // the `host/` subtree `KitDiarizer` downloads beside it: the 8-frame
             // projection and silence row (weights), the mel filterbank, the Hann window and
             // metadata.json. sizeMB covers both downloads.
             CatalogEntry(
@@ -830,10 +834,11 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/Nemotron-3-Diarization-CoreAI", kind: .diarization,
                 variants: [
                     "macos": .init(path: "n3d_streaming_float16.aimodel", sizeMB: 200),
-                    "ios": .init(path: "n3d_streaming_float16.h18p.aimodelc", sizeMB: 200),
+                    "ios": .init(path: "n3d_streaming_float16.aimodel", sizeMB: 200),
                 ]),
             // ── Multi-speaker / dialogue TTS (VibeVoice-Realtime-0.5B): five fp16 graphs in the
-            //    platform dir + `coreai_host/` (voice prefill caches, glue, tokenizer) + the fp16
+            //    platform dir (`ios/` holds them compiled for the iPhone 17 Pro, which no other
+            //    iPhone loads) + `coreai_host/` (voice prefill caches, glue, tokenizer) + the fp16
             //    embedding table at the repo root. Driven by `KitDialogue`. ──
             CatalogEntry(
                 id: "vibevoice-realtime-0.5b", name: "VibeVoice-Realtime 0.5B (multi-speaker)",
@@ -843,13 +848,15 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "ios", sizeMB: 1859),
                 ]),
             // ── Music source separation (Mel-Band RoFormer, Kim Vocal). One graph with STFT +
-            //    iSTFT folded in; the host only frames and overlap-adds. Driven by `KitSeparator`. ──
+            //    iSTFT folded in; the host only frames and overlap-adds. Both platforms name the
+            //    JIT graph; the repo's .h18p.aimodelc loads on the iPhone 17 Pro only. Driven by
+            //    `KitSeparator`. ──
             CatalogEntry(
                 id: "melband-roformer-vocal", name: "Mel-Band RoFormer (Kim Vocal)",
                 repo: "mlboydaisuke/MelBandRoformer-Vocal-CoreAI", kind: .separation,
                 variants: [
                     "macos": .init(path: "mbr_full_fp16.aimodel", sizeMB: 493),
-                    "ios": .init(path: "mbr_full_fp16.h18p.aimodelc", sizeMB: 493),
+                    "ios": .init(path: "mbr_full_fp16.aimodel", sizeMB: 493),
                 ]),
             CatalogEntry(
                 id: "clip-vit-b32", name: "CLIP ViT-B/32",
@@ -923,13 +930,15 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "adcsr_x4_float32.aimodel", sizeMB: 1825),
                 ]),
             // ── Time-series forecasting: one stateless transformer graph (fixed context 2048;
-            //    KitForecaster front-pads + masks shorter series host-side) + host RevIN/flip DSP. ──
+            //    KitForecaster front-pads + masks shorter series host-side) + host RevIN/flip DSP.
+            //    Both platforms name the JIT graph at the repo root; `ios/` holds the one compiled
+            //    for the iPhone 17 Pro, which no other iPhone loads. ──
             CatalogEntry(
                 id: "timesfm-2.5-200m", name: "TimesFM 2.5 200M",
                 repo: "mlboydaisuke/TimesFM-2.5-200M-CoreAI", kind: .forecasting,
                 variants: [
                     "macos": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
-                    "ios": .init(path: "ios", sizeMB: 464),   // AOT .aimodelc (h18p; weights + MPSGraph)
+                    "ios": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
                 ], engine: "static-shape"),
         ])
 }

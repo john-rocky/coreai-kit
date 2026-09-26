@@ -982,8 +982,8 @@
           "sizeMB": 237
         },
         "ios": {
-          "path": "sortformer_float16.h18p.aimodelc",
-          "sizeMB": 238
+          "path": "sortformer_float16.aimodel",
+          "sizeMB": 237
         }
       }
     },
@@ -999,7 +999,7 @@
           "sizeMB": 200
         },
         "ios": {
-          "path": "n3d_streaming_float16.h18p.aimodelc",
+          "path": "n3d_streaming_float16.aimodel",
           "sizeMB": 200
         }
       }
@@ -1033,7 +1033,7 @@
           "sizeMB": 493
         },
         "ios": {
-          "path": "mbr_full_fp16.h18p.aimodelc",
+          "path": "mbr_full_fp16.aimodel",
           "sizeMB": 493
         }
       }
@@ -1186,8 +1186,8 @@
           "sizeMB": 463
         },
         "ios": {
-          "path": "ios",
-          "sizeMB": 464
+          "path": "timesfm_2p5_200m_ctx2048_fp16.aimodel",
+          "sizeMB": 463
         }
       },
       "engine": "static-shape"

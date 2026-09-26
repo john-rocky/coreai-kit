@@ -49,6 +49,19 @@ policy.
   iPhone 17 Pro's graphs in `ios/` at their pins, so another iPhone gets that error until the Hub
   carries their JIT graphs there.
 
+- **Four catalog models name their JIT graph on iOS.** `sortformer-diar-v2`,
+  `nemotron-3-diarization`, `melband-roformer-vocal` and `timesfm-2.5-200m` pointed iOS at the
+  iPhone 17 Pro's AOT graph, which only that phone loads. They now name the `.aimodel` the Mac
+  downloads, which an iPhone specializes on its first load (Nemotron-3-Diarization on an iPhone 18
+  Pro: 0.78 s the first time, 0.16 s after). `ModelID.sortformerDiarV2` names it on both
+  platforms. Whisper, Nemotron 3.5 ASR and VibeVoice keep `ios` as their path; at their pins it
+  still holds the iPhone 17 Pro's graphs, and the Hub is to replace them with the JIT ones.
+
+- **`ModelID.gliner2PII` is pinned.** Its `ios/` carried the iPhone 17 Pro's compiled files beside
+  the JIT graph, which the iPhone 18 Pro refuses; since 2026-09-26 it holds the JIT graph alone
+  (627 MB). The preset read `main`, and an app that had downloaded the old `ios/` kept it, since
+  the cache is keyed by revision; the pin (`74fb5c1`) moves the cache path.
+
 ## [0.7.3] — 2026-09-25
 
 A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a
