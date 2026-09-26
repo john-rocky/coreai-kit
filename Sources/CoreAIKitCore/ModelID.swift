@@ -3,7 +3,9 @@
 // A model is addressed as repo + path + revision, where `path` is a variant subtree inside
 // the repo holding one complete bundle (metadata.json + *.aimodel/ + tokenizer/). When `path`
 // is nil the platform default is used: "macos" on macOS, "ios" on iOS — the layout of the
-// `*-CoreAI-official` starter repos.
+// `*-CoreAI-official` starter repos. On an iPhone, a repo can also carry `ios-<arch>/`: the same
+// bundle with the graphs compiled for one generation, which `ModelStore` takes on that
+// generation (`subtrees(deviceArchitecture:)`).
 
 import Foundation
 
@@ -18,18 +20,40 @@ public struct ModelID: Hashable, Sendable {
         self.revision = revision
     }
 
-    /// The repo subtree downloaded for this platform.
+    /// The repo subtree this platform names: `path`, else "macos" on macOS and "ios" on iOS.
+    /// On an iPhone `ModelStore` downloads `ios-<arch>/` in its place when the repo has one for
+    /// this device (`subtrees(deviceArchitecture:)`), so the bundle a download returns can sit in
+    /// a directory of that name.
     public var resolvedPath: String {
         if let path { return path }
         #if os(iOS)
-        return "ios"
+        return Self.iPhoneSubtree
         #else
         return "macos"
         #endif
     }
 
-    /// Directory under a store root where this model is cached.
-    var cacheSubpath: String { "\(repo)/\(revision)/\(resolvedPath)" }
+    /// An iPhone's default subtree: the JIT graphs, which every generation specializes itself.
+    static let iPhoneSubtree = "ios"
+
+    /// The subtrees a store looks for this model in, best first. When the path is an iPhone's
+    /// default `ios`, left nil or named, `ios-<arch>/` comes first: the same bundle with the graphs
+    /// compiled for the device `arch` names (`h18p` is the iPhone 17 Pro), taken when the repo
+    /// has it; `ios/` is the fallback. Any other path (`macos`, `ios-h18p`, `gpu-pipelined/…`, a
+    /// graph's file name) is the caller's choice and the only candidate. `arch` is read only for
+    /// the `ios` path.
+    func subtrees(deviceArchitecture arch: @autoclosure () -> String?) -> [String] {
+        guard resolvedPath == Self.iPhoneSubtree, let arch = arch(), !arch.isEmpty,
+            !arch.contains("/")
+        else { return [resolvedPath] }
+        return ["\(resolvedPath)-\(arch)", resolvedPath]
+    }
+
+    /// Directory under a store root where this model is cached when it came from `subtree`.
+    func cacheSubpath(subtree: String) -> String { "\(repo)/\(revision)/\(subtree)" }
+
+    /// Directory under a store root where this model is cached from `resolvedPath`.
+    var cacheSubpath: String { cacheSubpath(subtree: resolvedPath) }
 
     /// A copy of this id pinned to `revision` (a Hub commit hash) — the same bundle,
     /// addressed immutably. `nil` leaves the id unchanged, so callers can pass a catalog

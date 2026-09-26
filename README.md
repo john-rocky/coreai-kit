@@ -248,6 +248,18 @@ Concurrent callers share one download; only the first caller receives progress.
 HTTP downloads, and Xet downloads when the trait is on, report byte progress during
 the transfer.
 
+A model with no path takes its platform's folder: `macos/` on a Mac, `ios/` on an iPhone.
+`ios/` holds the JIT graphs, which every iPhone generation specializes on its first load.
+A repository can also carry `ios-<arch>/`: the same bundle with the graphs compiled for one
+generation (`ios-h18p/` for the iPhone 17 Pro, `ios-h19p/` for the 18 Pro).
+On an iPhone, a model whose path is `ios`, left nil or named, downloads the folder for its own
+architecture (`AIModel.deviceArchitectureName`) when the repository has one, and `ios/` when it
+does not, at the cost of one more listing.
+A copy already on disk is used, whichever folder it is.
+Any other path downloads as named, and a Mac never looks for an architecture folder.
+The catalog's `sizeMB` measures `ios/`; an `ios-<arch>/` can be larger, and
+`ModelStore.remoteSize(of:)` gives the figure for the device it runs on.
+
 ## Works with Apple's FoundationModels API
 
 `KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession` —

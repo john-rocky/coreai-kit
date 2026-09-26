@@ -7,7 +7,9 @@
 // Downloaded bundles are excluded from iCloud backup.
 //
 // Cache layout: <directory>/<org>/<name>/<revision>/<variant>/ — that directory is a complete
-// bundle root (metadata.json + *.aimodel/ + tokenizer/) ready to hand to the runtime.
+// bundle root (metadata.json + *.aimodel/ + tokenizer/) ready to hand to the runtime. <variant>
+// is the subtree the bundle came from: on an iPhone that is `ios-<arch>/` when the repo has one
+// for the device, else `ios/` (`ModelID.subtrees`).
 
 import Foundation
 
@@ -17,6 +19,8 @@ public actor ModelStore {
     public nonisolated let directory: URL
 
     private let hub: HubClient
+    /// The architecture `ModelID.subtrees` matches an iPhone's `ios-<arch>/` against.
+    private nonisolated let architecture: @Sendable () -> String?
     private var inflight: [ModelID: Task<URL, Error>] = [:]
 
     /// Store rooted at Application Support/CoreAIKit/Models.
@@ -27,23 +31,42 @@ public actor ModelStore {
             for: .applicationSupportDirectory, in: .userDomainMask)[0]
         self.directory = base.appendingPathComponent("CoreAIKit/Models", isDirectory: true)
         self.hub = HubClient(baseURL: hubBaseURL)
+        self.architecture = { ModelStore.deviceArchitecture }
     }
 
     /// The endpoint does not change cache identity: repo, revision and variant still key it.
     public init(directory: URL, hubBaseURL: URL = URL(string: "https://huggingface.co")!) {
         self.directory = directory
         self.hub = HubClient(baseURL: hubBaseURL)
+        self.architecture = { ModelStore.deviceArchitecture }
     }
 
-    init(directory: URL, hub: HubClient) {
+    init(
+        directory: URL, hub: HubClient,
+        deviceArchitecture: @escaping @Sendable () -> String? = { ModelStore.deviceArchitecture }
+    ) {
         self.directory = directory
         self.hub = hub
+        self.architecture = deviceArchitecture
     }
 
-    /// Local bundle root for a model, or nil if not downloaded.
+    /// The subtrees this store looks for `model` in on this device, best first.
+    nonisolated func subtrees(for model: ModelID) -> [String] {
+        model.subtrees(deviceArchitecture: architecture())
+    }
+
+    /// Where `model`'s bundle from `subtree` sits in this store.
+    nonisolated func bundleURL(_ model: ModelID, subtree: String) -> URL {
+        directory.appendingPathComponent(model.cacheSubpath(subtree: subtree), isDirectory: true)
+    }
+
+    /// Local bundle root for a model, or nil if not downloaded. A model whose path is an iPhone's
+    /// `ios` is looked for under `ios-<arch>/`, then `ios/`: a copy on disk is used whichever it
+    /// is, and the Hub is not asked about the other.
     public nonisolated func localURL(for model: ModelID) -> URL? {
-        let url = directory.appendingPathComponent(model.cacheSubpath, isDirectory: true)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        subtrees(for: model).lazy
+            .map { self.bundleURL(model, subtree: $0) }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     /// Bundle roots present in this store (directories containing metadata.json).
@@ -65,6 +88,9 @@ public actor ModelStore {
 
     /// Returns the local bundle root, downloading it first if needed. Concurrent calls for
     /// the same model join the in-flight download (only the first caller receives progress).
+    ///
+    /// On an iPhone, a model whose path is `ios` downloads `ios-<arch>/`, the graphs compiled for
+    /// this device, when the repo has it, else `ios/` (`hubFiles(for:)`).
     ///
     /// Offline fallback: when the download fails at the transport level (airplane mode,
     /// no route to the Hub) and a complete copy of the same repo + variant is cached
@@ -92,7 +118,8 @@ public actor ModelStore {
         return try await task.value
     }
 
-    /// A complete cached copy of this model under another revision, newest first, or nil.
+    /// A complete cached copy of this model under another revision, newest first, or nil;
+    /// within one revision, in the order `localURL` looks (`ios-<arch>/`, then `ios/`).
     /// Presence means complete — bundles only ever land at their final path by atomic
     /// rename (the staging directory is hidden), the same contract `localURL` relies on.
     nonisolated func siblingRevisionURL(for model: ModelID) -> URL? {
@@ -102,13 +129,14 @@ public actor ModelStore {
             at: repoDir, includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles])
         else { return nil }
+        let names = subtrees(for: model)
         let candidates = revisions
             .filter { $0.lastPathComponent != model.revision }
-            .map { rev in
-                model.resolvedPath.isEmpty
-                    ? rev : rev.appendingPathComponent(model.resolvedPath)
+            .compactMap { rev in
+                names.lazy
+                    .map { $0.isEmpty ? rev : rev.appendingPathComponent($0) }
+                    .first { fm.fileExists(atPath: $0.path) }
             }
-            .filter { fm.fileExists(atPath: $0.path) }
         func mtime(_ url: URL) -> Date {
             (try? url.resourceValues(forKeys: [.contentModificationDateKey])
                 .contentModificationDate) ?? .distantPast
@@ -116,16 +144,44 @@ public actor ModelStore {
         return candidates.max { mtime($0) < mtime($1) }
     }
 
-    /// The files this model is made of, per the Hub. One place, so the download and the size
-    /// probes can never disagree about what a model consists of.
-    func hubFiles(for model: ModelID) async throws -> [HubClient.PlannedFile] {
-        try await hub.listFiles(
-            repo: model.repo, revision: model.revision, path: model.resolvedPath)
+    /// The subtree this device downloads the model from and the files in it, per the Hub. One
+    /// place, so the download and the size probes can never disagree about what a model consists
+    /// of.
+    ///
+    /// The first of `subtrees(for:)` the Hub lists files under. An iPhone's `ios-<arch>/` costs
+    /// one listing, and `ios/` one more when that answers 404 or an empty tree. Any other failure
+    /// of the first listing is thrown, not read as absence: a device that fell back to `ios/` on
+    /// a Hub error would keep it, since a cached copy is used from then on.
+    func hubFiles(
+        for model: ModelID
+    ) async throws -> (subtree: String, files: [HubClient.PlannedFile]) {
+        let names = subtrees(for: model)
+        for subtree in names.dropLast() {
+            do {
+                let files = try await hub.listFiles(
+                    repo: model.repo, revision: model.revision, path: subtree)
+                if !files.isEmpty { return (subtree, files) }
+            } catch CoreAIKitError.variantNotFound {
+                continue
+            }
+        }
+        let subtree = names[names.count - 1]
+        return (subtree, try await hub.listFiles(
+            repo: model.repo, revision: model.revision, path: subtree))
     }
 
+    /// Removes the model's cached bundle from every subtree `localURL` looks in, so an iPhone's
+    /// `ios-<arch>/` and `ios/` of the revision both go. Throws when there is none.
     public func delete(_ model: ModelID) throws {
-        let url = directory.appendingPathComponent(model.cacheSubpath, isDirectory: true)
-        try FileManager.default.removeItem(at: url)
+        let fm = FileManager.default
+        let present = subtrees(for: model).map { bundleURL(model, subtree: $0) }
+            .filter { fm.fileExists(atPath: $0.path) }
+        guard !present.isEmpty else {
+            // The file system's "no such file", as before.
+            try fm.removeItem(at: bundleURL(model, subtree: model.resolvedPath))
+            return
+        }
+        for url in present { try fm.removeItem(at: url) }
     }
 
     // MARK: - Download
@@ -134,15 +190,15 @@ public actor ModelStore {
         _ model: ModelID,
         progress: (@Sendable (DownloadProgress) -> Void)?
     ) async throws -> URL {
-        let files = try await hubFiles(for: model)
+        let (subtree, files) = try await hubFiles(for: model)
         guard !files.isEmpty else {
             throw CoreAIKitError.variantNotFound(
-                repo: model.repo, path: model.resolvedPath, revision: model.revision)
+                repo: model.repo, path: subtree, revision: model.revision)
         }
         let totalBytes = files.reduce(0) { $0 + $1.size }
 
         let fm = FileManager.default
-        let final = directory.appendingPathComponent(model.cacheSubpath, isDirectory: true)
+        let final = bundleURL(model, subtree: subtree)
         let parent = final.deletingLastPathComponent()
         try fm.createDirectory(at: parent, withIntermediateDirectories: true)
 
