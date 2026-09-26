@@ -87,6 +87,12 @@ policy.
   (627 MB). The preset read `main`, and an app that had downloaded the old `ios/` kept it, since
   the cache is keyed by revision; the pin (`74fb5c1`) moves the cache path.
 
+- **`InformationExtractor` opens a graph compiled for this device.** It looked for a `.aimodel`
+  alone, and GLiNER2-PII's `ios-h18p/` at that pin holds the iPhone 17 Pro's `.h18p.aimodelc` and
+  no `.aimodel`, so the folder could not be opened. A `*.<arch>.aimodelc` compiled for this device
+  now wins over the `.aimodel`, as in `GraphBundle`; a folder with the JIT graph alone loads as
+  before.
+
 ## [0.7.3] — 2026-09-25
 
 A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a
