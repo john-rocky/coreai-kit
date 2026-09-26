@@ -70,7 +70,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         public let path: String
         /// Download size in decimal megabytes (bytes / 1,000,000) of everything a first run
         /// fetches for this entry, sibling subtrees its loader resolves included. Measured at the
-        /// pinned revision by `scripts/measure-catalog-sizes.py`, never typed by hand.
+        /// pinned revision by `scripts/measure-catalog-sizes.py`, never typed by hand. For an `ios`
+        /// path it is `ios/`'s; an iPhone that takes the repo's `ios-<arch>/` instead
+        /// (`ModelID.subtrees`) can download more.
         public let sizeMB: Int?
 
         public init(path: String, sizeMB: Int? = nil) {

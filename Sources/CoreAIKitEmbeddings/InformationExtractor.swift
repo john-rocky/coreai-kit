@@ -14,6 +14,7 @@
 @_exported import CoreAIKitCore
 @_exported import CoreAIKitVision
 
+import CoreAI
 import Foundation
 import Tokenizers
 
@@ -56,11 +57,16 @@ public final class InformationExtractor: @unchecked Sendable {
     }
 
     /// Loads a bundle directory holding one `*.aimodel`, a `tokenizer/` folder, and `extractor.json`.
+    /// A `*.<arch>.aimodelc` compiled for this device is taken in the graph's place: an iPhone's
+    /// `ios-<arch>/` subtree, which `ModelStore` downloads on that generation, holds only that.
     public init(bundleAt url: URL, computeUnits: GraphModel.ComputeUnits = .gpu) async throws {
-        guard let modelURL = try FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: nil
-        ).first(where: { $0.pathExtension == "aimodel" }) else {
-            throw VisionError.bundleLayout("no .aimodel found under \(url.path)")
+        let entries = try FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: nil)
+        let compiled = ".\(AIModel.deviceArchitectureName).aimodelc"
+        guard let modelURL = entries.first(where: { $0.lastPathComponent.hasSuffix(compiled) })
+            ?? entries.first(where: { $0.pathExtension == "aimodel" })
+        else {
+            throw VisionError.bundleLayout("no .aimodel or \(compiled) found under \(url.path)")
         }
         let cfg = try JSONDecoder().decode(
             ExtractorConfig.self,

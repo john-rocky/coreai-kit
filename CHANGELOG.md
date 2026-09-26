@@ -92,6 +92,28 @@ policy.
   (627 MB). The preset read `main`, and an app that had downloaded the old `ios/` kept it, since
   the cache is keyed by revision; the pin (`74fb5c1`) moves the cache path.
 
+- **`InformationExtractor` opens a graph compiled for this device.** It looked for a `.aimodel`
+  alone, and GLiNER2-PII's `ios-h18p/` at that pin holds the iPhone 17 Pro's `.h18p.aimodelc` and
+  no `.aimodel`, so the folder could not be opened. A `*.<arch>.aimodelc` compiled for this device
+  now wins over the `.aimodel`, as in `GraphBundle`; a folder with the JIT graph alone loads as
+  before.
+
+- **An iPhone takes the graphs its repository compiled for it.** A model whose path is `ios` (the
+  catalog's iOS variants, and the presets that leave `path` nil) always downloaded `ios/`, so an
+  `ios-<arch>/` folder, the same bundle compiled for one iPhone generation, was reached only by a
+  caller who wrote its path. `ModelStore` now lists `ios-<arch>/` first, `<arch>` being
+  `AIModel.deviceArchitectureName` (`h18p` on an iPhone 17 Pro, `h19p` on an 18 Pro), and takes it
+  when the Hub has files there; on a 404 or an empty tree it takes `ios/`, one listing more. Any
+  other error of that listing is thrown, not read as absence. A copy already on disk is used,
+  whichever folder it is, and the Hub is not asked, so an `ios/` downloaded before stays in use;
+  `localURL(for:)`, `delete(_:)` and the offline fallback look in `ios-<arch>/` first.
+  `remoteSize(of:)` and `downloadPlan(for:)` follow the folder a download takes; the catalog's
+  `sizeMB` stays the `ios/` figure, and an `ios-<arch>/` can be larger. At the current pins an
+  iPhone 17 Pro takes `ios-h18p/` for `vjepa2-vitl-ssv2`, `nemotron-3.5-asr-streaming-0.6b` and
+  `ModelID.gliner2PII`, and an iPhone 18 Pro takes `ios-h19p/` for `gliner2.5-decide`. Every other
+  path, and the Mac, is unchanged. On iOS `CoreAIKitCore` now imports Core AI, for the
+  architecture's name alone.
+
 ## [0.7.3] — 2026-09-25
 
 A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a

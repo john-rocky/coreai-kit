@@ -18,12 +18,14 @@ import Foundation
 extension ModelStore {
     /// Bytes the Hub says this model's files add up to, without downloading any of them.
     ///
-    /// This is the exact figure for the model's own subtree. It does **not** include sibling
+    /// This is the exact figure for the model's own subtree — on an iPhone, the `ios-<arch>/`
+    /// a download would take when the repo has one, which can be larger than the `ios/` the
+    /// catalog's `sizeMB` measures. It does **not** include sibling
     /// subtrees a loader resolves beside it (a vision tower, host glue, a tokenizer stored
     /// outside the variant path) — those are the loader's knowledge, not the store's, which is
     /// the same boundary `scripts/measure-catalog-sizes.py` refuses to cross.
     public func remoteSize(of model: ModelID) async throws -> Int64 {
-        try await hubFiles(for: model).reduce(0) { $0 + $1.size }
+        try await hubFiles(for: model).files.reduce(0) { $0 + $1.size }
     }
 
     /// Bytes this model currently occupies on disk, or nil if it is not downloaded.
@@ -63,8 +65,9 @@ extension ModelStore {
     /// Apple's `BackgroundAssets` framework owns — that needs an app extension, which a Swift
     /// package cannot ship. It can hand over the list to enqueue, which is this.
     public func downloadPlan(for model: ModelID) async throws -> [PlannedDownload] {
-        let base = directory.appendingPathComponent(model.cacheSubpath, isDirectory: true)
-        return try await hubFiles(for: model).map {
+        let (subtree, files) = try await hubFiles(for: model)
+        let base = bundleURL(model, subtree: subtree)
+        return files.map {
             PlannedDownload(
                 url: $0.url, sizeBytes: $0.size,
                 destination: base.appendingPathComponent($0.relativePath))
