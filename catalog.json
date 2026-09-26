@@ -746,7 +746,7 @@
       "id": "voxcpm-0.5b",
       "name": "VoxCPM 0.5B",
       "repo": "mlboydaisuke/VoxCPM-0.5B-CoreAI",
-      "revision": "9920f9599f98ad257f09cd606240d79282db3991",
+      "revision": "38fc0aea6fe067aff9132b5bd79208e45858b69f",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -755,7 +755,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1378
+          "sizeMB": 1374
         }
       }
     },
@@ -819,7 +819,7 @@
       "id": "vjepa2-vitl-ssv2",
       "name": "V-JEPA 2 ViT-L (SSv2)",
       "repo": "mlboydaisuke/VJEPA2-ViTL-SSv2-CoreAI",
-      "revision": "89fed71311d8c5f18e18f848197f0c8abe25cf94",
+      "revision": "672f4a0c5bed7d4c98e98e7b657db1e4442b96a5",
       "kind": "video",
       "variants": {
         "macos": {
@@ -828,7 +828,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 710
+          "sizeMB": 708
         }
       }
     },
@@ -939,7 +939,7 @@
       "id": "nemotron-3.5-asr-streaming-0.6b",
       "name": "Nemotron 3.5 ASR Streaming 0.6B",
       "repo": "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI",
-      "revision": "3900f995653d7541e196f320c148775fe1662f9e",
+      "revision": "73c453663c834aece705843f3a18bd2095b24f35",
       "kind": "asr",
       "variants": {
         "macos": {
@@ -948,7 +948,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1336
+          "sizeMB": 1335
         }
       }
     },
@@ -1008,7 +1008,7 @@
       "id": "vibevoice-realtime-0.5b",
       "name": "VibeVoice-Realtime 0.5B (multi-speaker)",
       "repo": "mlboydaisuke/VibeVoice-Realtime-0.5B-CoreAI",
-      "revision": "889897cdc1df88428a3eed24e89f1814e580c033",
+      "revision": "b4480f875ba9464b33f2f141516fa6c439e5d237",
       "kind": "tts",
       "variants": {
         "macos": {
@@ -1093,7 +1093,7 @@
       "id": "gliner2.5-decide",
       "name": "GLiNER2.5-Decide",
       "repo": "mlboydaisuke/GLiNER2.5-Decide-CoreAI",
-      "revision": "7464c910699075674e00c5f423ca11a3a64eb26b",
+      "revision": "820d4e909ac0509c53d48b82811172cc3e4f7730",
       "kind": "textClassification",
       "variants": {
         "macos": {
@@ -1102,7 +1102,7 @@
         },
         "ios": {
           "path": "ios",
-          "sizeMB": 1958
+          "sizeMB": 1756
         }
       }
     },
@@ -1195,7 +1195,7 @@
       "id": "timesfm-2.5-200m",
       "name": "TimesFM 2.5 200M",
       "repo": "mlboydaisuke/TimesFM-2.5-200M-CoreAI",
-      "revision": "9b5300026f96d1799a0dd1439a07e378a72e2b46",
+      "revision": "2a0801a155b68bae04c4c39caacbc6ac48f22ff2",
       "kind": "forecasting",
       "variants": {
         "macos": {

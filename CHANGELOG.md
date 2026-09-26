@@ -76,6 +76,12 @@ policy.
   since 0.7.3's diarizer (CI's `example-app-release` was red from #56). On an Intel Mac a float16
   N3D bundle now throws the contract error instead; the float32 bundle is unaffected.
 
+- **Six catalog pins move to the JIT layouts.** `timesfm-2.5-200m`, `vjepa2-vitl-ssv2`,
+  `nemotron-3.5-asr-streaming-0.6b`, `vibevoice-realtime-0.5b`, `voxcpm-0.5b` and `gliner2.5-decide`
+  are pinned to the Hub revisions of 2026-09-26 whose `ios/` holds the JIT graphs (the compiled
+  ones moved to `ios-h18p/`, GLiNER2.5-Decide's to `ios-h19p/`), so an iPhone of any generation
+  loads them; `sizeMB` follows (GLiNER2.5-Decide on iOS 1,958 → 1,756 MB).
+
 - **`ModelID.gliner2PII` is pinned.** Its `ios/` carried the iPhone 17 Pro's compiled files beside
   the JIT graph, which the iPhone 18 Pro refuses; since 2026-09-26 it holds the JIT graph alone
   (627 MB). The preset read `main`, and an app that had downloaded the old `ios/` kept it, since

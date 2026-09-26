@@ -685,7 +685,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/VoxCPM-0.5B-CoreAI", kind: .tts,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1374),
-                    "ios": .init(path: "ios", sizeMB: 1378),
+                    "ios": .init(path: "ios", sizeMB: 1374),
                 ]),
             // Kokoro is three stateless graph bundles + host glue at the repo root (no
             // platform dir); the variant path is empty and KitSpeaker resolves the subtrees.
@@ -721,7 +721,7 @@ public struct ModelCatalog: Sendable, Codable {
                 repo: "mlboydaisuke/VJEPA2-ViTL-SSv2-CoreAI", kind: .video,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 708),
-                    "ios": .init(path: "ios", sizeMB: 710),
+                    "ios": .init(path: "ios", sizeMB: 708),
                 ]),
             // ── Document OCR: image → structured markdown (vision + unified prefill/decode
             //    decoder + host constant tables; KitDocReader resolves the four subtrees). ──
@@ -790,14 +790,14 @@ public struct ModelCatalog: Sendable, Codable {
                 variants: ["macos": .init(path: "", sizeMB: 1293)]),
             // Streaming ASR (cache-aware FastConformer + pure-RNNT, 40 locales, any-length
             // audio) driven by `KitNemotronModel`; platform subtrees like Whisper — `ios/`
-            // carries the conformer halves compiled for the iPhone 17 Pro (h18p), which no other
-            // iPhone loads; it is to become the JIT graphs.
+            // held the conformer halves compiled for the iPhone 17 Pro (h18p) until 2026-09-26; since
+            // Hub revision 73c45366 it holds the six JIT graphs, and `ios-h18p/` the h18p halves.
             CatalogEntry(
                 id: "nemotron-3.5-asr-streaming-0.6b", name: "Nemotron 3.5 ASR Streaming 0.6B",
                 repo: "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI", kind: .asr,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1335),
-                    "ios": .init(path: "ios", sizeMB: 1336),
+                    "ios": .init(path: "ios", sizeMB: 1335),
                 ]),
             // ── ASR text normalization: the piece the ASR models above do not have. S1-mini
             //    by Superwhisper rewrites a raw transcript as written text (fillers dropped,
@@ -841,8 +841,9 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "n3d_streaming_float16.aimodel", sizeMB: 200),
                 ]),
             // ── Multi-speaker / dialogue TTS (VibeVoice-Realtime-0.5B): five fp16 graphs in the
-            //    platform dir (`ios/` holds them compiled for the iPhone 17 Pro, which no other
-            //    iPhone loads) + `coreai_host/` (voice prefill caches, glue, tokenizer) + the fp16
+            //    platform dir (`ios/` = the JIT graphs since Hub revision b4480f87, 2026-09-26; the
+            //    iPhone 17 Pro's compiled ones moved to `ios-h18p/`) + `coreai_host/` (voice
+            //    prefill caches, glue, tokenizer) + the fp16
             //    embedding table at the repo root. Driven by `KitDialogue`. ──
             CatalogEntry(
                 id: "vibevoice-realtime-0.5b", name: "VibeVoice-Realtime 0.5B (multi-speaker)",
@@ -897,15 +898,15 @@ public struct ModelCatalog: Sendable, Codable {
             //    tokenizer). Driven by `TextClassifier`, not by `TypedDecisions`. Its own kind,
             //    `textClassification`: a kit built before it decodes the entry as `.unknown` and
             //    leaves it out of `available(_:)`; `decision` would put it in front of
-            //    `TypedDecisions`, which cannot load it.
-            //    `ios/` at this pin holds the graphs compiled for the iPhone 18 Pro (h19p), which
-            //    no other iPhone loads; it is to become the JIT graphs, and the pin moves then. ──
+            //    `TypedDecisions`, which cannot load it. Since Hub revision 820d4e90 (2026-09-26)
+            //    `ios/` holds the JIT graphs (an iPhone 18 Pro specializes them in 1.5–2.3 s on the
+            //    first load); the h19p AOT graphs live in `ios-h19p/`. ──
             CatalogEntry(
                 id: "gliner2.5-decide", name: "GLiNER2.5-Decide",
                 repo: "mlboydaisuke/GLiNER2.5-Decide-CoreAI", kind: .textClassification,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1756),
-                    "ios": .init(path: "ios", sizeMB: 1958),
+                    "ios": .init(path: "ios", sizeMB: 1756),
                 ]),
             CatalogEntry(
                 id: "embeddinggemma-300m", name: "EmbeddingGemma 300m",
