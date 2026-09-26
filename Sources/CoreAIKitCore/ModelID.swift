@@ -68,6 +68,14 @@ extension ModelID {
     private static let shieldstralRevision = "5ec6faf69eb47e2e6b05527fd50c7cd65005b6a6"
     private static let rfdetrRevision = "d059657852216f473516d5f437d0f9848fa95ca0"
     private static let clipRevision = "01a6965ddfa33a11d7a4bd299077c2672c0a72cc"
+    // Until 2026-09-26 GLiNER2-PII's `ios/` held the iPhone 17 Pro's compiled files beside the JIT
+    // graph, a layout every other iPhone refuses; it now holds the JIT graph alone. The pin moves
+    // the cache path, so an app that downloaded the old `ios/` fetches the new one.
+    private static let gliner2PIIRevision = "74fb5c19e7eba2d4ebad95f90eeb6d996432575d"
+    // GLiNER2.5-Decide at this revision: `macos/` holds the JIT graphs, `ios/` the iPhone 18 Pro's
+    // AOT graphs (h19p), which no other iPhone loads. `ios/` is to become the JIT graphs; the pin
+    // (here and in catalog.json) moves when it does.
+    private static let gliner25DecideRevision = "7464c910699075674e00c5f423ca11a3a64eb26b"
 
     /// CLIP ViT-B/32 joint image+text encoder (fp16). Same bundle on both platforms.
     public static let clipViTB32 = ModelID(
@@ -156,9 +164,10 @@ extension ModelID {
         "mlboydaisuke/AdcSR-CoreAI", path: "adcsr_x4_float32.aimodel")
     /// Whisper large-v3-turbo (OpenAI, MIT) — the zoo's first official ASR. fp16 fixed-128-window
     /// encoder-decoder transcription graph + HF tokenizer. Platform subtrees: `macos/` is the stock
-    /// JIT `.aimodel` (Mac JIT-compiles fine); `ios/` is the AOT-compiled `.aimodelc` (h18p — the
-    /// on-device JIT compiler aborts on the 1.6 GB graph). `path` is nil so `resolvedPath` picks the
-    /// right one. Driven by `KitWhisperModel`. ≤30 s clips, 100 languages.
+    /// JIT `.aimodel`; `ios/` holds the graph compiled for the iPhone 17 Pro (h18p), which no other
+    /// iPhone loads. An iPhone 18 Pro specializes the 1.6 GB JIT graph itself (4.4 s on the first
+    /// load, 0.3 s after, 2026-09-26), so `ios/` is to become the JIT graph. `path` is nil so
+    /// `resolvedPath` picks the right one. Driven by `KitWhisperModel`. ≤30 s clips, 100 languages.
     public static let whisperLargeV3Turbo = ModelID(
         "mlboydaisuke/whisper-large-v3-turbo-CoreAI-official")
     /// ColModernVBERT visual document retriever (MIT) — query/text encoder (fp16, 298 MB).
@@ -180,33 +189,34 @@ extension ModelID {
     /// Cache-aware FastConformer (fp16, explicit KV/conv caches, 320 ms chunks) + pure-RNNT
     /// LSTM predictor + joint (fp32). 40 locales in one checkpoint (language one-hot input),
     /// punctuation + capitalization built in, any-length audio. Platform subtrees like Whisper:
-    /// `macos/` = six JIT `.aimodel` graphs; `ios/` = the two conformer halves AOT-compiled to
-    /// h18p `.aimodelc` (a single >2 GB AOT bundle fails to load on-device) + the four small JIT
-    /// graphs. `path` is nil so `resolvedPath` picks the right one. Driven by `KitNemotronModel`.
+    /// `macos/` = six JIT `.aimodel` graphs; `ios/` = the two conformer halves compiled for the
+    /// iPhone 17 Pro (h18p `.aimodelc`, which no other iPhone loads) + the four small JIT graphs.
+    /// `path` is nil so `resolvedPath` picks the right one. Driven by `KitNemotronModel`.
     public static let nemotronASRStreaming = ModelID(
         "mlboydaisuke/Nemotron-3.5-ASR-Streaming-CoreAI")
     /// NVIDIA Streaming Sortformer 4-spk v2 (cc-by-4.0, 117M) — the zoo's first speaker
     /// diarization model: "who spoke when", up to 4 speakers, 80 ms frames. Only the neural core
     /// is a Core AI graph (fixed-buffer forward, fp16); the NeMo 128-mel frontend, streaming
-    /// chunk loop, and AOSC speaker-cache compression run in the Swift host. Flat repo, one graph
-    /// per platform — the path picks the JIT `.aimodel` on macOS / the AOT h18p `.aimodelc` on
-    /// iOS (the device JIT is avoided) so each platform downloads only its own form. The mel
-    /// filterbank ships inside CoreAIKit (the Parakeet resource — same NeMo family). Driven by
-    /// `KitDiarizer`.
-    #if os(iOS)
-    public static let sortformerDiarV2 = ModelID(
-        "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", path: "sortformer_float16.h18p.aimodelc")
-    #else
+    /// chunk loop, and AOSC speaker-cache compression run in the Swift host. Flat repo: the path
+    /// names the JIT `.aimodel`, which every device specializes itself (the repo's
+    /// `.h18p.aimodelc` loads on the iPhone 17 Pro only). The mel filterbank ships inside
+    /// CoreAIKit (the Parakeet resource — same NeMo family). Driven by `KitDiarizer`.
     public static let sortformerDiarV2 = ModelID(
         "mlboydaisuke/Streaming-Sortformer-Diar-CoreAI", path: "sortformer_float16.aimodel")
-    #endif
     /// GLiNER2-PII (fastino, Apache-2.0) — the zoo's first NER / schema-driven information-extraction
     /// model and its first DeBERTa-v3 (disentangled-attention) port. mDeBERTa-v3 + SpanMarker +
     /// CountLSTM fused into one static graph (fp16); pass any label set at call time (zero-shot,
-    /// ≤MMAX). Flagship use is on-device PII redaction. Platform subtrees like Whisper: `macos/` is
-    /// the JIT `.aimodel` (~582 MB), `ios/` is the AOT-compiled h18p bundle (~823 MB — the device JIT
-    /// is avoided). `path` is nil so `resolvedPath` picks the right one. Each subtree holds the
-    /// `.aimodel` + `tokenizer/` + `extractor.json`. Driven by `InformationExtractor`.
+    /// ≤MMAX). Flagship use is on-device PII redaction. Platform subtrees `macos/` and `ios/` hold
+    /// the same JIT `.aimodel` + `tokenizer/` + `extractor.json` (627 MB); every iPhone specializes
+    /// the graph on its first load (an 18 Pro in 0.75 s); the graph compiled for the iPhone 17 Pro
+    /// moved to `ios-h18p/`. Driven by `InformationExtractor`.
     public static let gliner2PII = ModelID(
-        "mlboydaisuke/GLiNER2-PII-CoreAI")
+        "mlboydaisuke/GLiNER2-PII-CoreAI", revision: gliner2PIIRevision)
+    /// GLiNER2.5-Decide (fastino, Apache-2.0) — zero-shot text classification: any tasks and
+    /// labels at call time, several decisions from one forward. DeBERTa-v3-large + the label head
+    /// in one static graph per sequence length (256 and 512 tokens, fp16), with `classifier.json`
+    /// and `tokenizer/` beside them in each platform subtree. `path` is nil so `resolvedPath`
+    /// picks the platform's. Driven by `TextClassifier`.
+    public static let gliner25Decide = ModelID(
+        "mlboydaisuke/GLiNER2.5-Decide-CoreAI", revision: gliner25DecideRevision)
 }

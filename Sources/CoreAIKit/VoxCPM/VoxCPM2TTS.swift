@@ -14,6 +14,7 @@
 // Kept separate from the shipped VoxCPMTTS (0.5B) so v1 is untouched. Plain TTS (fixed speaker).
 
 import Accelerate
+import CoreAI
 import CoreAIKitVision
 import Foundation
 import Tokenizers
@@ -59,6 +60,9 @@ public struct VoxCPM2Paths: Sendable {
             prefillRes: resolve("voxcpm2_res_\(q)_prefill_t32"))
     }
 
+    /// The five graphs every synthesis loads (the prefill pair is optional).
+    var requiredGraphs: [URL] { [baseDecode, resDecode, featDecoder, featEncoder, vocoder] }
+
     /// macOS dev layout: each bundle is `<name>/<name>.aimodel` (JIT-specialized).
     public static func standard(artifactsRoot root: URL, lm: LMPrecision = .int8,
                                 tokenizerDir: URL? = nil) -> VoxCPM2Paths {
@@ -66,8 +70,10 @@ public struct VoxCPM2Paths: Sendable {
              root: root, lm: lm, tokenizerDir: tokenizerDir)
     }
 
-    /// iOS AOT layout: flat `<root>/<name>.<arch>.aimodelc`.
-    public static func aot(root: URL, arch: String = "h18p", lm: LMPrecision = .int8,
+    /// AOT layout: flat `<root>/<name>.<arch>.aimodelc`. A compiled graph loads only on the
+    /// architecture it was compiled for, so `arch` defaults to this device's.
+    @available(macOS 27, iOS 27, *)
+    public static func aot(root: URL, arch: String = AIModel.deviceArchitectureName, lm: LMPrecision = .int8,
                            tokenizerDir: URL? = nil) -> VoxCPM2Paths {
         make({ root.appendingPathComponent("\($0).\(arch).aimodelc") },
              root: root, lm: lm, tokenizerDir: tokenizerDir)

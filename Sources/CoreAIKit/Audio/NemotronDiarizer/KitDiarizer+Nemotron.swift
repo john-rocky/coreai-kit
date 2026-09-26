@@ -27,18 +27,15 @@ extension KitDiarizer {
         }
     }
 
-    /// The streaming graph in `root`, or `root` itself when it is one. iOS prefers the AOT
-    /// `.h18p.aimodelc`; macOS takes only the `.aimodel` (an iOS bundle is refused on a Mac).
+    /// The streaming graph in `root`, or `root` itself when it is one: an AOT
+    /// `n3d_streaming_float16.<arch>.aimodelc` compiled for this device, else the `.aimodel`
+    /// (`GraphBundle`).
     static func nemotronGraph(in root: URL) throws -> URL {
-        if ["aimodel", "aimodelc"].contains(root.pathExtension) { return root }
+        if GraphBundle.isGraph(root) { return root }
         let base = "n3d_\(nemotronProfile.kind.rawValue)_float16"
-        var names = ["\(base).aimodel"]
-        #if os(iOS)
-        names.insert("\(base).h18p.aimodelc", at: 0)
-        #endif
-        guard let url = names.map({ root.appendingPathComponent($0) })
-            .first(where: { FileManager.default.fileExists(atPath: $0.path) })
-        else { throw N3DError.missingFile("\(base) graph in \(root.path)") }
+        guard let url = try GraphBundle.graph(named: base, in: root) else {
+            throw N3DError.missingFile("\(base) graph in \(root.path)")
+        }
         return url
     }
 

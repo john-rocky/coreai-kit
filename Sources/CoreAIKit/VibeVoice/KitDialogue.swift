@@ -60,7 +60,7 @@ public struct KitDialogue: Sendable {
             entry.modelID(path: "coreai_host/embed"), progress: downloadProgress)
         let embed = embedDir.appendingPathComponent("embed_tokens_fp16.bin")
 
-        let paths = VibeVoicePaths.inBundleDir(
+        let paths = try VibeVoicePaths.inBundleDir(
             bundles, glueDir: glue, voicesDir: voicesDir, embedTokens: embed)
         self.engine = try await VibeVoiceTTS(paths: paths, computeUnits: computeUnits)
         self.catalogID = entry.id

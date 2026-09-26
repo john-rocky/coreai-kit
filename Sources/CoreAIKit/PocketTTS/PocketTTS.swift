@@ -58,8 +58,10 @@ public struct PocketTTSPaths: Sendable {
              precision: precision, weights: weights, tokenizer: tokenizer, voicesDir: voicesDir)
     }
 
-    /// iOS AOT layout: flat `<root>/<name>.<arch>.aimodelc`.
-    public static func aot(root: URL, arch: String = "h18p", precision: Precision = .float16,
+    /// AOT layout: flat `<root>/<name>.<arch>.aimodelc`. A compiled graph loads only on the
+    /// architecture it was compiled for, so `arch` defaults to this device's.
+    @available(macOS 27, iOS 27, *)
+    public static func aot(root: URL, arch: String = AIModel.deviceArchitectureName, precision: Precision = .float16,
                            weights: URL, tokenizer: URL, voicesDir: URL) -> PocketTTSPaths {
         make({ root.appendingPathComponent("\($0).\(arch).aimodelc") },
              precision: precision, weights: weights, tokenizer: tokenizer, voicesDir: voicesDir)

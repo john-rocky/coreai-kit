@@ -81,6 +81,8 @@ ALSO: dict[str, list[str] | dict[str, list[str]]] = {
     "voxcpm2-2b": ["tokenizer", "voxcpm2_host_glue"],
     # KitDialogue (VibeVoice/KitDialogue.swift): graphs + glue, voice caches, embedding table.
     "vibevoice-realtime-0.5b": ["coreai_host/glue", "coreai_host/voices", "coreai_host/embed"],
+    # KitDiarizer (Audio/NemotronDiarizer/KitDiarizer+Nemotron.swift): graph + host constants.
+    "nemotron-3-diarization": ["host"],
     # ASRModelID (ASR/KitASRModel.swift): decoder + AuT encoder.
     "qwen3-asr-1.7b": ["gpu-pipelined/qwen3_asr_1.7b_audio_encoder_fp16_k30"],
     # VisualDocumentRetriever (CoreAIKitEmbeddings): doc encoder + query encoder.

@@ -56,7 +56,7 @@ public actor KitSeparator {
     // MARK: - Loading
 
     /// Loads Mel-Band RoFormer by its catalog id: `KitSeparator(catalog: "melband-roformer-vocal")`.
-    /// First use downloads the platform bundle (macOS `.aimodel` / iOS AOT `.aimodelc`), then caches.
+    /// First use downloads the graph (the same JIT `.aimodel` on both platforms), then caches.
     public init(
         catalog id: String,
         store: ModelStore = .default,
@@ -83,26 +83,13 @@ public actor KitSeparator {
         self.wsum = s
     }
 
-    /// The graph inside `root` (or `root` itself): AOT `.aimodelc` on iOS, JIT `.aimodel` on macOS.
+    /// The graph inside `root` (or `root` itself), by the kit's rule (`GraphBundle`).
     private static func resolveGraph(in root: URL) throws -> URL {
-        let ext = root.pathExtension
-        if ext == "aimodel" || ext == "aimodelc" { return root }
-        var graphs: [URL] = []
-        if let it = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) {
-            for case let url as URL in it
-            where url.pathExtension == "aimodel" || url.pathExtension == "aimodelc" {
-                graphs.append(url)
-                it.skipDescendants()
-            }
+        do {
+            return try GraphBundle.resolve(in: root, searchSubdirectories: true)
+        } catch KitBundleError.graphMissing {
+            throw KitSeparatorError.bundleNotFound(root)
         }
-        #if os(iOS)
-        let preferred = "aimodelc"
-        #else
-        let preferred = "aimodel"
-        #endif
-        guard let graph = graphs.first(where: { $0.pathExtension == preferred }) ?? graphs.first
-        else { throw KitSeparatorError.bundleNotFound(root) }
-        return graph
     }
 
     // MARK: - Separation

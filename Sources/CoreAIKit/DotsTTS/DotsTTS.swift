@@ -12,6 +12,7 @@
 // fm_seq -> patch_encoder(DENORMALIZED patch) -> backbone step -> append hidden_proj(hidden). Stop when
 // eos_proj(hidden) softmax > 0.8. Every 15 patches (= 60 latent columns) -> vocoder -> 48 kHz chunk.
 
+import CoreAI
 import CoreAIKitVision
 import Foundation
 import Tokenizers
@@ -57,8 +58,10 @@ public struct DotsTTSPaths: Sendable {
              root: root, lm: lm, decoder: decoder, tokenizerDir: tokenizerDir)
     }
 
-    /// iOS AOT layout: flat `<root>/<name>.<arch>.aimodelc`.
-    public static func aot(root: URL, arch: String = "h18p", lm: LMPrecision = .int4,
+    /// AOT layout: flat `<root>/<name>.<arch>.aimodelc`. A compiled graph loads only on the
+    /// architecture it was compiled for, so `arch` defaults to this device's.
+    @available(macOS 27, iOS 27, *)
+    public static func aot(root: URL, arch: String = AIModel.deviceArchitectureName, lm: LMPrecision = .int4,
                            decoder: Decoder = .mf, tokenizerDir: URL) -> DotsTTSPaths {
         make({ root.appendingPathComponent("\($0).\(arch).aimodelc") },
              root: root, lm: lm, decoder: decoder, tokenizerDir: tokenizerDir)

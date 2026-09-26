@@ -89,21 +89,24 @@ public struct KitSpeaker: Sendable {
             entry.modelID(path: "tokenizer"), progress: downloadProgress)
         let glue = try await store.download(
             entry.modelID(path: glueName), progress: downloadProgress)
+        // The AOT layout when every graph in it was compiled for this device, else the JIT one
+        // (`GraphBundle`'s rule, for a layout of several graphs).
+        func exist(_ graphs: [URL]) -> Bool {
+            graphs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+        }
         switch entry.id {
         case "voxcpm-0.5b":
-            #if os(iOS)
-            var paths = VoxCPMPaths.aot(root: platform, arch: "h18p", tokenizerDir: tokenizer)
-            #else
-            var paths = VoxCPMPaths.standard(artifactsRoot: platform, tokenizerDir: tokenizer)
-            #endif
+            let aot = VoxCPMPaths.aot(root: platform, tokenizerDir: tokenizer)
+            var paths = exist(aot.requiredGraphs)
+                ? aot : VoxCPMPaths.standard(artifactsRoot: platform, tokenizerDir: tokenizer)
+            guard exist(paths.requiredGraphs) else { throw GraphBundle.unloadable(platform) }
             paths.glueDir = glue
             self.engine = .voxcpm(try await VoxCPMTTS(paths: paths))
         default:
-            #if os(iOS)
-            var paths = VoxCPM2Paths.aot(root: platform, arch: "h18p", tokenizerDir: tokenizer)
-            #else
-            var paths = VoxCPM2Paths.standard(artifactsRoot: platform, tokenizerDir: tokenizer)
-            #endif
+            let aot = VoxCPM2Paths.aot(root: platform, tokenizerDir: tokenizer)
+            var paths = exist(aot.requiredGraphs)
+                ? aot : VoxCPM2Paths.standard(artifactsRoot: platform, tokenizerDir: tokenizer)
+            guard exist(paths.requiredGraphs) else { throw GraphBundle.unloadable(platform) }
             paths.glueDir = glue
             self.engine = .voxcpm2(try await VoxCPM2TTS(paths: paths))
         }

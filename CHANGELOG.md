@@ -31,6 +31,62 @@ policy.
   `--asr system` and `diarize-gate`, which checks a diarizer against a reference's per-frame
   probabilities.
 
+- **Zero-shot text classification: `gliner2.5-decide`.** fastino's GLiNER2.5-Decide (Apache-2.0)
+  answers any tasks with any labels, named at call time, from one forward: `TextClassifier()`
+  downloads it (`ModelID.gliner25Decide`), `classify(_:tasks:)` returns every label's probability
+  per task. The host follows gliner2 2.0.0's collator and decision rule; `textclassify-cli --gate`
+  checks both against the zoo's fixtures. Before this, `TextClassifier` loaded only a local export.
+  `Examples/TextClassify` downloads the catalog model when no `--bundle` is given. The
+  entry's kind is the new `textClassification` (a kit built before it decodes the entry as
+  `unknown` and leaves it out of `available(_:)`; `decision` would list it in `systemone models`,
+  whose `TypedDecisions` cannot load it). Download: 1,756 MB on macOS, 1,958 MB on iOS. At the
+  pinned revision (`7464c91`) `ios/` holds graphs compiled for the iPhone 18 Pro (h19p), which no
+  other iPhone loads; `ios/` is to become the JIT graphs, and the pin moves with it.
+
+### Fixed
+
+- **A graph compiled for one iPhone is picked only on that iPhone.** The loaders that pick their
+  own graph took an AOT `.aimodelc` over the JIT `.aimodel` on iOS, most of them by the name
+  `.h18p.aimodelc`, the iPhone 17 Pro's. The iPhone 18 Pro (`h19p`) refuses that graph
+  (`incompatibleCompiledAssetArchitecture`) and falls back to nothing, even with the JIT graph
+  beside it. `GraphBundle` is now the one rule, and the diarizers, the separator, the forecaster,
+  VibeVoice, VoxCPM, VoxCPM2, the Nemotron and Parakeet ASR loaders and the encoder decider use it:
+  the AOT graph when it was compiled for this device (`AIModel.deviceArchitectureName` against the
+  `<arch>` of `<name>.<arch>.aimodelc`, or of the `<function>-<arch>` files inside), else the JIT
+  `.aimodel`, else the kit's error naming the architectures the bundle was built for
+  (`KitBundleError.noGraphForDevice`). The Mac follows the same rule; `GraphBundle` used to prefer
+  any `.aimodelc` there too. `VibeVoicePaths.inBundleDir` now throws; the `aot(root:arch:)` builders of
+  VoxCPM, VoxCPM2, PocketTTS and DotsTTS default to this device's architecture (was `h18p`), and
+  `StableAudioPaths.resolve(root:aot:)` names it. VibeVoice, VoxCPM and VoxCPM2 still hold only the
+  iPhone 17 Pro's graphs in `ios/` at their pins, so another iPhone gets that error until the Hub
+  carries their JIT graphs there.
+
+- **Four catalog models name their JIT graph on iOS.** `sortformer-diar-v2`,
+  `nemotron-3-diarization`, `melband-roformer-vocal` and `timesfm-2.5-200m` pointed iOS at the
+  iPhone 17 Pro's AOT graph, which only that phone loads. They now name the `.aimodel` the Mac
+  downloads, which an iPhone specializes on its first load (Nemotron-3-Diarization on an iPhone 18
+  Pro: 0.78 s the first time, 0.16 s after). `ModelID.sortformerDiarV2` names it on both
+  platforms. Whisper, Nemotron 3.5 ASR and VibeVoice keep `ios` as their path; at their pins it
+  still holds the iPhone 17 Pro's graphs, and the Hub is to replace them with the JIT ones.
+
+- **The Nemotron-3-Diarization graph compiles for x86_64 again.** `N3DGraph` read and wrote
+  `Float16` arrays without the guard the other ten files carry
+  (`#if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))`), so a Release build of
+  any macOS app linking CoreAIKit failed on the Intel slice (`'Float16' is unavailable in macOS`)
+  since 0.7.3's diarizer (CI's `example-app-release` was red from #56). On an Intel Mac a float16
+  N3D bundle now throws the contract error instead; the float32 bundle is unaffected.
+
+- **Six catalog pins move to the JIT layouts.** `timesfm-2.5-200m`, `vjepa2-vitl-ssv2`,
+  `nemotron-3.5-asr-streaming-0.6b`, `vibevoice-realtime-0.5b`, `voxcpm-0.5b` and `gliner2.5-decide`
+  are pinned to the Hub revisions of 2026-09-26 whose `ios/` holds the JIT graphs (the compiled
+  ones moved to `ios-h18p/`, GLiNER2.5-Decide's to `ios-h19p/`), so an iPhone of any generation
+  loads them; `sizeMB` follows (GLiNER2.5-Decide on iOS 1,958 → 1,756 MB).
+
+- **`ModelID.gliner2PII` is pinned.** Its `ios/` carried the iPhone 17 Pro's compiled files beside
+  the JIT graph, which the iPhone 18 Pro refuses; since 2026-09-26 it holds the JIT graph alone
+  (627 MB). The preset read `main`, and an app that had downloaded the old `ios/` kept it, since
+  the cache is keyed by revision; the pin (`74fb5c1`) moves the cache path.
+
 ## [0.7.3] — 2026-09-25
 
 A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a

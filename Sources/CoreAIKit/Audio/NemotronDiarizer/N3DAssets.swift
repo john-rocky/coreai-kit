@@ -1,7 +1,7 @@
-// From john-rocky/coreai-model-zoo conversion/nemotron3_diar/swift/Sources/NemotronDiarizer/N3DAssets.swift @ 26241ae (same author); the kit's copy is internal.
+// From john-rocky/coreai-model-zoo conversion/nemotron3_diar/swift/Sources/NemotronDiarizer/N3DAssets.swift @ 26241ae (same author); the kit's copy is internal and picks the graph by the kit's rule (`GraphBundle`).
 // N3DAssets — the host-side files of a Nemotron-3-Diarization bundle directory (../export_n3d.py):
 // four raw little-endian float32 constants (C order) and metadata.json, next to the graph bundles
-// (`n3d_<profile>_float16.aimodel`, and on iPhone the AOT `n3d_<profile>_float16.h18p.aimodelc`).
+// (`n3d_<profile>_float16.aimodel`, and any AOT `n3d_<profile>_float16.<arch>.aimodelc`).
 // The sha256 values in metadata.json are informational; nothing here checks them.
 
 import Foundation
@@ -22,7 +22,7 @@ enum N3DError: Error, CustomStringConvertible, Sendable {
         case .badSize(let f, let n, let b): return "\(f): expected \(n) float32 (\(n * 4) bytes), got \(b) bytes"
         case .functionNotFound(let n): return "function '\(n)' not in the bundle"
         case .contract(let s): return "graph contract: \(s)"
-        case .iosBundleOnMac(let p): return "refusing an iOS (h18p) bundle on macOS: \(p)"
+        case .iosBundleOnMac(let p): return "refusing a bundle compiled for another device on macOS: \(p)"
         case .audioTooShort(let n, let m):
             return "audio of \(n) samples is shorter than the first streaming chunk (\(m) samples)"
         case .graphOutput(let s): return "graph output: \(s)"
@@ -76,18 +76,9 @@ struct N3DAssets: Sendable {
         }
     }
 
-    /// The graph for a profile kind in this directory. iOS: the AOT `.h18p.aimodelc` when present, else
-    /// the `.aimodel`. macOS: only the `.aimodel` (an iOS bundle is never picked on a Mac).
-    func modelURL(for kind: N3DProfile.Kind) -> URL? {
-        let base = "n3d_\(kind.rawValue)_float16"
-        var names = ["\(base).aimodel"]
-        #if os(iOS)
-        names.insert("\(base).h18p.aimodelc", at: 0)
-        #endif
-        for name in names {
-            let url = directory.appendingPathComponent(name)
-            if FileManager.default.fileExists(atPath: url.path) { return url }
-        }
-        return nil
+    /// The graph for a profile kind in this directory: the AOT `.<arch>.aimodelc` when it was compiled
+    /// for this device, else the `.aimodel` (`GraphBundle`; another device's AOT graph is never picked).
+    func modelURL(for kind: N3DProfile.Kind) throws -> URL? {
+        try GraphBundle.graph(named: "n3d_\(kind.rawValue)_float16", in: directory)
     }
 }

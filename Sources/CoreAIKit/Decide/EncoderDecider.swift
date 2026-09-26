@@ -5,8 +5,8 @@
 // (`head: "encoder"`) is the contract — `EncoderPrompt.Layout` reads the window, the head
 // budget, the special ids and the temperatures from it; this file reads which asset and
 // function hold the two graphs (`assets`, `decision.functions`) and the scalar type of the
-// attention mask (`decision.inputs`). An AOT `.aimodelc` wins over the JIT `.aimodel` of the
-// same name, as everywhere in the kit (`GraphBundle`).
+// attention mask (`decision.inputs`). An AOT `.aimodelc` of the same name is taken when it was
+// compiled for this device, else the JIT `.aimodel`, as everywhere in the kit (`GraphBundle`).
 //
 // One call is one question row, batch 1, at the window the bundle was exported for:
 //
@@ -66,15 +66,20 @@ public actor EncoderDecider {
                 integerMask: maskType.hasPrefix("int"), name: root["name"] as? String)
         }
 
-        /// A named asset, its AOT form first; the bundle's only graph when none is named.
+        /// A named asset: for `x.aimodel`, its AOT form (`x.aimodelc`, `x.<arch>.aimodelc`) when it
+        /// was compiled for this device, else itself; the bundle's only graph when none is named.
         static func asset(_ name: String?, in url: URL) throws -> URL {
             guard let name else { return try GraphBundle.resolve(in: url) }
-            let named = url.appendingPathComponent(name)
-            let compiled = name.hasSuffix(".aimodel") ? url.appendingPathComponent(name + "c") : named
-            for candidate in [compiled, named] where FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate
+            if name.hasSuffix(".aimodel"),
+                let graph = try GraphBundle.graph(named: String(name.dropLast(".aimodel".count)), in: url)
+            {
+                return graph
             }
-            throw KitBundleError.graphMissing(url)
+            let named = url.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: named.path) else {
+                throw KitBundleError.graphMissing(url)
+            }
+            return named
         }
     }
 
