@@ -37,8 +37,9 @@ policy.
   per task. The host follows gliner2 2.0.0's collator and decision rule; `textclassify-cli --gate`
   checks both against the zoo's fixtures. Before this, `TextClassifier` loaded only a local export.
   `Examples/TextClassify` downloads the catalog model when no `--bundle` is given. The
-  entry's kind is `moderation`, the nearest one: `decision` would list it in `systemone models`,
-  whose `TypedDecisions` cannot load it. Download: 1,756 MB on macOS, 1,958 MB on iOS. At the
+  entry's kind is the new `textClassification` (a kit built before it decodes the entry as
+  `unknown` and leaves it out of `available(_:)`; `decision` would list it in `systemone models`,
+  whose `TypedDecisions` cannot load it). Download: 1,756 MB on macOS, 1,958 MB on iOS. At the
   pinned revision (`7464c91`) `ios/` holds graphs compiled for the iPhone 18 Pro (h19p), which no
   other iPhone loads; `ios/` is to become the JIT graphs, and the pin moves with it.
 

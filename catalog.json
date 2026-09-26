@@ -1094,7 +1094,7 @@
       "name": "GLiNER2.5-Decide",
       "repo": "mlboydaisuke/GLiNER2.5-Decide-CoreAI",
       "revision": "7464c910699075674e00c5f423ca11a3a64eb26b",
-      "kind": "moderation",
+      "kind": "textClassification",
       "variants": {
         "macos": {
           "path": "macos",

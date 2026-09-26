@@ -51,6 +51,10 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// trained input format, so the shared chat path (empty system prompt, free-text
         /// instruction) cannot drive it.
         case textNormalizer
+        /// Zero-shot text classification (GLiNER2.5-Decide): text + tasks, each with the labels
+        /// to choose from → a probability per label from ONE forward of a static graph; the
+        /// caller names the labels at call time. Driven by `TextClassifier`, not `TypedDecisions`.
+        case textClassification
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -890,14 +894,15 @@ public struct ModelCatalog: Sendable, Codable {
             // ── Zero-shot text classification (GLiNER2.5-Decide): text + tasks, each with the
             //    labels to choose from, -> a probability per label from ONE forward of a static
             //    graph (S = 256 and 512 in each platform subtree, with classifier.json and the
-            //    tokenizer). Driven by `TextClassifier`, not by `TypedDecisions`. `moderation` is
-            //    the nearest kind (a one-forward classifier whose labels the caller writes);
-            //    `decision` would put it in front of `TypedDecisions`, which cannot load it.
+            //    tokenizer). Driven by `TextClassifier`, not by `TypedDecisions`. Its own kind,
+            //    `textClassification`: a kit built before it decodes the entry as `.unknown` and
+            //    leaves it out of `available(_:)`; `decision` would put it in front of
+            //    `TypedDecisions`, which cannot load it.
             //    `ios/` at this pin holds the graphs compiled for the iPhone 18 Pro (h19p), which
             //    no other iPhone loads; it is to become the JIT graphs, and the pin moves then. ──
             CatalogEntry(
                 id: "gliner2.5-decide", name: "GLiNER2.5-Decide",
-                repo: "mlboydaisuke/GLiNER2.5-Decide-CoreAI", kind: .moderation,
+                repo: "mlboydaisuke/GLiNER2.5-Decide-CoreAI", kind: .textClassification,
                 variants: [
                     "macos": .init(path: "macos", sizeMB: 1756),
                     "ios": .init(path: "ios", sizeMB: 1958),
