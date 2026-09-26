@@ -195,14 +195,17 @@ public final class KitNemotronModel: @unchecked Sendable {
                 }
             }
         }
+        // Of a graph's forms, the one this device loads (`GraphBundle`).
         func graph(_ kind: String, exclude: String? = nil) throws -> URL {
-            guard let u = graphs.first(where: {
+            let forms = graphs.filter {
                 let name = $0.deletingPathExtension().lastPathComponent.lowercased()
                 let dir = $0.deletingLastPathComponent().lastPathComponent.lowercased()
                 let hit = name.contains(kind) || dir == kind
                 let excluded = exclude.map { name.contains($0) || dir == $0 } ?? false
                 return hit && !excluded
-            }) else { throw KitNemotronError.graphMissing(kind) }
+            }
+            guard !forms.isEmpty else { throw KitNemotronError.graphMissing(kind) }
+            guard let u = GraphBundle.pick(forms) else { throw GraphBundle.unloadable(forms, in: root) }
             return u
         }
         guard let tok = tokenizerDir else { throw KitNemotronError.tokenizerMissing }

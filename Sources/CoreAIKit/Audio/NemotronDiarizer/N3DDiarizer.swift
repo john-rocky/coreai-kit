@@ -142,7 +142,7 @@ actor N3DDiarizer {
     /// profile kind) and the host constants.
     init(assets: N3DAssets, computeUnits: N3DComputeUnits = .gpu,
                 profile: N3DProfile = .streamingProfile(mode: .lowLatency), modelURL: URL? = nil) async throws {
-        guard let url = modelURL ?? assets.modelURL(for: profile.kind) else {
+        guard let url = try modelURL ?? assets.modelURL(for: profile.kind) else {
             throw N3DError.missingFile("n3d_\(profile.kind.rawValue)_float16 bundle in \(assets.directory.path)")
         }
         let graph = try await N3DGraph(contentsOf: url, computeUnits: computeUnits)

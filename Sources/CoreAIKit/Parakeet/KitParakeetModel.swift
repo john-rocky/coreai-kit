@@ -219,11 +219,14 @@ public final class KitParakeetModel: @unchecked Sendable {
                 }
             }
         }
+        // Of a graph's forms, the one this device loads (`GraphBundle`).
         func graph(_ kind: String) throws -> URL {
-            guard let u = graphs.first(where: {
+            let forms = graphs.filter {
                 $0.deletingPathExtension().lastPathComponent.lowercased().contains(kind)
                     || $0.deletingLastPathComponent().lastPathComponent.lowercased() == kind
-            }) else { throw KitParakeetError.graphMissing(kind) }
+            }
+            guard !forms.isEmpty else { throw KitParakeetError.graphMissing(kind) }
+            guard let u = GraphBundle.pick(forms) else { throw GraphBundle.unloadable(forms, in: root) }
             return u
         }
         guard let tok = tokenizerDir else { throw KitParakeetError.tokenizerMissing }

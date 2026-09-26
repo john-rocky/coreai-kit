@@ -252,8 +252,8 @@ public actor KitDiarizer {
     }
 
     /// Loads a local bundle — either the `.aimodel`/`.aimodelc` directory itself or a directory
-    /// containing one (a JIT `.aimodel` and an AOT `.aimodelc` side by side resolve to the
-    /// platform-native form). A Sortformer bundle needs no extra asset: its mel filterbank ships
+    /// containing one (the AOT `.aimodelc` when it was compiled for this device, else the JIT
+    /// `.aimodel`: `GraphBundle`). A Sortformer bundle needs no extra asset: its mel filterbank ships
     /// inside CoreAIKit. A Nemotron-3-Diarization bundle is recognized by its host constants,
     /// in `host/` beside the graph (the Hub layout) or next to it (an export directory).
     public init(
@@ -287,27 +287,13 @@ public actor KitDiarizer {
         }
     }
 
-    /// The graph inside `root` (or `root` itself). With both forms present the platform-native
-    /// one wins: AOT `.aimodelc` on iOS (the device JIT is avoided), JIT `.aimodel` on macOS.
+    /// The graph inside `root` (or `root` itself), by the kit's rule (`GraphBundle`).
     private static func resolveGraph(in root: URL) throws -> URL {
-        let ext = root.pathExtension
-        if ext == "aimodel" || ext == "aimodelc" { return root }
-        var graphs: [URL] = []
-        if let it = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) {
-            for case let url as URL in it
-            where url.pathExtension == "aimodel" || url.pathExtension == "aimodelc" {
-                graphs.append(url)
-                it.skipDescendants()
-            }
+        do {
+            return try GraphBundle.resolve(in: root, searchSubdirectories: true)
+        } catch KitBundleError.graphMissing {
+            throw KitDiarizerError.graphMissing
         }
-        #if os(iOS)
-        let preferred = "aimodelc"
-        #else
-        let preferred = "aimodel"
-        #endif
-        guard let graph = graphs.first(where: { $0.pathExtension == preferred }) ?? graphs.first
-        else { throw KitDiarizerError.graphMissing }
-        return graph
     }
 
     /// dw_striding output length: 3 stages of (l-1)/2 + 1 (k=3, stride=2, pad=1).

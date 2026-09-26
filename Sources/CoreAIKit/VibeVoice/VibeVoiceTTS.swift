@@ -64,22 +64,24 @@ public struct VibeVoicePaths: Sendable {
         self.glueDir = glueDir; self.voicesDir = voicesDir; self.embedTokens = embedTokens
     }
 
-    /// Resolves the five bundles inside a platform directory (`macos/` or `ios/` of the HF repo).
+    /// Resolves the five bundles inside a platform directory (`macos/` or `ios/` of the HF repo):
+    /// each one's AOT `<name>.<arch>.aimodelc` when it was compiled for this device, else its JIT
+    /// `<name>.aimodel` (`GraphBundle`). Throws when the directory holds only graphs compiled for
+    /// other devices.
+    @available(macOS 27, iOS 27, *)
     public static func inBundleDir(
         _ dir: URL, glueDir: URL, voicesDir: URL, embedTokens: URL
-    ) -> VibeVoicePaths {
-        #if os(iOS)
-        let ext = "h18p.aimodelc"
-        #else
-        let ext = "aimodel"
-        #endif
-        func u(_ base: String) -> URL { dir.appendingPathComponent("\(base).\(ext)") }
+    ) throws -> VibeVoicePaths {
+        func u(_ base: String) throws -> URL {
+            // A graph that is not there at all keeps its JIT path, so the load names the file.
+            try GraphBundle.graph(named: base, in: dir) ?? dir.appendingPathComponent("\(base).aimodel")
+        }
         return VibeVoicePaths(
-            mainLM: u("vibevoice_mainlm_fp16_decode_cl512"),
-            ttsLM: u("vibevoice_ttslm_fp16_decode_cl512"),
-            head: u("vibevoice_diffusion_head_fp16"),
-            connector: u("vibevoice_connector_fp16"),
-            decoder: u("vibevoice_decoder_fp16_t64"),
+            mainLM: try u("vibevoice_mainlm_fp16_decode_cl512"),
+            ttsLM: try u("vibevoice_ttslm_fp16_decode_cl512"),
+            head: try u("vibevoice_diffusion_head_fp16"),
+            connector: try u("vibevoice_connector_fp16"),
+            decoder: try u("vibevoice_decoder_fp16_t64"),
             glueDir: glueDir, voicesDir: voicesDir, embedTokens: embedTokens)
     }
 }

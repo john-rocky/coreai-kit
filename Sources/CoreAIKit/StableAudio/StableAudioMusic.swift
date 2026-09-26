@@ -5,6 +5,7 @@
 //   8× dit(x[1,64,256], t[1], cross_attn_cond, global_embed, cross_attn_cond_mask) -> v ; x += (t_next-t)·v
 //   vae(latent[1,64,256]) -> audio[1,2,524288]  (~11.9s stereo 44.1kHz)
 // CFG-free (cfg_scale 1.0 — the model is ARC-distilled). Returns interleaved-by-channel stereo [2*N].
+import CoreAI
 import CoreAIKitVision
 import Foundation
 import Tokenizers
@@ -14,9 +15,12 @@ public struct StableAudioPaths: Sendable {
     public init(cond: URL, dit: URL, vae: URL, tokenizerDir: URL) {
         self.cond = cond; self.dit = dit; self.vae = vae; self.tokenizerDir = tokenizerDir
     }
-    /// Resolve from a bundle root holding `sa_{cond_fp16b,dit_fp16,vae_fp16}.aimodel(c)` + `t5_tokenizer/`.
+    /// Resolve from a bundle root holding `sa_{cond_fp16b,dit_fp16,vae_fp16}.aimodel` + `t5_tokenizer/`;
+    /// `aot` takes the `.<arch>.aimodelc` compiled for this device instead (a compiled graph loads
+    /// only on the architecture it was compiled for).
+    @available(macOS 27, iOS 27, *)
     public static func resolve(root: URL, aot: Bool) -> StableAudioPaths {
-        let sfx = aot ? ".h18p.aimodelc" : ".aimodel"
+        let sfx = aot ? ".\(AIModel.deviceArchitectureName).aimodelc" : ".aimodel"
         return .init(cond: root.appendingPathComponent("sa_cond_fp16b\(sfx)"),
                      dit: root.appendingPathComponent("sa_dit_fp16\(sfx)"),
                      vae: root.appendingPathComponent("sa_vae_fp16\(sfx)"),

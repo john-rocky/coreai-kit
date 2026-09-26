@@ -56,9 +56,6 @@ public final class KitForecaster: @unchecked Sendable {   // immutable (only `le
         computeUnits: GraphModel.ComputeUnits = .gpu,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
-        // The entry's platform variants carry the split: macOS = the JIT `.aimodel` at the
-        // repo root, iOS = the AOT `.aimodelc` in the `ios/` subtree (the on-device JIT is
-        // avoided).
         let entry = try await ModelCatalog.entry(forID: id, expecting: .forecasting)
         guard entry.id == "timesfm-2.5-200m", let model = entry.modelID else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
@@ -68,32 +65,19 @@ public final class KitForecaster: @unchecked Sendable {   // immutable (only `le
     }
 
     /// Loads a local bundle (the `.aimodel`/`.aimodelc` directory itself, or a folder containing
-    /// one). With both forms present the platform-native one wins.
+    /// one). With both forms present the AOT one is taken when it was compiled for this device.
     public init(bundleAt root: URL, computeUnits: GraphModel.ComputeUnits = .gpu) async throws {
         let bundle = try Self.resolveGraph(in: root)
         self.graph = try await GraphModel(contentsOf: bundle, computeUnits: computeUnits)
     }
 
-    /// The graph inside `root` (or `root` itself): AOT `.aimodelc` on iOS, JIT `.aimodel` on macOS.
+    /// The graph inside `root` (or `root` itself), by the kit's rule (`GraphBundle`).
     private static func resolveGraph(in root: URL) throws -> URL {
-        let ext = root.pathExtension
-        if ext == "aimodel" || ext == "aimodelc" { return root }
-        var graphs: [URL] = []
-        if let it = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) {
-            for case let url as URL in it
-            where url.pathExtension == "aimodel" || url.pathExtension == "aimodelc" {
-                graphs.append(url)
-                it.skipDescendants()
-            }
+        do {
+            return try GraphBundle.resolve(in: root, searchSubdirectories: true)
+        } catch KitBundleError.graphMissing {
+            throw KitForecasterError.bundleNotFound(root)
         }
-        #if os(iOS)
-        let preferred = "aimodelc"
-        #else
-        let preferred = "aimodel"
-        #endif
-        guard let graph = graphs.first(where: { $0.pathExtension == preferred }) ?? graphs.first
-        else { throw KitForecasterError.bundleNotFound(root) }
-        return graph
     }
 
     // MARK: - Forecast

@@ -17,6 +17,7 @@
 // Plain TTS (fixed speaker). Voice-clone prompt branch (vae_encode + prompt prefill) is a follow-on.
 
 import Accelerate
+import CoreAI
 import CoreAIKitVision
 import Foundation
 import Tokenizers
@@ -85,6 +86,9 @@ public struct VoxCPMPaths: Sendable {
             prefillBase: pBase, prefillRes: pRes)
     }
 
+    /// The five graphs every synthesis loads (the prefill pair is optional).
+    var requiredGraphs: [URL] { [baseDecode, resDecode, featDecoder, featEncoder, vocoder] }
+
     /// macOS dev layout from `export_*.py`: each bundle is `<name>/<name>.aimodel` (JIT-specialized).
     public static func standard(artifactsRoot root: URL, lm: LMPrecision = .int8,
                                 tokenizerDir: URL? = nil) -> VoxCPMPaths {
@@ -92,9 +96,11 @@ public struct VoxCPMPaths: Sendable {
              root: root, lm: lm, tokenizerDir: tokenizerDir)
     }
 
-    /// iOS AOT layout: flat `<root>/<name>.<arch>.aimodelc` (precompiled, no on-device JIT spike),
-    /// produced by `coreai-build compile --platform iOS --architecture <arch>`.
-    public static func aot(root: URL, arch: String = "h18p", lm: LMPrecision = .int8,
+    /// AOT layout: flat `<root>/<name>.<arch>.aimodelc` (precompiled, no on-device JIT spike),
+    /// produced by `coreai-build compile --platform iOS --architecture <arch>`. A compiled graph
+    /// loads only on the architecture it was compiled for, so `arch` defaults to this device's.
+    @available(macOS 27, iOS 27, *)
+    public static func aot(root: URL, arch: String = AIModel.deviceArchitectureName, lm: LMPrecision = .int8,
                            tokenizerDir: URL? = nil) -> VoxCPMPaths {
         make({ root.appendingPathComponent("\($0).\(arch).aimodelc") },
              root: root, lm: lm, tokenizerDir: tokenizerDir)

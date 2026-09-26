@@ -31,6 +31,24 @@ policy.
   `--asr system` and `diarize-gate`, which checks a diarizer against a reference's per-frame
   probabilities.
 
+### Fixed
+
+- **A graph compiled for one iPhone is picked only on that iPhone.** The loaders that pick their
+  own graph took an AOT `.aimodelc` over the JIT `.aimodel` on iOS, most of them by the name
+  `.h18p.aimodelc`, the iPhone 17 Pro's. The iPhone 18 Pro (`h19p`) refuses that graph
+  (`incompatibleCompiledAssetArchitecture`) and falls back to nothing, even with the JIT graph
+  beside it. `GraphBundle` is now the one rule, and the diarizers, the separator, the forecaster,
+  VibeVoice, VoxCPM, VoxCPM2, the Nemotron and Parakeet ASR loaders and the encoder decider use it:
+  the AOT graph when it was compiled for this device (`AIModel.deviceArchitectureName` against the
+  `<arch>` of `<name>.<arch>.aimodelc`, or of the `<function>-<arch>` files inside), else the JIT
+  `.aimodel`, else the kit's error naming the architectures the bundle was built for
+  (`KitBundleError.noGraphForDevice`). The Mac follows the same rule; `GraphBundle` used to prefer
+  any `.aimodelc` there too. `VibeVoicePaths.inBundleDir` now throws; the `aot(root:arch:)` builders of
+  VoxCPM, VoxCPM2, PocketTTS and DotsTTS default to this device's architecture (was `h18p`), and
+  `StableAudioPaths.resolve(root:aot:)` names it. VibeVoice, VoxCPM and VoxCPM2 still hold only the
+  iPhone 17 Pro's graphs in `ios/` at their pins, so another iPhone gets that error until the Hub
+  carries their JIT graphs there.
+
 ## [0.7.3] — 2026-09-25
 
 A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a
