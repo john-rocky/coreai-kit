@@ -953,6 +953,23 @@
       }
     },
     {
+      "id": "fun-asr-nano-2512",
+      "name": "Fun-ASR-Nano 2512",
+      "repo": "mlboydaisuke/Fun-ASR-Nano-2512-CoreAI",
+      "revision": "7acdcd19582408d51e06a42f9dc7d83b3c928450",
+      "kind": "asr",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/funasr_nano_2512_decode_int8lin_n63_s1",
+          "sizeMB": 1267
+        },
+        "ios": {
+          "path": "gpu-pipelined/funasr_nano_2512_decode_int8lin_n63_s1",
+          "sizeMB": 1267
+        }
+      }
+    },
+    {
       "id": "s1-mini",
       "name": "S1-mini by Superwhisper",
       "repo": "mlboydaisuke/S1-mini-CoreAI",

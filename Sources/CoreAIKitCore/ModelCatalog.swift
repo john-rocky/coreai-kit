@@ -801,6 +801,19 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "macos", sizeMB: 1335),
                     "ios": .init(path: "ios", sizeMB: 1335),
                 ]),
+            // Fun-ASR-Nano-2512 (Tongyi Lab, Apache-2.0): SAN-M speech encoder + adaptor + a fine-tuned
+            // Qwen3-0.6B — Chinese with dialects (Cantonese included), English, Japanese; hotword list,
+            // language and itn options in the prompt. Driven by `KitFunASRModel`: the variant path is
+            // the decoder bundle; the paired encoder (`gpu-pipelined/funasr_nano_audio_encoder_fp16w32_l500`)
+            // is resolved by the preset, and sizeMB covers both. Both bundles are JIT `.aimodel`s, so
+            // one subtree serves both platforms; iPhone 18 Pro verified (device JIT, RTF 0.075).
+            CatalogEntry(
+                id: "fun-asr-nano-2512", name: "Fun-ASR-Nano 2512",
+                repo: "mlboydaisuke/Fun-ASR-Nano-2512-CoreAI", kind: .asr,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/funasr_nano_2512_decode_int8lin_n63_s1", sizeMB: 1267),
+                    "ios": .init(path: "gpu-pipelined/funasr_nano_2512_decode_int8lin_n63_s1", sizeMB: 1267),
+                ]),
             // ── ASR text normalization: the piece the ASR models above do not have. S1-mini
             //    by Superwhisper rewrites a raw transcript as written text (fillers dropped,
             //    false starts resolved, punctuation + inverse text normalization). Stock qwen3
