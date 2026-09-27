@@ -790,6 +790,23 @@
       }
     },
     {
+      "id": "audio8-tts-preview-0.6b",
+      "name": "Audio8-TTS Preview 0.6B",
+      "repo": "mlboydaisuke/Audio8-TTS-Preview-0.6b-CoreAI",
+      "revision": "72e1c935961c786bb838e235c7839a2bd77468cc",
+      "kind": "tts",
+      "variants": {
+        "macos": {
+          "path": "",
+          "sizeMB": 1150
+        },
+        "ios": {
+          "path": "",
+          "sizeMB": 1150
+        }
+      }
+    },
+    {
       "id": "stable-audio-open-small",
       "name": "Stable Audio Open Small",
       "repo": "mlboydaisuke/Stable-Audio-Open-Small-CoreAI",
