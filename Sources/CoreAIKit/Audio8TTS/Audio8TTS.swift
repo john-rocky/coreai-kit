@@ -122,28 +122,34 @@ public final class Audio8TTS: @unchecked Sendable {
         try prompt.build(text: text, voice: voice)
     }
 
-    /// One utterance -> 44.1 kHz mono PCM in [-1, 1].
+    /// One utterance -> 44.1 kHz mono PCM in [-1, 1]. The codec runs once the frames are all there, in as few
+    /// 160-frame windows as the utterance needs (one for anything up to 7.4 s) — the cheapest path; use
+    /// `synthesizeStreaming` when audio should start before the utterance ends.
     public func synthesize(_ text: String, voice: Audio8Voice? = nil, seed: UInt64 = 0,
                            maxFrames: Int? = nil) async throws -> [Float] {
         var out: [Float] = []
         var noise = Audio8SeededNoise(seed: seed)
-        _ = try await generate(text, voice: voice, noise: &noise, maxFrames: maxFrames) { out.append(contentsOf: $0) }
+        _ = try await generate(text, voice: voice, noise: &noise, maxFrames: maxFrames, streaming: false) { out.append(contentsOf: $0) }
         return out
     }
 
-    /// Streaming synthesis: `onChunk` gets each `chunkFrames`-frame chunk (~1.5 s at 32) as it decodes.
+    /// Streaming synthesis: `onChunk` gets each `chunkFrames`-frame chunk (~1.5 s at 32) as it decodes. Every chunk
+    /// costs a 160-frame codec window (128 frames of context + the chunk), so the codec does about five times the
+    /// work of `synthesize`; the concatenation of the chunks equals `synthesize` up to fp16 rounding.
     @discardableResult
     public func synthesizeStreaming(_ text: String, voice: Audio8Voice? = nil, seed: UInt64 = 0, maxFrames: Int? = nil,
                                     onChunk: @Sendable ([Float]) async -> Void) async throws -> Audio8RunStats {
         var noise = Audio8SeededNoise(seed: seed)
-        return try await generate(text, voice: voice, noise: &noise, maxFrames: maxFrames) { await onChunk($0) }
+        return try await generate(text, voice: voice, noise: &noise, maxFrames: maxFrames, streaming: true) { await onChunk($0) }
     }
 
     /// The loop with an injectable noise source: an app passes `Audio8SeededNoise`; the smoke test and the gate app
     /// replay the oracle's recorded draws so the host can be compared with the Python engine run choice for choice.
     /// `forced` (11 ids per frame: semantic id, then the ten codebooks) teacher-forces the frames it covers.
+    /// `streaming` decodes every `chunkFrames` frames (audio starts early); otherwise the codec runs at the end in
+    /// 160-frame windows that share 128 frames of context (the same samples, a fraction of the codec work).
     public func generate<N: Audio8NoiseSource>(_ text: String, voice: Audio8Voice?, noise: inout N, maxFrames: Int?,
-                                               forced: [[Int32]]? = nil,
+                                               forced: [[Int32]]? = nil, streaming: Bool = true,
                                                emit: ([Float]) async throws -> Void) async throws -> Audio8RunStats {
         var stats = Audio8RunStats()
         let t0 = ND.nowNanos()
@@ -191,8 +197,9 @@ public final class Audio8TTS: @unchecked Sendable {
         var lastSemantic: Int32 = 0
         var emitted = 0
 
-        func flush() async throws {
-            let end = frames.count
+        /// Decode the frames [emitted, end) through one 160-frame window ending at `end` (the frames before
+        /// `emitted` in the window are context and are dropped).
+        func flush(upTo end: Int) async throws {
             guard end > emitted else { return }
             let winStart = max(0, end - Self.codecFrames)
             let real = end - winStart
@@ -253,9 +260,19 @@ public final class Audio8TTS: @unchecked Sendable {
             frames.append(codes)
             lastSemantic = semantic
             window.push(semantic)
-            if frames.count - emitted >= chunkFrames { try await flush() }
+            if streaming && frames.count - emitted >= chunkFrames { try await flush(upTo: frames.count) }
         }
-        try await flush()
+        if streaming {
+            try await flush(upTo: frames.count)
+        } else {
+            // whole utterance: the first window covers min(T, 160) frames; each later window adds 160 - 128 = 32
+            let step = Self.codecFrames - Self.codecContext
+            var end = min(frames.count, Self.codecFrames)
+            while emitted < frames.count {
+                try await flush(upTo: end)
+                end = min(frames.count, end + step)
+            }
+        }
         stats.frames = frames.count
         stats.codes = (0..<10).map { cb in frames.map { $0[cb] } }
         stats.wallSeconds = Double(ND.nowNanos() - t0) / 1e9
