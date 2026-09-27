@@ -57,18 +57,19 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertTrue(chat.allSatisfy { $0.kind == .chat && $0.modelID != nil })
 
         let asr = ModelCatalog.builtin.available(.asr)
-        // Whisper + Nemotron publish both platform variants; the JIT-only ASR bundles are
-        // macOS-only.
+        // Whisper, Nemotron and Fun-ASR-Nano publish both platform variants; the JIT-only ASR
+        // bundles (Qwen3-ASR, Parakeet) are macOS-only.
         #if os(macOS)
         XCTAssertEqual(
             asr.map(\.id),
             [
                 "whisper-large-v3-turbo", "qwen3-asr-1.7b", "parakeet-tdt-0.6b-v3",
-                "nemotron-3.5-asr-streaming-0.6b",
+                "nemotron-3.5-asr-streaming-0.6b", "fun-asr-nano-2512",
             ])
         #else
         XCTAssertEqual(
-            asr.map(\.id), ["whisper-large-v3-turbo", "nemotron-3.5-asr-streaming-0.6b"])
+            asr.map(\.id),
+            ["whisper-large-v3-turbo", "nemotron-3.5-asr-streaming-0.6b", "fun-asr-nano-2512"])
         #endif
 
         // rf-detr regression: "detection" used to decode to .unknown, hiding the entry.
