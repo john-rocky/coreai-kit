@@ -39,6 +39,7 @@ Every other example app in one place, on two shelves:
 | [UpscaleDemo](UpscaleDemo/) | super-resolution | AdcSR ×4 super-resolution: pick a photo, tap Upscale. GUI + `swift run upscale-cli`. |
 | [PhotoSearch](PhotoSearch/) | image-text embeddings | Semantic photo search — the photo library indexed with CLIP. |
 | [Decide](Decide/) | typed decisions | Any `chat` catalog model as a decision model (MiniCPM5 2B default): a speech gate (yes/no per utterance), a clipboard check with Shortcuts actions, and a passage reranker — probabilities and milliseconds per decision, nothing generated. GUI + `swift run decide-cli`. |
+| [Week](Week/) | typed decisions | A week of 20 events, each asked one question on `decider-0.8b` (what it needs before it), then reminders; a synthetic week in the device's local Calendar source or in the app. GUI (iPhone + Mac) + `swift run week-cli`. |
 | [DocSearch](DocSearch/) | visual doc retrieval | Any `retrieval` catalog model (ColModernVBERT): query + page images → MaxSim ranking, no OCR. GUI (iPhone) + `swift run docsearch-cli`. |
 | [TextClassify](TextClassify/) | zero-shot text classification | GLiNER2.5-Decide: labels you name at call time, several questions about one text in a single forward. A support inbox sorted on one tap (intent, urgency, sentiment per message, times measured on screen). GUI + `swift run textclassify-cli`. |
 

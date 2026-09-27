@@ -9,6 +9,11 @@ policy.
 
 ### Added
 
+- **Examples/Week** — a week of 20 calendar events planned on one tap: every event is one `decider-0.8b`
+  decision (what it needs before it, seven options), the events that need something become reminders.
+  A synthetic week (fictional names, seeded) written to the device's local Calendar source only, or kept
+  in the app (`-store 0`); `week-cli run` gives the same loop and JSON on a Mac. Measured on an
+  iPhone 18 Pro (20 events in 22.2 s, 1,119 ms median) and an M4 Max (12.3 s, 619 ms).
 - **d1-3B** — catalog id `d1-3b` (the new `kind: tokenDecision`, `format: optionRows`), driven by the new `KitD1Decider`
   (`Sources/CoreAIKit/D1/`): Liquid AI's decision model from LFM2.5-VL-3B (LFM Open License v1.0; a SigLIP2 vision tower
   and the LFM2 hybrid decoder). A state (text or JSON), pictures and typed questions (noul, choice, score) go in; every
