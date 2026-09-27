@@ -13,14 +13,18 @@
 		BE76B2CBC758B303EB53C3B3 /* TranscribeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34C686C1718F095DA94062BE /* TranscribeView.swift */; };
 		D7D31547DC86679BF9802C1E /* TranscribeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 681ABBA6AA856E0F0F8CA407 /* TranscribeModel.swift */; };
 		E6C80D9FB3259EE3183C8AF1 /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = B743CB78EB6818F22C7D306C /* CoreAIKit */; };
+		E7252C40124819D54F02DA47 /* Autoplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A73E7FAEF1F90E46FFB0FA1C /* Autoplay.swift */; };
+		E984B2B4CE08D7FE1A26B0DD /* ClipPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C4127B791C2ABB7B1412986 /* ClipPlayer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		34C686C1718F095DA94062BE /* TranscribeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribeView.swift; sourceTree = "<group>"; };
 		3D5D1F6F0BA4814D510824ED /* Transcribe.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Transcribe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C4127B791C2ABB7B1412986 /* ClipPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipPlayer.swift; sourceTree = "<group>"; };
 		55F1ADA4C999DDB1EA54DE74 /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
 		681ABBA6AA856E0F0F8CA407 /* TranscribeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribeModel.swift; sourceTree = "<group>"; };
 		945E844DB1A227E1C413D0DD /* TranscribeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscribeApp.swift; sourceTree = "<group>"; };
+		A73E7FAEF1F90E46FFB0FA1C /* Autoplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Autoplay.swift; sourceTree = "<group>"; };
 		A9A4B14540A12DC56189492B /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
 		EBCD80963C6720CA71DA2CE4 /* sample.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = sample.wav; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -48,6 +52,8 @@
 		A83E6C35A0815260DFE8B414 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				A73E7FAEF1F90E46FFB0FA1C /* Autoplay.swift */,
+				4C4127B791C2ABB7B1412986 /* ClipPlayer.swift */,
 				A9A4B14540A12DC56189492B /* QuickStart.swift */,
 				945E844DB1A227E1C413D0DD /* TranscribeApp.swift */,
 				681ABBA6AA856E0F0F8CA407 /* TranscribeModel.swift */,
@@ -150,6 +156,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E7252C40124819D54F02DA47 /* Autoplay.swift in Sources */,
+				E984B2B4CE08D7FE1A26B0DD /* ClipPlayer.swift in Sources */,
 				25C13D84CB24EFE62871BFF7 /* QuickStart.swift in Sources */,
 				47650E04E2EF5355467C1C86 /* TranscribeApp.swift in Sources */,
 				D7D31547DC86679BF9802C1E /* TranscribeModel.swift in Sources */,
