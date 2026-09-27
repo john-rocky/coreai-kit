@@ -9,6 +9,14 @@ policy.
 
 ### Added
 
+- **Fun-ASR-Nano-2512** — catalog id `fun-asr-nano-2512` (`kind: asr`), driven by the new
+  `KitFunASRModel` (`Sources/CoreAIKit/FunASR/`): a kaldi-fbank + LFR front end, funasr's ChatML prompt
+  with the audio rows as `vocab + slot` ids (hotwords, language and itn options) and the decoder's
+  63-row `audio_embeds` static input, like the Qwen3-ASR path. `KitTranscriber(catalog:)` dispatches
+  it. Chinese (dialects, Cantonese), English and Japanese; encoder fp16-weights/fp32-math 450 MB +
+  decoder int8 759 MB, both JIT `.aimodel`s for macOS and iOS. Gated in the zoo on 155 clips against
+  the fp32 funasr oracle (150 exact, 5 knife-edge, 0 above the margin floor) and on an iPhone 18 Pro
+  (device JIT, RTF 0.075, first load 5.1 s then 0.9 s); `FunASRSmokeTests` (opt-in via `KIT_FUNASR_*`).
 - **8-speaker diarization: `nemotron-3-diarization`.** NVIDIA's Nemotron-3-Diarization
   (OpenMDW-1.1) tracks up to 8 speakers at 10 ms. It runs behind the same `KitDiarizer` as
   `sortformer-diar-v2` (4 speakers at 80 ms): `KitDiarizer(catalog: "nemotron-3-diarization")`,

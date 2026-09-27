@@ -85,6 +85,7 @@ ALSO: dict[str, list[str] | dict[str, list[str]]] = {
     "nemotron-3-diarization": ["host"],
     # ASRModelID (ASR/KitASRModel.swift): decoder + AuT encoder.
     "qwen3-asr-1.7b": ["gpu-pipelined/qwen3_asr_1.7b_audio_encoder_fp16_k30"],
+    "fun-asr-nano-2512": ["gpu-pipelined/funasr_nano_audio_encoder_fp16w32_l500"],
     # VisualDocumentRetriever (CoreAIKitEmbeddings): doc encoder + query encoder.
     "colmodernvbert": ["query"],
 }
