@@ -1,9 +1,11 @@
 // WeekScreen — the whole app: one calendar week planned by an on-device model. Top to bottom: the
 // state pill (READY / ● PLANNING / DONE) with the clock from Plan (0.1 s steps) and the count
-// planned; one latency line; the week, each event turning white with a chip for what it needs as
-// its answer arrives, scrolled so the event being planned sits in the lower third; the seven
-// answers as growing bars; Before your week, the events that need something; a small footer. The
-// look is TextClassify's InboxScreen (its colors, pill and line sizes, in units of width / 402).
+// planned; one latency line; the spotlight, one event large enough to read in a small video (the
+// latest answer with its chip; before a run, the first event with the question and the seven
+// answers); the week, each event turning white with a chip for what it needs as its answer arrives,
+// scrolled so the event being planned sits in the lower third; the seven answers as growing bars;
+// Before your week, the events that need something; a small footer. The look is TextClassify's
+// InboxScreen (its colors, pill and line sizes, in units of width / 402).
 
 import SwiftUI
 
@@ -48,6 +50,15 @@ extension Color {
     }
 }
 
+extension WeekEvent {
+    /// The line under an event's title, on a row and on the spotlight: the notes; the place when
+    /// there are none.
+    var notesLine: String {
+        if let notes, !notes.isEmpty { return notes }
+        return location ?? "no notes"
+    }
+}
+
 struct WeekScreen: View {
     let model: WeekModel
 
@@ -63,8 +74,10 @@ struct WeekScreen: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.top, 10 * u)
-                WeekList(model: model, u: u)
+                WeekSpotlight(model: model, u: u)
                     .padding(.top, 12 * u)
+                WeekList(model: model, u: u)
+                    .padding(.top, 10 * u)
                 WeekPanel(model: model, u: u)
                     .padding(.top, 12 * u)
                 Text(footer)
@@ -128,6 +141,102 @@ struct WeekHeader: View {
         guard let s = model.elapsed(at: .now) else { return "–.– s" }
         let tenths = model.phase == .done ? Int((s * 10).rounded()) : Int(s * 10)
         return "\(tenths / 10).\(tenths % 10) s"
+    }
+}
+
+/// One event large enough to read in a small video: the event whose answer arrived last, with the
+/// answer as a chip; before the first answer, the week's first event with the question and the
+/// seven answers it can get. Every line keeps its height whatever it holds (the notes always take
+/// two lines, the chip sits where the answers were), so the card never changes size and the list
+/// under it never moves.
+struct WeekSpotlight: View {
+    let model: WeekModel
+    let u: CGFloat
+
+    var body: some View {
+        let spot = model.spotlight
+        VStack(alignment: .leading, spacing: 0) {
+            Text(spot.map { "\($0.event.dayName) · \($0.event.time)" } ?? " ")
+                .font(.system(size: 16 * u, weight: .semibold).monospacedDigit())
+                .foregroundStyle(WeekStyle.axis)
+            Text(spot?.event.title ?? " ")
+                .font(.system(size: 21 * u, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.top, 2 * u)
+            // Two lines tall whatever the notes hold: a hidden two-line text sets the height (a
+            // reserved second line comes out 2 pt shorter than a wrapped one).
+            ZStack(alignment: .topLeading) {
+                Text(verbatim: " \n ").hidden()
+                Text(spot?.event.notesLine ?? " ").lineLimit(2)
+            }
+            .font(.system(size: 15 * u))
+            .foregroundStyle(WeekStyle.latency)
+            .padding(.top, 3 * u)
+            Text(WeekQuestion.instructions)
+                .font(.system(size: 13 * u, weight: .medium))
+                .foregroundStyle(WeekStyle.axis)
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
+                .padding(.top, 9 * u)
+            ZStack(alignment: .topLeading) {
+                Text(offered)
+                    .font(.system(size: 14 * u, weight: .semibold))
+                    .lineLimit(2, reservesSpace: true)
+                    .opacity(spot?.result == nil ? 1 : 0)
+                    .accessibilityHidden(spot?.result != nil)
+                if let result = spot?.result { chip(result.bin) }
+            }
+            .padding(.top, 4 * u)
+        }
+        // Its full height always: squeezed by the screen, the notes would drop to one line.
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14 * u)
+        .padding(.vertical, 11 * u)
+        .background(WeekStyle.lane, in: RoundedRectangle(cornerRadius: 12 * u))
+    }
+
+    /// The seven answers in plain words, `nothing` first, each in its bar's color; a line break
+    /// never splits one.
+    private var offered: AttributedString {
+        var out = AttributedString()
+        for bin in WeekBin.allCases {
+            if !out.characters.isEmpty {
+                var dot = AttributedString("\u{00A0}· ")
+                dot.foregroundColor = WeekStyle.pending
+                out += dot
+            }
+            var answer = AttributedString(Self.plainWords(bin).replacingOccurrences(of: " ", with: "\u{00A0}"))
+            answer.foregroundColor = WeekStyle.color(bin)
+            out += answer
+        }
+        return out
+    }
+
+    /// An answer as the card offers it before a run.
+    static func plainWords(_ bin: WeekBin) -> String {
+        switch bin {
+        case .nothing: return "nothing to prepare"
+        case .document: return "a document"
+        case .prepare: return "prepare"
+        case .travel: return "leave early"
+        case .online: return "join online"
+        case .bring: return "buy or bring"
+        case .confirm: return "confirm"
+        }
+    }
+
+    /// The answer, named as on the rows and the bars, in its bar's color.
+    private func chip(_ bin: WeekBin) -> some View {
+        Text(bin.label)
+            .font(.system(size: 14 * u, weight: .bold))
+            .foregroundStyle(WeekStyle.color(bin))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 10 * u)
+            .padding(.vertical, 4 * u)
+            .background(WeekStyle.color(bin).opacity(0.16), in: RoundedRectangle(cornerRadius: 7 * u))
     }
 }
 
@@ -218,7 +327,7 @@ struct WeekRow: View {
                     if let result { chip(result.bin) }
                 }
                 .frame(height: 18 * u)
-                Text(secondLine)
+                Text(event.notesLine)
                     .font(.system(size: 11.5 * u))
                     .foregroundStyle(result == nil ? WeekStyle.dim : WeekStyle.pending)
                     .lineLimit(1)
@@ -228,12 +337,6 @@ struct WeekRow: View {
         .padding(.vertical, 6 * u)
         .padding(.horizontal, 8 * u)
         .background(current ? WeekStyle.lane : .clear, in: RoundedRectangle(cornerRadius: 8 * u))
-    }
-
-    /// The notes; the place when there are none.
-    private var secondLine: String {
-        if let notes = event.notes, !notes.isEmpty { return notes }
-        return event.location ?? "no notes"
     }
 
     private func chip(_ bin: WeekBin) -> some View {

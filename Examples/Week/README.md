@@ -56,10 +56,12 @@ cd App && xcodegen generate && open Week.xcodeproj   # export DEVELOPMENT_TEAM=â
 1. On launch it asks for full access to Calendar, then Reminders. It keeps its own calendar,
    **Demo week**, in the device's local source, writes the synthetic week into it when it holds no
    event this week, and reads that calendar alone.
-2. **Plan my week** asks the model about every event in time order. Each row gets a chip as its
+2. A spotlight card above the list shows one event large: at READY the first event with the question and
+   the seven options, while planning the event whose answer arrived last, with its chip.
+3. **Plan my week** asks the model about every event in time order. Each row gets a chip as its
    answer arrives, the seven answers grow as bars, and **Before your week** lists the events that
    need something. The clock, the median and the rate on screen are the app's own measurements.
-3. **Add N reminders** puts one reminder per listed event into a **Before your week** list: the
+4. **Add N reminders** puts one reminder per listed event into a **Before your week** list: the
    title is `<what>: <event>`, it is due the day before the event at 9:00, and its notes are the
    event's. Pressing it again adds nothing twice.
 
@@ -123,4 +125,6 @@ app's own clock): the recorded run planned the 20 events in 22.2 s, 1,119 ms med
 p90 per event, 0.90 events/s, the same 20 answers as the Mac; three earlier runs gave 22.0 s and
 1,105 to 1,108 ms median (`results/iphone/week-result-*.json`). The model loads in 1.5 s once its
 compiled form is cached (4.6 s on the first launch). Per prompt token the phone takes about 10 ms
-against the Mac's 5.6 ms.
+against the Mac's 5.6 ms. The recorded clip (2026-09-28, `-count 14`, the same phone and bundle) planned
+14 events in 15.5 s, 1,088 ms median per event, the spotlight card showing each event and its answer as
+it lands (`results/iphone/week-result-1790556845-recorded.json`).

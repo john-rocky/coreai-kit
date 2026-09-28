@@ -86,6 +86,16 @@ final class WeekModel {
         }
     }
 
+    /// The event the spotlight card shows: the one whose answer arrived last, with that answer;
+    /// the week's first event, unanswered, before any answer (READY, and a run's first second).
+    var spotlight: (event: WeekEvent, result: PlannedEvent?)? {
+        if let last = results.compactMap({ $0 }).max(by: { $0.at < $1.at }),
+           let event = events.first(where: { $0.id == last.index }) {
+            return (event, last)
+        }
+        return events.first.map { ($0, nil) }
+    }
+
     // MARK: - loading
 
     /// Asks for Calendar and Reminders access and reads the week, then finds the bundle, loads it
