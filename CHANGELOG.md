@@ -9,6 +9,16 @@ policy.
 
 ### Added
 
+- **Audio8-TTS-Preview-0.6b** — catalog id `audio8-tts-preview-0.6b` (`kind: tts`), driven by the new
+  `Audio8TTS` (`Sources/CoreAIKit/Audio8TTS/`): Edge0's DualAR text-to-speech (Fish Audio S2 Pro design), 11
+  languages, zero-shot voice cloning from a 0.5–30 s reference (`Audio8Voice`: the reference's codec codes +
+  transcript). One Core AI call per 46 ms frame: the slow AR step, the publisher's top-k / top-p / temperature
+  Gumbel-max draw with the RAS rule and the fast AR's ten rows run inside the `frame` graph; the host supplies the
+  uniform draws (`Audio8NoiseSource`, seeded by default) and streams 32-frame chunks through the causal codec.
+  `KitSpeaker(catalog: "audio8-tts-preview-0.6b")` dispatches it (44.1 kHz). Gated in the zoo on 18 fixtures against
+  the publisher's fp32 code (draws 1,671 / 1,695 semantic and 14,711 / 15,093 codebook, Fun-ASR round trip at the
+  oracle's level) and on an M4 Max in Release (about real time, RTF 1.05 measured under other load); iPhone not yet
+  measured. `Audio8SmokeTests` (opt-in via `KIT_AUDIO8_*`).
 - **Fun-ASR-Nano-2512** — catalog id `fun-asr-nano-2512` (`kind: asr`), driven by the new
   `KitFunASRModel` (`Sources/CoreAIKit/FunASR/`): a kaldi-fbank + LFR front end, funasr's ChatML prompt
   with the audio rows as `vocab + slot` ids (hotwords, language and itn options) and the decoder's

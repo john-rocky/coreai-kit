@@ -705,6 +705,20 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "macos", sizeMB: 4721),
                     "ios": .init(path: "ios", sizeMB: 4727),
                 ]),
+            // Audio8-TTS-Preview-0.6b (Edge0, Apache-2.0): DualAR text-to-speech, 11 languages, zero-shot
+            // voice cloning from a 0.5–30 s reference. Two JIT `.aimodel`s at the repo root — the DualAR asset
+            // (slow AR int8 + fast AR fp16 + the sampler in the graph, one call per frame) and the codec
+            // decoder (fp16, 160-frame windows) — plus `tokenizer/`; `KitSpeaker` resolves the subtrees by
+            // name, so the variant path is empty and one subtree serves both platforms. sizeMB is those three
+            // (the codec encoder for voice registration is not downloaded). Driven by `Audio8TTS`; Mac about
+            // real time (M4 Max RTF 1.05 under other load), iPhone not yet measured.
+            CatalogEntry(
+                id: "audio8-tts-preview-0.6b", name: "Audio8-TTS Preview 0.6B",
+                repo: "mlboydaisuke/Audio8-TTS-Preview-0.6b-CoreAI", kind: .tts,
+                variants: [
+                    "macos": .init(path: "", sizeMB: 1150),
+                    "ios": .init(path: "", sizeMB: 1150),
+                ]),
             // ── Text-to-music: prompt → 44.1 kHz audio (T5 cond + DiT + VAE, one subtree). ──
             CatalogEntry(
                 id: "stable-audio-open-small", name: "Stable Audio Open Small",

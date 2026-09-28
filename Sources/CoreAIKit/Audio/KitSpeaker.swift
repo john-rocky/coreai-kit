@@ -30,6 +30,7 @@ public struct KitSpeaker: Sendable {
         case voxcpm2(VoxCPM2TTS)
         case kokoro(KokoroTTS)
         case vibevoice(KitDialogue)
+        case audio8(Audio8TTS)
     }
 
     private let engine: Engine
@@ -63,6 +64,22 @@ public struct KitSpeaker: Sendable {
                 try await KokoroTTS(
                     predictorAt: predictor, prosodyAt: prosody, vocoderAt: vocoder,
                     glueDir: glue))
+            self.catalogID = entry.id
+            return
+        }
+
+        // Audio8-TTS is two JIT assets + a tokenizer at the repo root (the DualAR asset with the sampler in the
+        // graph, and the codec decoder); the codec *encoder* beside them is for voice registration only and is not
+        // downloaded here. The variant path is empty and the subtrees are resolved by name.
+        if entry.id == "audio8-tts-preview-0.6b" {
+            let dualar = try await store.download(
+                entry.modelID(path: Audio8Paths.dualarName + ".aimodel"), progress: downloadProgress)
+            let codec = try await store.download(
+                entry.modelID(path: Audio8Paths.codecName + ".aimodel"), progress: downloadProgress)
+            let tokenizer = try await store.download(
+                entry.modelID(path: "tokenizer"), progress: downloadProgress)
+            self.engine = .audio8(
+                try await Audio8TTS(paths: Audio8Paths(dualar: dualar, codec: codec, tokenizerDir: tokenizer)))
             self.catalogID = entry.id
             return
         }
@@ -114,9 +131,12 @@ public struct KitSpeaker: Sendable {
     }
 
     /// Synthesizes one utterance (16 kHz mono for VoxCPM, 48 kHz for VoxCPM2, 24 kHz for
-    /// Kokoro).
+    /// Kokoro, 44.1 kHz for Audio8-TTS).
     public func synthesize(_ text: String) async throws -> SpokenAudio {
         switch engine {
+        case .audio8(let tts):
+            return SpokenAudio(
+                samples: try await tts.synthesize(text), sampleRate: Audio8TTS.sampleRate)
         case .voxcpm(let tts):
             return SpokenAudio(
                 samples: try await tts.synthesize(text), sampleRate: VoxCPMTTS.sampleRate)
@@ -137,6 +157,7 @@ public struct KitSpeaker: Sendable {
         _ text: String, onChunk: @Sendable ([Float]) async -> Void
     ) async throws {
         switch engine {
+        case .audio8(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
         case .voxcpm(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
         case .voxcpm2(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)
         case .kokoro(let tts): _ = try await tts.synthesizeStreaming(text, onChunk: onChunk)

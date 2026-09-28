@@ -96,6 +96,9 @@ INSTEAD: dict[str, list[str]] = {
     # KitSpeaker: three graphs + host glue at the repo root.
     "kokoro-82m": ["kokoro_predictor.aimodel", "kokoro_prosody.aimodel",
                    "kokoro_vocoder.aimodel", "kokoro_host_glue"],
+    # KitSpeaker: the DualAR asset + the codec decoder + the tokenizer (the codec encoder is registration-only).
+    "audio8-tts-preview-0.6b": ["audio8_dualar_int8_cl2048_w32.aimodel", "audio8_codec_decoder_fp16_t160.aimodel",
+                                "tokenizer"],
     # KitDocReader (OCR/KitDocReader.swift).
     "unlimited-ocr": ["vision", "decoder", "assets", "tokenizer"],
     # KitMineruReader / KitGlmOcrReader: the recognition bundle's two halves.
