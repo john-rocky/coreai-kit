@@ -7,11 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		016A4002F11E513A2D752791 /* RoomCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BE475D456A25F189CF134EA /* RoomCheckView.swift */; };
 		059EED428113A88E9B44B51B /* ContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE503497E99D93DA84479132 /* ContextView.swift */; };
 		181952BD151D08130048A3CB /* ChecklistModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D25FC14CB12A681F3412E4 /* ChecklistModel.swift */; };
 		3AD1DBB8C9B8AC6467CD7F39 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F084A037F6951C85126C144 /* SearchView.swift */; };
 		3E1CDCBC64ED7377741DC49D /* GuardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660B137FFC998714633A98A5 /* GuardModel.swift */; };
 		44458773CAA96473682C2F71 /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B77B02D9094CD9277740CB /* QuickStart.swift */; };
+		4B49B5E2B326A2B9F67A4F52 /* RoomCheckModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A47AE58F4DBAFA83929DBF0 /* RoomCheckModel.swift */; };
 		4FC32D81F97AC54F6ABA3155 /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E1ED8259E7174EBF7F544F1 /* Support.swift */; };
 		53C5F4C41003A509E9C2D384 /* DriveModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF8AFEE2FA1B5FA9724E1582 /* DriveModel.swift */; };
 		5422182357943D543F927B28 /* TypingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A144B4CE2C9F12E4EDF35771 /* TypingView.swift */; };
@@ -38,12 +40,14 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0BE475D456A25F189CF134EA /* RoomCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCheckView.swift; sourceTree = "<group>"; };
 		1E1ED8259E7174EBF7F544F1 /* Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Support.swift; sourceTree = "<group>"; };
 		2845C853D395C5A4F79448FA /* SorterModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SorterModel.swift; sourceTree = "<group>"; };
 		2D273023457F52A5700A1556 /* GuardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardView.swift; sourceTree = "<group>"; };
 		39BB97A16821BAF8500E31A3 /* TypingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingModel.swift; sourceTree = "<group>"; };
 		47AF30B4B3EBE5872A523097 /* DecideRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecideRuntime.swift; sourceTree = "<group>"; };
 		47CD155F304149794B70A0BC /* DecideApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DecideApp.swift; sourceTree = "<group>"; };
+		4A47AE58F4DBAFA83929DBF0 /* RoomCheckModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomCheckModel.swift; sourceTree = "<group>"; };
 		5A63E0782A08F93FAD309305 /* SpeechGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGateView.swift; sourceTree = "<group>"; };
 		5F084A037F6951C85126C144 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		660B137FFC998714633A98A5 /* GuardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuardModel.swift; sourceTree = "<group>"; };
@@ -118,6 +122,8 @@
 				2D273023457F52A5700A1556 /* GuardView.swift */,
 				F54724D296C29EC398634CD7 /* Intents.swift */,
 				D4B77B02D9094CD9277740CB /* QuickStart.swift */,
+				4A47AE58F4DBAFA83929DBF0 /* RoomCheckModel.swift */,
+				0BE475D456A25F189CF134EA /* RoomCheckView.swift */,
 				940C8E0C1D510DC0ACD90883 /* SearchModel.swift */,
 				5F084A037F6951C85126C144 /* SearchView.swift */,
 				2845C853D395C5A4F79448FA /* SorterModel.swift */,
@@ -222,6 +228,8 @@
 				BC3A57D161792B44D3E83754 /* GuardView.swift in Sources */,
 				83286AC1412D901DA5D07199 /* Intents.swift in Sources */,
 				44458773CAA96473682C2F71 /* QuickStart.swift in Sources */,
+				4B49B5E2B326A2B9F67A4F52 /* RoomCheckModel.swift in Sources */,
+				016A4002F11E513A2D752791 /* RoomCheckView.swift in Sources */,
 				5B53B771F949A52C098FC6DB /* SearchModel.swift in Sources */,
 				3AD1DBB8C9B8AC6467CD7F39 /* SearchView.swift in Sources */,
 				88B11FC2F6407E4488DDCC46 /* SorterModel.swift in Sources */,

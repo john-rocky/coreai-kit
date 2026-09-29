@@ -8,6 +8,15 @@
 // the screen's status line into Documents/autoplay-<screen>.log as it changes (how the iPhone
 // numbers are read back over `devicectl device copy from`, no UI in the loop). Nothing else
 // changes: the screens are the same code with the same buttons; this only presses them.
+//
+// Room check loads its own image model, not the shared runtime (`-model` does not apply):
+//
+//   Decide.app/Contents/MacOS/Decide -autoplay room -rooms <dir> -grid 448 -delay 3 -log 1 [-detail 1]
+//
+// presses Check all once the rooms and the model are ready; `-detail <n>` then opens room n
+// three seconds after DONE, as a tap on it would. The app shows that screen alone, with no tab
+// bar (DecideApp). `-rooms` / `-grid` are the screen's own options (RoomCheckModel), with or
+// without autoplay.
 
 import Foundation
 import Observation
@@ -16,7 +25,7 @@ import Observation
 @Observable
 final class Autoplay {
     enum Screen: String, CaseIterable {
-        case speech, search, checklist, sorter, form, drive, columns, `guard`, context, typing
+        case speech, search, checklist, sorter, form, drive, columns, `guard`, context, typing, room
     }
 
     let screen: Screen?
@@ -27,6 +36,8 @@ final class Autoplay {
     /// `-feed 1`: a screen that watches the pasteboard feeds itself the sample copies (the
     /// iPhone has no `pbcopy`; on the Mac the recorder feeds them from outside).
     let feed: Bool
+    /// `-detail <n>`: Room check opens room n (1-based) after DONE.
+    let detail: Int?
     private var fired = false
 
     init() {
@@ -41,6 +52,8 @@ final class Autoplay {
         }
         log = defaults.bool(forKey: "log")
         feed = defaults.bool(forKey: "feed")
+        let n = defaults.integer(forKey: "detail")
+        detail = n > 0 ? n : nil
     }
 
     /// Runs `action` once, on the autoplayed screen only, after the model is ready. `status`
@@ -50,13 +63,28 @@ final class Autoplay {
         _ target: Screen, runtime: DecideRuntime, status: @escaping @MainActor () -> String = { "" },
         action: @MainActor () async -> Void
     ) async {
+        await run(target, status: status, action: action) {
+            if let model { runtime.selectedID = model }
+            let loadStart = Date()
+            await runtime.load()
+            let line = "load \(runtime.status.label) in \(Int(Date().timeIntervalSince(loadStart) * 1000)) ms · \(runtime.loadedID ?? "-")"
+            return (line, runtime.isReady)
+        }
+    }
+
+    /// The same run for a screen that loads its own model: `load` readies the screen and returns
+    /// its line for the log and whether it is ready. With `finished`, the log mirrors the status
+    /// until it is true, however long the run takes, instead of for 90 seconds.
+    func run(
+        _ target: Screen, status: @escaping @MainActor () -> String = { "" },
+        finished: (@MainActor () -> Bool)? = nil, action: @MainActor () async -> Void,
+        load: @MainActor () async -> (line: String, ready: Bool)
+    ) async {
         guard screen == target, !fired else { return }
         fired = true
-        if let model { runtime.selectedID = model }
-        let loadStart = Date()
-        await runtime.load()
-        write(target, "load \(runtime.status.label) in \(Int(Date().timeIntervalSince(loadStart) * 1000)) ms · \(runtime.loadedID ?? "-")")
-        guard runtime.isReady else { return }
+        let loaded = await load()
+        write(target, loaded.line)
+        guard loaded.ready else { return }
         if let trigger {
             while !FileManager.default.fileExists(atPath: trigger) {
                 try? await Task.sleep(for: .milliseconds(200))
@@ -67,12 +95,13 @@ final class Autoplay {
         guard log else { return }
         var last = ""
         let end = Date().addingTimeInterval(90)
-        while Date() < end {
+        while true {
             let now = status()
             if now != last {
                 last = now
                 write(target, now)
             }
+            if let finished { if finished() { break } } else if Date() >= end { break }
             try? await Task.sleep(for: .milliseconds(250))
         }
         write(target, "DONE")
