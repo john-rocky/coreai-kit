@@ -15,6 +15,16 @@ a["topic"]?.choice    // "delivery"
 a["urgent"]?.score    // expected level, 0…2
 ```
 
+The same questions about an image go to `decider-2b-vision`, every question of a call read in one
+pass ([measured below](#measured)):
+
+```swift
+let b = try await CoreAI.decide(
+    image: frame, "You control the right paddle. The image shows the current game screen.",
+    ["move": .choice("What should you do right now?", ["move paddle up", "move paddle down", "stay"])])
+b["move"]?.choice     // "move paddle up"
+```
+
 Ten screens, one loaded model, each one a whole use: one action, the complete result. The
 same sources build for the Mac and for the iPhone. The last five are the shapes the
 most-viewed System One posts of September 2026 use — a game driven by the model, bulk
@@ -159,6 +169,15 @@ swift run -c release decide-cli parity --model decider-0.8b \
     --fixture fixtures-decider-0.8b.json --states states.json
 swift run -c release decide-cli parity --model openthai-systemone \
     --fixture fixtures-openthai-systemone.json      # JSON states render themselves; --bundle <dir> reads an unpublished port
+
+# questions about an image: decider-2b-vision (3.3 GB on first use), every question read in one pass
+swift run -c release decide-cli ask --image frame.png --grid 256 \
+    --state "You control the right paddle. The image shows the current game screen." \
+    --choice "What should you do right now?|move paddle up|move paddle down|stay" \
+    --noul "Is the ball moving toward your paddle?"
+# its fixture (the zoo's models/decider-2b-vision): the author's ids, slots and fp32 probabilities, run by run
+swift run -c release decide-cli parity --fixture fixtures-decider-2b-vision.json --images <the fixture PNGs> \
+    [--reference <the zoo's Swift run .json>]       # --timed <n> timed passes after the checked one
 ```
 
 Hands-off, for a recording or a smoke run: `Decide.app/Contents/MacOS/Decide -autoplay
@@ -523,6 +542,27 @@ preference misses the bar on the phone as on the Mac: 196/201 rows within 1e-3, 
 max |Δp| 0.33, at 82 ms, with the process at 1.4 GB (that run and the CPU-only run at thermal
 state "serious").
 
+**Questions about an image.** `decider-2b-vision` (catalog kind `visionDecision`; Mapika's
+decider transplanted into Qwen3.5-2B's vision-language model, Apache-2.0) answers the same three
+shapes about an image and a state, every question of a call read in one pass at its own answer slot
+(`KitVisionDecider`, `CoreAI.decide(image:…)`; `ask --image` above). It is not a `TypedDecisions`
+and not behind `serve`: the wire form has no image field. On the zoo's fixture (`decide-cli
+parity`, the model downloaded from the catalog pin, M4 Max, macOS 27.0, Release, 2026-09-29; the
+author's fp32 read-out as the reference):
+
+| Arm | Runs | Slots | ids and slots = author | Argmax = author | Full-vocab top-1 | max \|Δp\| | Mean of run means | Decision, median ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `g256` | 35 | 49 | 35/35 | 49/49 | 49/49 | 0.0103 | 0.00027 | 440 |
+| `g448` | 35 | 49 | 35/35 | 49/49 | 49/49 | 0.0080 | 0.00026 | 797 |
+| text only | 6 | 10 | 6/6 | 10/10 | 10/10 | 0.0027 | 0.00024 | 346 |
+
+The letter logits are bit-equal to the zoo's own Swift run of the same files on 108/108 slots, and
+a second pass repeats them bit for bit. The times run from the image file to the answers (143 / 275 /
+76 tokens at the median) with another job holding the GPU at 80–90 %, so they are an upper bound: the
+zoo measured 322 / 584 / 284 ms on this Mac with the GPU idle, from its AOT asset. The tower is 29 ms (`g256`) / 71 ms
+(`g448`) of it; the rest is the decoder. The first load downloaded 3.3 GB (the decoder and the `g256`
+tower; the `g448` tower, 663 MB, when first asked for).
+
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
 a short text leans *yes*: "is this what the purpose needs?" says yes to a phone number, a
@@ -617,7 +657,8 @@ The iPhone 17 Pro's results on the same items, for five of these models, are in
 ## Where the code is
 
 - `Sources/QuickStart.swift` — the take-home: one typed function, no UI. The GUI and the CLI
-  both call it.
+  both call it; `decide(image:state:questions:)` beside it is the same for a question about an
+  image (decider-2b-vision, `ask --image`).
 - `CLI/main.swift` — argument shell over that function, plus `bench`, `oracle`, `parity`
   and `filter` (the numbers above), `serve`, a shell over the kit's `SystemOneServer`
   (`Sources/CoreAIKit/Decide/SystemOneServer.swift`), and `mcp`, one over
@@ -638,6 +679,7 @@ The iPhone 17 Pro's results on the same items, for five of these models, are in
 - Info.plist: `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription` only
   for the speech gate; the other screens need nothing (the file importers are system pickers)
 - Entitlements (iOS): `com.apple.developer.kernel.increased-memory-limit` for the 2.7 GB
-  MiniCPM5 2B bundle
+  MiniCPM5 2B bundle, and for decider-2b-vision: without it the decoder's first specialization
+  dies with `std::bad_alloc` on an iPhone 18 Pro (the model zoo's gate)
 - First run downloads the model → cached in Application Support (progress callback)
 - Measure in Release — Debug is ~3× slower on per-token host work

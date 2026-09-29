@@ -256,6 +256,7 @@ enum ResidentKind {
     static let extractor = "extractor"
     static let normalizer = "normalizer"
     static let decider = "decider"
+    static let visionDecider = "visionDecider"
 }
 
 /// The shared body of every op cache: concurrent first calls share one load, a failed load

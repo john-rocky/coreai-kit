@@ -25,6 +25,7 @@ from `Op.allCases`.
 | [redact PII](#work-with-text) | `CoreAI.redact(text)` | Text → text with PII replaced by labels |
 | [find names/emails/anything in text](#work-with-text) | `CoreAI.extractEntities(from:labels:)` | Text → entities by zero-shot label |
 | [decide something about text, with a probability](#decide-without-generating) | `CoreAI.decide(state, questions)` | State + typed questions → answers with probabilities |
+| [decide something about an image, with a probability](#decide-without-generating) | `CoreAI.decide(image: photo, state, questions)` | Image + state + typed questions → answers with probabilities |
 | [answer a `/v1/systemone` request in-process](#decide-without-generating) | `CoreAI.systemOne(json:)` | The hosted request form → the hosted response, typed answers beside it |
 | [give Claude Code / Codex / Cursor a decision tool](#decide-without-generating) | `systemone mcp` | An MCP server on stdio: tools `decide`, `models` |
 | [chat with a local LLM, streaming](#chat-tools-and-guided-json) | `ChatSession` | Prompt ⇄ streamed conversation |
@@ -289,6 +290,29 @@ let team = try await scorer.decide(ticket,
     .choice("Which team should handle this?", ["billing", "shipping", "technical"]))
 team.choice          // "billing"
 team.probabilities   // one per option: the rows' scores, softmaxed at the author's temperature
+```
+
+**About an image.** `decider-2b-vision` (catalog kind `visionDecision`, Apache-2.0) is the decider
+transplanted into Qwen3.5-2B's vision-language model: the same three shapes about an image and a state,
+every question of a call read in one pass at its own answer slot, the model seeing the image, the state
+and all the questions. A choice lists up to 10 options (the letters A–J); a yes/no is the choice
+`no` / `yes`; a score lists its levels and answers the expected level. `grid` is the square the image
+is resized to (the aspect ratio is not kept): `.g256` (64 image tokens) for game frames and speed,
+`.g448` (196) for photos, its tower downloading the first time it is asked for. 3.3 GB with the g256
+tower; an iPhone app needs the increased-memory-limit entitlement. [About an image](SYSTEM_ONE.md#decisions-about-an-image)
+has the numbers. Not behind `/v1/systemone`: the wire form has no image field.
+
+```swift
+let a = try await CoreAI.decide(
+    image: frame, "You control the right paddle. The image shows the current game screen.",
+    ["move": .choice("What should you do right now?", ["move paddle up", "move paddle down", "stay"]),
+     "ball": .noul("Is the ball moving toward your paddle?")])
+a["move"]?.choice        // "move paddle up"
+a["move"]?.timing        // imageSeconds (decode, resize, tower) and decoderSeconds, beside the total
+
+let decider = try await KitVisionDecider(catalog: "decider-2b-vision", grids: [.g448])   // the model level
+let seen = try await decider.decide(image: photo, state: "This is a visual question about the image.",
+    questions: [.choice("How many people are in the photo?", ["none", "one", "two", "three or more"])], grid: .g448)
 ```
 
 **Your own readout.** `decide` reads the answer as a softmax over one letter token per

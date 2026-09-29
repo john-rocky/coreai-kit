@@ -114,8 +114,13 @@ extension CoreAI {
             _ = try await TidyOpModels.shared.normalizer(
                 catalog: options.model ?? defaultNormalizerModel)
         case .decide:
-            _ = try await DecideOpModels.shared.decider(
-                catalog: options.model ?? defaultDecisionModel)
+            let id = options.model ?? defaultDecisionModel
+            // A model that decides about images loads behind `decide(image:…)`.
+            if ModelCatalog.builtin.entry(id: id)?.kind == .visionDecision {
+                _ = try await VisionDecideOpModels.shared.decider(catalog: id)
+            } else {
+                _ = try await DecideOpModels.shared.decider(catalog: id)
+            }
         case .transcribe:
             _ = try await OpModels.shared.transcriber(
                 catalog: options.model ?? defaultSpeechModel)

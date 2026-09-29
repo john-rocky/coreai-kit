@@ -5,6 +5,7 @@
 // model card's 💻 snippet is the marked block below.
 
 import CoreAIOps
+import CoreGraphics
 import Foundation
 
 /// Score typed questions about one state with a catalog chat model
@@ -29,4 +30,22 @@ func decide(
     // `answer.timing` says how many tokens were reused and how long it took.
     return try await decider.decide(state, questions)
     // CARD-SNIPPET-END
+}
+
+/// Score typed questions about an image and a state with decider-2b-vision
+/// (`CoreAI.defaultVisionDecisionModel`, catalog kind `visionDecision`). Every question is read
+/// in one pass, each at its own answer slot, and the answers come back in question order; the
+/// model sees the image, the state and all the questions. `grid` is the square the image is
+/// resized to: `.g256` for game frames and speed, `.g448` for photos. First use downloads the
+/// decoder and that grid's tower.
+func decide(
+    image: CGImage,
+    state: String,
+    questions: [Decision.Question],
+    model id: String = CoreAI.defaultVisionDecisionModel,
+    grid: KitVisionDecider.Grid = .g256,
+    downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+) async throws -> [Decision.Answer] {
+    let decider = try await KitVisionDecider(catalog: id, grids: [grid], downloadProgress: downloadProgress)
+    return try await decider.decide(image: image, state: state, questions: questions, grid: grid)
 }

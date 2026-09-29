@@ -206,11 +206,30 @@ public enum Decision {
         public let reusedTokens: Int
         /// Wall-clock seconds from the rewind to the logits.
         public let seconds: Double
+        /// For a decision about an image (`KitVisionDecider`): the seconds the image took before the decoder —
+        /// decoding it to RGB, the resize, the patches and the vision tower. nil otherwise.
+        public let imageSeconds: Double?
+        /// For a decision about an image: the seconds the decoder's calls took for the whole row, every question of
+        /// it. nil otherwise.
+        public let decoderSeconds: Double?
 
         public init(promptTokens: Int, reusedTokens: Int, seconds: Double) {
             self.promptTokens = promptTokens
             self.reusedTokens = reusedTokens
             self.seconds = seconds
+            self.imageSeconds = nil
+            self.decoderSeconds = nil
+        }
+
+        /// A timing that says where a decision about an image spent its time.
+        public init(
+            promptTokens: Int, reusedTokens: Int, seconds: Double, imageSeconds: Double?, decoderSeconds: Double?
+        ) {
+            self.promptTokens = promptTokens
+            self.reusedTokens = reusedTokens
+            self.seconds = seconds
+            self.imageSeconds = imageSeconds
+            self.decoderSeconds = decoderSeconds
         }
 
         /// Tokens the engine had to process for this decision.

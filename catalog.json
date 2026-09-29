@@ -412,6 +412,23 @@
       "format": "encoder"
     },
     {
+      "id": "decider-2b-vision",
+      "name": "decider 2B vision",
+      "repo": "mlboydaisuke/decider-2b-vision-CoreAI",
+      "revision": "4948e3231035df85c7b03c90b766eb17a08d9451",
+      "kind": "visionDecision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/decider_2b_vision_decode_int8mix_pf16",
+          "sizeMB": 3325
+        },
+        "ios": {
+          "path": "gpu-pipelined/decider_2b_vision_decode_int8mix_pf16",
+          "sizeMB": 3325
+        }
+      }
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",
