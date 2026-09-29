@@ -581,6 +581,19 @@ and the warm-up decision on a blank image 1.1–1.4 s, both before READY; the fi
 build took 21 s for the two. The GPU read 0–6 % before each run and the machine's GPU lock was held
 through it, but other sessions share this Mac.
 
+**Room check on an iPhone 18 Pro** (iOS 27.0 (24A437), the same Release app hands-off with the model
+sideloaded into its store, on USB power, 2026-09-29). One press checks the six rooms in 20.2 s at
+`g448`, 3.37 s per room at the median (3.33–3.39 s: the same 358 tokens, the tower 0.25–0.27 s, the
+decoder 3.04–3.11 s). That is 2.7 times the Mac's 1.24 s. Two more `g448` presses took 21.6 s (the
+first launch after install) and 21.2 s. All 30 answers match the Mac's (max |Δp| 0.0009), and so do
+the verdicts: two READY, three RECLEAN, one CHECK with its lamp at 0.77. At `g256` two presses took
+15.0 and 17.0 s, 2.47 and 2.79 s per room (226 tokens), with the same verdicts and answers as the
+Mac's `g256` run (max |Δp| 0.0004). The thermal state read nominal before and after every run.
+Loading takes 7.5–8.4 s and the warm-up decision 3.5–4.7 s, both before READY. The first launch
+after install took 10.1 s and 5.2 s, but it read graphs that an earlier app with the same bundle id
+had compiled on the phone, so no cold specialization was measured. The app was signed as
+`com.daisukemajima.decidervisiongate`, the one team profile on the Mac that listed this phone.
+
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on
 a short text leans *yes*: "is this what the purpose needs?" says yes to a phone number, a
