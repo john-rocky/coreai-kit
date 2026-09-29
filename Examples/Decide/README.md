@@ -25,11 +25,12 @@ let b = try await CoreAI.decide(
 b["move"]?.choice     // "move paddle up"
 ```
 
-Ten screens, one loaded model, each one a whole use: one action, the complete result. The
-same sources build for the Mac and for the iPhone. The last five are the shapes the
-most-viewed System One posts of September 2026 use — a game driven by the model, bulk
-classification of rows, a natural-language permission gate for a coding agent, context
-compression by relevance, as-you-type reading — with the model on the device:
+Eleven screens, each one a whole use: one action, the complete result. The first ten share one
+loaded text model; Room check loads the image model instead. The same sources build for the Mac
+and for the iPhone. Drive through Typing are the shapes the most-viewed System One posts of
+September 2026 use — a game driven by the model, bulk classification of rows, a natural-language
+permission gate for a coding agent, context compression by relevance, as-you-type reading — with
+the model on the device:
 
 | Screen | What you do → what you get | Shape |
 |---|---|---|
@@ -43,6 +44,7 @@ compression by relevance, as-you-type reading — with the model on the device:
 | **Command guard** | Paste the commands an agent wants to run, with a policy in plain words → each one comes back run / ask the user first / refuse, the refused ones on top. `hooks/claude-code-guard.sh` runs the same decision as a Claude Code PreToolUse hook. | choice, one per command |
 | **Context** | An agent transcript's tool results, scored against the question being answered → the unrelated ones drop out of the context; the header says how many tokens went. | score, one per tool result |
 | **Typing** | Type → at every pause three chips read the text so far: its tone, what you are doing, the emoji that fits (tap to insert). | score + choice + choice per pause |
+| **Room check** | Press Check all over a folder of room photos (the PNGs in Documents/rooms, or `-rooms <dir>`) → every room READY, RECLEAN or CHECK. Each photo gets five questions — bed made, towels on the bed, clothes or trash on the floor, lamp on, suitcase left — read in one pass by `decider-2b-vision`; an answer below 0.8 goes to a person. | choice × 5 per photo, one pass |
 
 The two Shortcuts actions (“Ask yes/no”, “Classify text”) run the same decisions on any text
 without opening the app.
@@ -183,6 +185,8 @@ swift run -c release decide-cli parity --fixture fixtures-decider-2b-vision.json
 Hands-off, for a recording or a smoke run: `Decide.app/Contents/MacOS/Decide -autoplay
 sorter -model minicpm5-2b` opens that tab, loads the model and presses the screen's own
 sample button (`-trigger <path>` waits for that file first; `-delay <s>` after Ready).
+Room check loads its own model, the image one: `-autoplay room -rooms <dir> [-grid 256] -log 1`
+presses Check all once it is ready and writes the run to Documents/room-result-<epoch>.json.
 
 ## Measured
 
@@ -562,6 +566,20 @@ a second pass repeats them bit for bit. The times run from the image file to the
 zoo measured 322 / 584 / 284 ms on this Mac with the GPU idle, from its AOT asset. The tower is 29 ms (`g256`) / 71 ms
 (`g448`) of it; the rest is the decoder. The first load downloaded 3.3 GB (the decoder and the `g256`
 tower; the `g448` tower, 663 MB, when first asked for).
+
+**Room check** (2026-09-29, the Release app hands-off; six FLUX.2 klein 4B renders made for it,
+chosen by eye in file-name order before the model saw them). One press checks the six rooms in
+7.5 s at `g448`, 1.24 s per room at the median (1.22–1.31 s from reading the PNG to the answers:
+358 prompt tokens, the tower 0.06–0.07 s, the decoder 1.13–1.20 s). Two rooms come back READY,
+three RECLEAN and one CHECK, its lamp read as off at 0.77. At `g256` the press takes 5.7 s, 0.95 s
+per room, and that room is READY. Of the 30 `g448` answers, 29 match what each render was prompted
+to show. The miss is folded white towels on an unmade bed, read as "no" at 0.86 — above the line,
+so no person is asked. The zoo's CLI, reading the same rooms from its AOT asset, gives the same 30
+answers at both grids (max |Δp| 0.0005). On the 30 rooms the questions were first measured on, the
+app matches the CLI's earlier run 150/150 at both grids (max |Δp| 0.0018). Loading takes 1.7–1.9 s
+and the warm-up decision on a blank image 1.1–1.4 s, both before READY; the first launch after a
+build took 21 s for the two. The GPU read 0–6 % before each run and the machine's GPU lock was held
+through it, but other sessions share this Mac.
 
 **What the shape does to a small model's answer.** Every question above was tried in
 several shapes before it went in (the CLI's `filter` is how). With MiniCPM5 2B, a yes/no on

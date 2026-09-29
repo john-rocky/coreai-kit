@@ -39,6 +39,9 @@ struct DecideApp: App {
                 TypingView()
                     .tabItem { Label("Typing", systemImage: "keyboard") }
                     .tag(Autoplay.Screen.typing)
+                RoomCheckView()
+                    .tabItem { Label("Room check", systemImage: "bed.double") }
+                    .tag(Autoplay.Screen.room)
             }
             .environment(runtime)
             .environment(autoplay)
