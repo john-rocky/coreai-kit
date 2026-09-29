@@ -186,7 +186,8 @@ Hands-off, for a recording or a smoke run: `Decide.app/Contents/MacOS/Decide -au
 sorter -model minicpm5-2b` opens that tab, loads the model and presses the screen's own
 sample button (`-trigger <path>` waits for that file first; `-delay <s>` after Ready).
 Room check loads its own model, the image one: `-autoplay room -rooms <dir> [-grid 256] -log 1`
-presses Check all once it is ready and writes the run to Documents/room-result-<epoch>.json.
+presses Check all once it is ready and writes the run to Documents/room-result-<epoch>.json. The
+app shows that screen alone then, with no tab bar.
 
 ## Measured
 

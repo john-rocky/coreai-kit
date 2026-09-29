@@ -14,8 +14,9 @@
 //   Decide.app/Contents/MacOS/Decide -autoplay room -rooms <dir> -grid 448 -delay 3 -log 1 [-detail 1]
 //
 // presses Check all once the rooms and the model are ready; `-detail <n>` then opens room n
-// three seconds after DONE, as a tap on it would. `-rooms` / `-grid` are the screen's own
-// options (RoomCheckModel), with or without autoplay.
+// three seconds after DONE, as a tap on it would. The app shows that screen alone, with no tab
+// bar (DecideApp). `-rooms` / `-grid` are the screen's own options (RoomCheckModel), with or
+// without autoplay.
 
 import Foundation
 import Observation
