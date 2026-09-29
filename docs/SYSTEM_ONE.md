@@ -124,7 +124,9 @@ JevBench's standard items (the hosted Jev's score), up to 16 options, 5.8 GB, ab
 the first question on a short state and 1.2 s for each later question on it. On an iPhone, keep
 `minicpm5-2b`: of the five models run there, it scores highest on the hard items (0.459).
 Name a model with `options: .model("apus-decision-v1-4b")` in Swift, or
-`systemone serve --model apus-decision-v1-4b` for the server.
+`systemone serve --model apus-decision-v1-4b` for the server. A question about an image goes to
+`decider-2b-vision` through `CoreAI.decide(image:…)` ([below](#decisions-about-an-image)); the server
+and the tables here are text only.
 
 JevBench's 231 public items (48 easy, 72 standard, 111 hard), sent one question per request to
 `decide-cli serve` by the benchmark's own harness, which also scored them; M4 Max, macOS 27.0,
@@ -140,6 +142,7 @@ JevBench's 231 public items (48 easy, 72 standard, 111 hard), sent one question 
 | `qwen3.5-2b` | 0.750 | 0.441 | 2.74 s | 62.3 s | 3.0 GB | 26 | chat model, zero-shot, no calibration |
 | `minicpm5-2b` (default) | 0.708 | 0.459 | 0.14 s | 1.8 s | 2.7 GB | 255 | chat model, zero-shot, catalog temperature 2.93 |
 | `laya-multilingual` | 0.403 | 0.342 | 0.02 s | 0.3 s | 0.7 GB | 20 | encoder; 256-token window: 95 hard states cut |
+| `decider-2b-vision` | — | — | — | — | 3.3 GB | 10 | an image and the state, `CoreAI.decide(image:…)`; not behind the server, so not run here ([about an image](#decisions-about-an-image)) |
 
 ¹ With two other model servers on the GPU. Re-run alone on 30 items, they gave the same
 probabilities in about half the time: 2.6 s per question for `apus-decision-v1-4b` on the easy
@@ -266,6 +269,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `qwen3.5-2b-decision` | ` A`–` Z` after its plain-text prompt | 26 |
 | `apus-decision-v1-4b` | A–P | 16 |
 | `laya-multilingual` | a mask marker before each option, in one forward pass | 20 |
+| `decider-2b-vision` | A–J after each question's `Answer: (`, every question of a call in one row ([about an image](#decisions-about-an-image)) | 10 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its
 letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
@@ -293,6 +297,70 @@ long row there too: `decider-0.8b`'s 255-option fixture row, 1,965 tokens, answe
 iPhone 17 Pro in 70 s with the fp32 readout's argmax (2026-09-23, all 44 rows argmax-identical
 there, max |Δp| 0.009), and `qwen3.5-2b-decision`'s 1,743-token rows in 155 s — on a decision
 model a wide choice is a slow call, not a Mac-only one.
+
+## Decisions about an image
+
+`decider-2b-vision` (Mapika, Apache-2.0) is the decider transplanted into Qwen3.5-2B's
+vision-language model and fine-tuned on game frames, The Cauldron's multiple-choice image tasks and
+a replay of the text mixture. The same three shapes, about an image and a state (`import CoreAIOps`):
+
+```swift
+let a = try await CoreAI.decide(
+    image: frame, "You control the right paddle. The image shows the current game screen.",
+    ["move": .choice("What should you do right now?", ["move paddle up", "move paddle down", "stay"]),
+     "ball": .noul("Is the ball moving toward your paddle?")],
+    grid: .g256)
+a["move"]?.choice          // "move paddle up"
+a["move"]?.timing          // imageSeconds (decode, resize, tower), decoderSeconds, and the total
+```
+
+Every question of a call is one block of one prompt, and one pass reads every answer at its own
+slot: each answer sees the image, the state and all the questions, but no other answer — the
+author's multi-question contract (the text models above read one prompt per question). The keys are
+laid out in sorted order. A choice lists up to 10 options, the letters A–J; a yes/no is the choice
+`no` / `yes`; a score lists its levels as `k: level` and answers Σ k · p(k). `KitVisionDecider` is
+the model-level form an app keeps warm, and `decide(image: nil, …)` there reads a text-only row
+through the same weights.
+
+The image is resized to a fixed square, its aspect ratio not kept:
+
+| `grid` | tile | image tokens | for |
+|---|---|---:|---|
+| `.g256` (default) | 256 × 256 | 64 | game frames, speed |
+| `.g448` | 448 × 448 | 196 | photos; its 663 MB tower downloads the first time it is asked for |
+
+On the author's own code, a photo read at `g448` agrees with the processor's native grid on 0.980 of
+150 Visual7W items and 0.940 of 100 VSR items, against 0.947 and 0.910 at `g256` (the zoo's grid-price
+table); on the 256×240 game frames the native grid is `g256`.
+
+The host is the model zoo's `apps/DeciderVision` library, the code its gates ran: the image resized
+in Pillow's pass order (a CGContext resize is a different image), the tower baked at the grid, the
+author's prompt with the tower's rows as its image block, and a two-function decoder (S = 1 and
+S = 16) in the bundle's chunk order, on the low-level runtime. Through `decide-cli parity` on the
+zoo's fixture, the model downloaded from the catalog pin (M4 Max, macOS 27.0 26A428, Release,
+2026-09-29):
+
+| arm | runs | slots | ids and slots = the author's | argmax = the author's fp32 | full-vocabulary top-1 | max \|Δp\| | mean of run means |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `g256` | 35 | 49 | 35/35 | 49/49 | 49/49 | 0.0103 | 0.00027 |
+| `g448` | 35 | 49 | 35/35 | 49/49 | 49/49 | 0.0080 | 0.00026 |
+| text only | 6 | 10 | 6/6 | 10/10 | 10/10 | 0.0027 | 0.00024 |
+
+Against the zoo's own Swift run of the same files the letter logits are bit-equal on 108/108 slots,
+and a second pass repeats them bit for bit. A decision, from the image file to the answers, took a
+median 440 ms at `g256` (143 tokens), 797 ms at `g448` (275) and 346 ms text only (76), with another
+job holding the GPU at 80–90 % — an upper bound; the zoo measured 322 / 584 / 284 ms on this Mac
+with the GPU idle, from its AOT asset. The vision tower is 29 ms (`g256`) and 71 ms (`g448`) of it.
+
+The iPhone has not been run through the kit. The zoo's gate app runs the same library on the same
+`.aimodel`s on an iPhone 18 Pro (device JIT, iOS 27.0): 108/108 argmax against the author, and one
+game frame in 754–785 ms at `g256` and 1,415–1,439 ms at `g448`, a text row in 725–735 ms. The app
+needs `com.apple.developer.kernel.increased-memory-limit` — without it the decoder's first
+specialization dies with `std::bad_alloc` — and the runtime's cache for the three graphs takes
+6.7 GB on the phone; the decoder loads in 21.6 s the first time and 7.9 s from that cache.
+
+`/v1/systemone` has no image field: `systemone serve` and `decide-cli serve` do not load this model,
+and `systemone models` does not list it.
 
 ## What runs
 
@@ -336,7 +404,12 @@ Clips of each on the Mac and on the iPhone are in
   marker logits, act features, the temperature by question type and option count) and
   `EncoderDecider` (the bundle's `main` and `act` functions; `decideRow` gives the raw numbers).
   `TypedDecisions` is the API over them.
-- `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op;
+- `Sources/CoreAIKit/DeciderVision/` — decider-2b-vision: `KitVisionDecider` (the model-level API; `readout`
+  gives the row, every slot's letter logits and each stage's time), `DeciderVisionPreprocessor` (the image resized in
+  Pillow's pass order, cut into the tower's patches), `DeciderVisionPromptRenderer` (the author's prompt and slot
+  rule) and `DeciderVisionRuntime` (the tower and the two-function decoder on the low-level runtime), ported from
+  the model zoo's `apps/DeciderVision`.
+- `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op (`decide(image:…)` for an image);
   `CoreAI+SystemOne.swift` — `CoreAI.systemOne`, the same op in the hosted request and
   response forms (the model from `options`, else the request's `model`, else the default).
 - `Sources/systemone` — the `systemone` binary (`serve | ask | models | mcp`), built, signed and

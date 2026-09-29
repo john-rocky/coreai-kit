@@ -55,6 +55,11 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// to choose from → a probability per label from ONE forward of a static graph; the
         /// caller names the labels at call time. Driven by `TextClassifier`, not `TypedDecisions`.
         case textClassification
+        /// Typed decisions about an image (decider-2b-vision): image + state + questions → a
+        /// probability per option, every question read at its own answer slot in one pass. A
+        /// vision tower per grid and a two-function decoder, driven by `KitVisionDecider` and
+        /// `CoreAI.decide(image:…)`; not `decision`, whose `TypedDecisions` has no image input.
+        case visionDecision
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -476,6 +481,22 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "ios/wfp16-s256", sizeMB: 680),
                 ],
                 format: "encoder"),
+            // ── decider-2b-vision (Mapika, Apache-2.0): typed decisions about an image — the text
+            //    decider transplanted into Qwen3.5-2B's vision-language model. Its own kind: a
+            //    vision tower per grid (g256, g448) and a two-function decoder (S = 1 `main`, S = 16
+            //    `prefill`) with the tower's rows as a static input, read at every answer slot of one
+            //    pass by `KitVisionDecider`; `TypedDecisions` has no image input and must not load it.
+            //    The variant path is the decoder; `DeciderVisionModelID.byCatalogID` names the towers,
+            //    and sizeMB is the decoder + the default g256 tower (the g448 tower adds 663 MB when
+            //    first asked for). One set of JIT `.aimodel`s for both platforms; the zoo's gate ran it
+            //    on an iPhone 18 Pro by device JIT, which needs the increased-memory-limit entitlement. ──
+            CatalogEntry(
+                id: "decider-2b-vision", name: "decider 2B vision",
+                repo: "mlboydaisuke/decider-2b-vision-CoreAI", kind: .visionDecision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/decider_2b_vision_decode_int8mix_pf16", sizeMB: 3325),
+                    "ios": .init(path: "gpu-pipelined/decider_2b_vision_decode_int8mix_pf16", sizeMB: 3325),
+                ]),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

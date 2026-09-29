@@ -14,8 +14,19 @@
 //
 // The op is the one-call shape over `TypedDecisions`; hold a `TypedDecisions` yourself when
 // an app decides continuously (a speech gate, a clipboard watcher) and wants the model warm.
+//
+// The same questions about an image go to decider-2b-vision (`KitVisionDecider`), every
+// question of a call read in one pass:
+//
+// ```swift
+// let b = try await CoreAI.decide(
+//     image: frame, "The image shows the current game screen.",
+//     ["move": .choice("Where should the paddle move?", ["up", "down", "stay"]),
+//      "ball": .noul("Is the ball visible?")])
+// ```
 
 import CoreAIKit
+import CoreGraphics
 import Foundation
 
 extension CoreAI {
@@ -55,6 +66,45 @@ extension CoreAI {
             try await $0.decide(state, questions)
         }
     }
+
+    /// Default model for decisions about an image: decider-2b-vision (catalog kind
+    /// `visionDecision`), 3.3 GB with the 256×256 tower.
+    public static let defaultVisionDecisionModel = "decider-2b-vision"
+
+    /// One typed question about an image and a state. `grid` is the tile the image is resized to:
+    /// `.g256` for game frames and speed, `.g448` for photos (its tower downloads on first use).
+    @available(macOS 27, iOS 27, *)
+    public static func decide(
+        image: CGImage, _ state: String, _ question: Decision.Question,
+        grid: KitVisionDecider.Grid = .g256, options: OpOptions = OpOptions()
+    ) async throws -> Decision.Answer {
+        try await VisionDecideOpModels.shared.run(catalog: options.model ?? defaultVisionDecisionModel) {
+            try await $0.decide(image: image, state: state, question: question, grid: grid)
+        }
+    }
+
+    /// Several typed questions about an image and a state, keyed by ids of the caller's
+    /// choosing: one row lists them in key order and one pass reads every answer.
+    @available(macOS 27, iOS 27, *)
+    public static func decide(
+        image: CGImage, _ state: String, _ questions: [String: Decision.Question],
+        grid: KitVisionDecider.Grid = .g256, options: OpOptions = OpOptions()
+    ) async throws -> [String: Decision.Answer] {
+        try await VisionDecideOpModels.shared.run(catalog: options.model ?? defaultVisionDecisionModel) {
+            try await $0.decide(image: image, state: state, questions: questions, grid: grid)
+        }
+    }
+
+    /// Several typed questions about an image and a state, in one pass, answered in order.
+    @available(macOS 27, iOS 27, *)
+    public static func decide(
+        image: CGImage, _ state: String, _ questions: [Decision.Question],
+        grid: KitVisionDecider.Grid = .g256, options: OpOptions = OpOptions()
+    ) async throws -> [Decision.Answer] {
+        try await VisionDecideOpModels.shared.run(catalog: options.model ?? defaultVisionDecisionModel) {
+            try await $0.decide(image: image, state: state, questions: questions, grid: grid)
+        }
+    }
 }
 
 /// Process-wide cache of loaded decision models, keyed by catalog id — same contract as
@@ -85,6 +135,37 @@ actor DecideOpModels {
     func decider(catalog id: String) async throws -> TypedDecisions {
         try await deciders.value(for: id) {
             try await TypedDecisions(catalog: id, downloadProgress: OpDownloads.forward)
+        }
+    }
+}
+
+/// The same contract for the image deciders (`KitVisionDecider`), in their own residency
+/// namespace: one load per catalog id, and calls on one model serialize behind each other.
+@available(macOS 27, iOS 27, *)
+actor VisionDecideOpModels {
+    static let shared = VisionDecideOpModels()
+
+    private let deciders = ResidentCache<KitVisionDecider>(kind: ResidentKind.visionDecider)
+    private var turns: [String: Task<Void, Never>] = [:]
+
+    func run<Value: Sendable>(
+        catalog id: String, _ body: @escaping @Sendable (KitVisionDecider) async throws -> Value
+    ) async throws -> Value {
+        let decider = try await self.decider(catalog: id)
+        let previous = turns[id]
+        let turn = Task { [previous] in
+            await previous?.value
+            return try await withPinnedModel(ResidentKind.visionDecider, id) {
+                try await body(decider)
+            }
+        }
+        turns[id] = Task { _ = try? await turn.value }
+        return try await turn.value
+    }
+
+    func decider(catalog id: String) async throws -> KitVisionDecider {
+        try await deciders.value(for: id) {
+            try await KitVisionDecider(catalog: id, downloadProgress: OpDownloads.forward)
         }
     }
 }

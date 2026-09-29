@@ -14,6 +14,9 @@
 //   (a slot-head model's fixture, coreai-slot-fixtures/1, reads the same way; JSON states need no --states)
 //   (a scalar-head model's fixture, coreai-scalar-fixtures/1, compares every option row of each question)
 //   swift run -c release decide-cli parity --fixture fixtures-laya-multilingual.json --bundle <dir> [--compute ane]
+//   swift run -c release decide-cli ask --image frame.png [--grid 256|448] --state "…" --choice "…|…|…"   (decider-2b-vision)
+//   swift run -c release decide-cli parity --fixture fixtures-decider-2b-vision.json --images <dir> [--reference <zoo Swift run>]
+//   (an image-decision fixture, coreai-decider-vision-fixtures/1: the author's ids, slots and fp32 probabilities per run)
 //   (an encoder model's fixture, coreai-encoder-fixtures/1: tokens and markers, then the raw logits at T = 1;
 //    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
@@ -23,6 +26,7 @@
 
 import CoreAILanguageModels
 import CoreAIOps
+import CoreGraphics
 import CryptoKit
 import Foundation
 
@@ -36,11 +40,16 @@ let usage = """
                             [--out <report-calibrated.jsonl>] [--out-raw <report-raw.jsonl>] [--bins 10] [--limit <n>]
                             [--fit-name <text>] [--report-name <text>] [--verbose]
                             (a temperature fitted on --fit, before / after on --report; the record is a catalog.json `calibration`)
+           decide-cli ask   --image <file> --state <text> [--grid 256|448] [--model decider-2b-vision] (--noul … | --choice … | --score …)…
+                            (every question about the image read in one pass; --bundle <dir> --tower-g256 <graph> [--tower-g448 <graph>]
+                             loads local files instead of the catalog)
            decide-cli parity --fixture <decider-fixtures.json> [--states <id-to-text.json>] [--model <catalog-id>] [--verbose]
                             [--dump-probs <rows.jsonl>] (per row: probabilities, argmax, prompt and reused tokens, ms)
                             (--bundle <dir> loads a local bundle directory instead of a catalog id, for any command)
                             (an encoder fixture: [--tokens-only] [--tokenizer <dir> --head-max-len <n>]
                              [--compute gpu|ane|cpu|cpuonly] [--act-compute gpu|ane|cpu|cpuonly])
+                            (an image-decision fixture: --images <dir> [--reference <zoo Swift run .json>] [--timed <passes>]
+                             [--out <summary.json>])
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
@@ -85,7 +94,9 @@ var args = CommandLine.arguments.dropFirst()
 guard let command = args.popFirst() else { fail(usage) }
 
 if command == "--list-models" {
-    for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision) {
+    for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision)
+        + ModelCatalog.builtin.available(.visionDecision)
+    {
         print("\(entry.id)  —  \(entry.name)  [\(entry.kind.rawValue)]")
     }
     exit(0)
@@ -132,6 +143,16 @@ var actComputeUnits: GraphModel.ComputeUnits?
 var noShare = false
 /// `parity`: where to write each row's probabilities, argmax, and prompt and reused tokens.
 var dumpProbsPath: String?
+/// `--model` given explicitly: an image question otherwise goes to `CoreAI.defaultVisionDecisionModel`.
+var modelGiven = false
+/// `ask --image`: the image the questions are about, and the square it is resized to.
+var imagePath: String?
+var grid: KitVisionDecider.Grid = .g256
+/// A local decider-2b-vision's towers, beside `--bundle` (the decoder).
+var towerPaths: [KitVisionDecider.Grid: String] = [:]
+/// `parity` on an image-decision fixture: where its images are, and how many timed passes follow the checked one.
+var imagesDir: String?
+var timedPasses = 1
 /// What answers: a catalog (or `--bundle`) model on `TypedDecisions`, or Apple's on-device
 /// foundation model on `FoundationModelDecisions` (`--backend fm`).
 enum BackendKind: String { case catalog, fm }
@@ -175,6 +196,23 @@ func parseComputeUnits(_ name: String?) -> GraphModel.ComputeUnits {
     }
 }
 
+/// The model an image question goes to: `--model` when given, else decider-2b-vision.
+var visionModelID: String { modelGiven ? modelID : CoreAI.defaultVisionDecisionModel }
+
+/// decider-2b-vision: the `--bundle` decoder with its `--tower-g256` / `--tower-g448` graphs when given, else the
+/// catalog model, downloading the towers for `grids`.
+@MainActor func loadVisionDecider(grids: Set<KitVisionDecider.Grid>) async throws -> KitVisionDecider {
+    if let bundlePath {
+        for grid in grids where towerPaths[grid] == nil {
+            fail("--bundle reads a local decider-2b-vision: pass --tower-\(grid) <the \(grid) tower's graph or directory>")
+        }
+        var towers: [KitVisionDecider.Grid: URL] = [:]
+        for (grid, path) in towerPaths { towers[grid] = URL(fileURLWithPath: path) }
+        return try await KitVisionDecider(decoderAt: URL(fileURLWithPath: bundlePath), towersAt: towers)
+    }
+    return try await KitVisionDecider(catalog: visionModelID, grids: grids, downloadProgress: progress)
+}
+
 func parts(_ spec: String) -> (String, [String]) {
     let pieces = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
     return (pieces[0], Array(pieces.dropFirst()))
@@ -182,7 +220,9 @@ func parts(_ spec: String) -> (String, [String]) {
 
 while let arg = args.popFirst() {
     switch arg {
-    case "--model": modelID = args.popFirst() ?? modelID
+    case "--model":
+        modelID = args.popFirst() ?? modelID
+        modelGiven = true
     case "--state": state = args.popFirst()
     case "--state-file": stateFile = args.popFirst()
     case "--noul":
@@ -231,6 +271,14 @@ while let arg = args.popFirst() {
         backendKind = kind
         if kind == .fm { modelID = FoundationModelDecisions.modelID }
     case "--dump-probs": dumpProbsPath = args.popFirst()
+    case "--image": imagePath = args.popFirst()
+    case "--images": imagesDir = args.popFirst()
+    case "--grid":
+        guard let tile = Int(args.popFirst() ?? ""), let g = KitVisionDecider.Grid(tile: tile) else { fail(usage) }
+        grid = g
+    case "--tower-g256": towerPaths[.g256] = args.popFirst()
+    case "--tower-g448": towerPaths[.g448] = args.popFirst()
+    case "--timed": timedPasses = Int(args.popFirst() ?? "") ?? timedPasses
     case "--engine-log": CLILogger.level = 1
     default: fail(usage)
     }
@@ -238,7 +286,9 @@ while let arg = args.popFirst() {
 
 func describe(_ answer: Decision.Answer) -> String {
     let t = answer.timing
-    let where_ = "\(fmt(t.milliseconds, 1)) ms, \(t.promptTokens) tokens, \(t.reusedTokens) reused"
+    var where_ = "\(fmt(t.milliseconds, 1)) ms, \(t.promptTokens) tokens, \(t.reusedTokens) reused"
+    if let image = t.imageSeconds { where_ += ", image \(fmt(image * 1000, 1)) ms" }
+    if let decoder = t.decoderSeconds { where_ += ", decoder \(fmt(decoder * 1000, 1)) ms" }
     switch answer.value {
     case .noul(let p):
         return "noul  P(yes)=\(fmt(p))  [\(where_)]"
@@ -257,6 +307,25 @@ let id = modelID
 
 @MainActor func runAsk() async throws {
     guard let state, !questions.isEmpty else { fail(usage) }
+    if let imagePath {
+        // decider-2b-vision: every question about the image is one block of one row, read in one pass.
+        let image = try ImageFile.load(URL(fileURLWithPath: imagePath)).cgImage
+        let answers: [Decision.Answer]
+        if bundlePath != nil {
+            let decider = try await loadVisionDecider(grids: [grid])
+            stderrPrint("model: \(decider.id) (\(decider.modelName))   grid: \(grid)   image: \(image.width)x\(image.height)")
+            answers = try await decider.decide(image: image, state: state, questions: questions.map(\.1), grid: grid)
+        } else {
+            stderrPrint("model: \(visionModelID)   grid: \(grid)   image: \(image.width)x\(image.height)")
+            answers = try await decide(
+                image: image, state: state, questions: questions.map(\.1), model: visionModelID, grid: grid,
+                downloadProgress: progress)
+        }
+        for ((key, _), answer) in zip(questions, answers) {
+            print("\(key): \(describe(answer))")
+        }
+        return
+    }
     let asked = Dictionary(uniqueKeysWithValues: questions)
     // `--bundle` and `--no-share` must reach every command: the QuickStart snippet only knows
     // catalog ids and the default configuration.
@@ -1376,6 +1445,10 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
         try await runScalarParity(data)
         return
     }
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-decider-vision-fixtures") {
+        try await runVisionParity(data)
+        return
+    }
     let fx = try JSONDecoder().decode(DeciderFixture.self, from: data)
     var stateByRequest: [String: String] = [:]
     for request in fx.requests { if let state = request.state { stateByRequest[request.id] = state } }
@@ -1485,6 +1558,243 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
     print("ms per question (all rows of a score question summed): median \(fmt(median(milliseconds), 1)), max \(fmt(milliseconds.max() ?? 0, 1))")
     if !skipped.isEmpty { print("skipped: " + skipped.joined(separator: "; ")) }
     try writeProbsDump(dumped)
+}
+
+// MARK: - parity, image (decider-2b-vision's fixture: the author's ids, slots and fp32 probabilities, per run)
+
+/// The fixture decider-2b-vision's port ships (`coreai-decider-vision-fixtures/1`): requests naming an image, and one
+/// row per request and arm (`g256` / `g448` / `native` / `text`) with the author's fp32 read-out at every slot. The
+/// kit reads the `g256`, `g448` and `text` runs; `native` is the author's per-image grid, which no tower bakes.
+struct VisionFixture: Decodable {
+    struct Request: Decodable {
+        struct Question: Decodable {
+            let text: String
+            let options: [String]
+        }
+        let id: String
+        let image: String?
+        let context: String
+        let questions: [Question]
+    }
+    struct Row: Decodable {
+        let id: String
+        let arm: String
+        let request_id: String
+        /// The processor's ids: every image token as <|image_pad|>.
+        let ids: [Int]
+        let slots: [Int]
+        let nopts: [Int]
+        let p_oracle: [[Double]]
+        let argmax: [Int]
+        let full_vocab_top1_id: [Int]
+    }
+    let schema: String
+    let requests: [Request]
+    let rows: [Row]
+}
+
+/// The zoo's Swift run of the same fixture (`decider-vision fixture --out`, apps/DeciderVision): per run and slot, the
+/// letter logits and probabilities it read.
+struct VisionReference: Decodable {
+    struct Run: Decodable {
+        struct Answer: Decodable {
+            let letter_logits: [Double]
+            let probs: [Double]
+            let argmax: Int
+            let full_vocab_top1_id: Int
+        }
+        let id: String
+        let arm: String
+        let answers: [Answer]
+    }
+    let label: String?
+    let runs: [Run]
+}
+
+/// One arm's tally against the author's read-out (and the reference run, when one is given).
+struct VisionArmTally {
+    var runs = 0, slots = 0, idsEqual = 0, argmax = 0, top1 = 0, finite = 0
+    var maxDelta = 0.0
+    var runMeans: [Double] = []
+    var refSlots = 0, refArgmax = 0, refBitEqual = 0
+    var refMaxDelta = 0.0
+    var walls: [Double] = [], towers: [Double] = [], decoders: [Double] = [], tokens: [Double] = []
+
+    mutating func add(_ other: VisionArmTally) {
+        runs += other.runs; slots += other.slots; idsEqual += other.idsEqual; argmax += other.argmax
+        top1 += other.top1; finite += other.finite; maxDelta = max(maxDelta, other.maxDelta)
+        runMeans += other.runMeans; refSlots += other.refSlots; refArgmax += other.refArgmax
+        refBitEqual += other.refBitEqual; refMaxDelta = max(refMaxDelta, other.refMaxDelta)
+    }
+}
+
+@MainActor func runVisionParity(_ data: Data) async throws {
+    let fx = try JSONDecoder().decode(VisionFixture.self, from: data)
+    guard let imagesDir else { fail("parity on an image-decision fixture needs --images <dir> (the fixture's PNGs)") }
+    let reference = try referencePath.map {
+        try JSONDecoder().decode(VisionReference.self, from: Data(contentsOf: URL(fileURLWithPath: $0)))
+    }
+    var referenceRuns: [String: VisionReference.Run] = [:]
+    for run in reference?.runs ?? [] { referenceRuns["\(run.id)/\(run.arm)"] = run }
+
+    let started = SuspendingClock.now
+    let decider = try await loadVisionDecider(grids: [.g256, .g448])
+    let loadSeconds = seconds(since: started)
+    print("model: \(decider.id) (\(decider.modelName))   temperature: \(decider.temperature)   towers: "
+        + "\(await decider.loadedGrids.map(\.description).joined(separator: ", "))   load \(fmt(loadSeconds, 1)) s")
+
+    let requests = Dictionary(uniqueKeysWithValues: fx.requests.map { ($0.id, $0) })
+    let arms = ["g256", "g448", "text"]
+    let runs = fx.rows.filter { arms.contains($0.arm) }
+    let imageRoot = URL(fileURLWithPath: imagesDir)
+
+    /// One run through the decider: the readout and the seconds from the file (the image decode included).
+    func read(_ row: VisionFixture.Row) async throws -> (KitVisionDecider.Readout, Double) {
+        guard let request = requests[row.request_id] else { fail("\(row.id): no request \(row.request_id)") }
+        let questions = request.questions.map { Decision.Question.choice($0.text, $0.options) }
+        var image: CGImage? = nil
+        let start = SuspendingClock.now
+        if row.arm != "text", let name = request.image {
+            image = try ImageFile.load(imageRoot.appendingPathComponent("\(name).png")).cgImage
+        }
+        let fileSeconds = seconds(since: start)
+        let readout = try await decider.readout(
+            image: image, state: request.context, questions: questions, grid: row.arm == "g448" ? .g448 : .g256)
+        return (readout, fileSeconds + (readout.seconds["wall"] ?? 0))
+    }
+
+    var tallies: [String: VisionArmTally] = [:]
+    var firstPass: [String: [[Float]]] = [:]
+    var dumped: [String] = []
+    for row in runs {
+        let (r, wall) = try await read(row)
+        var t = tallies[row.arm] ?? VisionArmTally()
+        t.runs += 1
+        t.slots += row.slots.count
+        let idsOK = r.row.processorIDs == row.ids && r.row.slots == row.slots
+        if idsOK { t.idsEqual += 1 }
+        var deltas: [Double] = []
+        let ref = referenceRuns["\(row.request_id)/\(row.arm)"]
+        for s in 0..<min(r.probabilities.count, row.p_oracle.count) {
+            let p = r.probabilities[s], po = row.p_oracle[s]
+            let d = zip(p, po).map { abs($0 - $1) }
+            deltas += d
+            t.maxDelta = max(t.maxDelta, d.max() ?? 0)
+            let best = p.indices.max { p[$0] < p[$1] } ?? 0
+            if best == row.argmax[s] { t.argmax += 1 }
+            if r.fullVocabularyTop1[s] == row.full_vocab_top1_id[s] { t.top1 += 1 }
+            if r.finite[s] { t.finite += 1 }
+            if let ref, s < ref.answers.count {
+                let a = ref.answers[s]
+                t.refSlots += 1
+                if best == a.argmax { t.refArgmax += 1 }
+                if r.letterLogits[s] == a.letter_logits.map(Float.init) { t.refBitEqual += 1 }
+                t.refMaxDelta = max(t.refMaxDelta, zip(p, a.probs).map { abs($0 - $1) }.max() ?? 0)
+            }
+            if verbose || best != row.argmax[s] || !idsOK {
+                stderrPrint("  \(row.id) slot \(s): kit \(p.map { fmt($0, 4) }) author \(po.map { fmt($0, 4) })\(idsOK ? "" : "  ids DIFF")")
+            }
+        }
+        t.runMeans.append(deltas.reduce(0, +) / Double(max(1, deltas.count)))
+        tallies[row.arm] = t
+        firstPass[row.id] = r.letterLogits
+        dumped.append(JSONValue.object([
+            .init("id", .string(row.id)), .init("arm", .string(row.arm)),
+            .init("probabilities", .array(r.probabilities.map { .array($0.map { .number("\($0)") }) })),
+            .init("letter_logits", .array(r.letterLogits.map { .array($0.map { .number("\($0)") }) })),
+            .init("full_vocab_top1", .array(r.fullVocabularyTop1.map { .int($0) })),
+            .init("tokens", .int(r.row.ids.count)), .init("prefill_calls", .int(r.prefillCalls)),
+            .init("main_calls", .int(r.mainCalls)), .init("wall_from_file_ms", .number("\(wall * 1000)")),
+        ]).dumps())
+        stderrPrint("  \(row.id): \(r.row.ids.count) tokens, \(fmt(wall * 1000, 0)) ms, "
+            + r.probabilities.map { "[" + $0.map { fmt($0, 3) }.joined(separator: " ") + "]" }.joined(separator: " "))
+    }
+
+    // Timed passes: the same runs again, warm; each run's letter logits must repeat bit for bit.
+    var repeatEqual = 0, repeatSlots = 0
+    for pass in 0..<timedPasses {
+        for row in runs {
+            let (r, wall) = try await read(row)
+            var t = tallies[row.arm] ?? VisionArmTally()
+            t.walls.append(wall * 1000)
+            t.towers.append((r.seconds["tower"] ?? 0) * 1000)
+            t.decoders.append((r.seconds["decoder"] ?? 0) * 1000)
+            t.tokens.append(Double(r.row.ids.count))
+            tallies[row.arm] = t
+            if pass == 0 {
+                repeatSlots += r.letterLogits.count
+                repeatEqual += zip(r.letterLogits, firstPass[row.id] ?? []).filter { $0 == $1 }.count
+            }
+        }
+    }
+
+    print("| arm | runs | slots | ids + slots = author | argmax = author | full-vocab top-1 = author | max \\|Δp\\| | mean of run means |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|")
+    var all = VisionArmTally()
+    for arm in arms {
+        guard let t = tallies[arm] else { continue }
+        all.add(t)
+        print("| \(arm) | \(t.runs) | \(t.slots) | \(t.idsEqual)/\(t.runs) | \(t.argmax)/\(t.slots) | \(t.top1)/\(t.slots) | "
+            + "\(fmt(t.maxDelta, 4)) | \(fmt(t.runMeans.reduce(0, +) / Double(max(1, t.runMeans.count)), 5)) |")
+    }
+    let mean = all.runMeans.reduce(0, +) / Double(max(1, all.runMeans.count))
+    print("| all | \(all.runs) | \(all.slots) | \(all.idsEqual)/\(all.runs) | \(all.argmax)/\(all.slots) | \(all.top1)/\(all.slots) | "
+        + "\(fmt(all.maxDelta, 4)) | \(fmt(mean, 5)) |")
+    let pass = all.idsEqual == all.runs && all.argmax == all.slots && all.top1 == all.slots && all.finite == all.slots
+        && all.maxDelta <= 0.02 && mean <= 0.002
+    print("the zoo's bar — ids, argmax and full-vocab top-1 on every slot, finite, max |Δp| ≤ 0.02, mean of run means ≤ 0.002: "
+        + (pass ? "PASS" : "FAIL"))
+    if reference != nil {
+        print("vs \(reference?.label ?? referencePath ?? "the reference"): argmax \(all.refArgmax)/\(all.refSlots), "
+            + "letter logits bit-equal \(all.refBitEqual)/\(all.refSlots), max |Δp| \(fmt(all.refMaxDelta, 6))")
+    }
+    if timedPasses > 0 {
+        print("repeat: slot letter logits bit-equal to the first pass \(repeatEqual)/\(repeatSlots)")
+        print("| arm | decision from the file, ms (median, min–max) | tower ms (median) | decoder ms (median) | tokens (median) | timed runs |")
+        print("|---|---:|---:|---:|---:|---:|")
+        for arm in arms {
+            guard let t = tallies[arm], !t.walls.isEmpty else { continue }
+            print("| \(arm) | \(fmt(median(t.walls), 1)) (\(fmt(t.walls.min() ?? 0, 1))–\(fmt(t.walls.max() ?? 0, 1))) | "
+                + "\(arm == "text" ? "—" : fmt(median(t.towers), 1)) | \(fmt(median(t.decoders), 1)) | \(fmt(median(t.tokens), 1)) | \(t.walls.count) |")
+        }
+    }
+    try writeProbsDump(dumped)
+    if let outPath {
+        var armMembers: [JSONValue.Member] = []
+        for arm in arms {
+            guard let t = tallies[arm] else { continue }
+            let armMean = t.runMeans.reduce(0, +) / Double(max(1, t.runMeans.count))
+            armMembers.append(
+                JSONValue.Member(
+                    arm,
+                    .object([
+                        .init("runs", .int(t.runs)), .init("slots", .int(t.slots)), .init("argmax_equal", .int(t.argmax)),
+                        .init("max_abs_dp", .number("\(t.maxDelta)")), .init("mean_of_run_mean_abs_dp", .number("\(armMean)")),
+                        .init("wall_ms", .array(t.walls.map { .number("\($0)") })),
+                        .init("tower_ms", .array(t.towers.map { .number("\($0)") })),
+                        .init("decoder_ms", .array(t.decoders.map { .number("\($0)") })),
+                    ])))
+        }
+        let summary = JSONValue.object([
+            .init("model", .string(decider.id)), .init("bundle", .string(decider.modelName)),
+            .init("load_seconds", .number("\(loadSeconds)")), .init("runs", .int(all.runs)), .init("slots", .int(all.slots)),
+            .init("ids_equal", .int(all.idsEqual)), .init("argmax_equal", .int(all.argmax)),
+            .init("full_vocab_top1_equal", .int(all.top1)), .init("finite", .int(all.finite)),
+            .init("max_abs_dp", .number("\(all.maxDelta)")), .init("mean_of_run_mean_abs_dp", .number("\(mean)")),
+            .init("bar", .string(pass ? "PASS" : "FAIL")),
+            .init("reference_argmax_equal", .int(all.refArgmax)), .init("reference_letter_logits_bit_equal", .int(all.refBitEqual)),
+            .init("reference_slots", .int(all.refSlots)), .init("reference_max_abs_dp", .number("\(all.refMaxDelta)")),
+            .init("repeat_bit_equal", .int(repeatEqual)), .init("repeat_slots", .int(repeatSlots)),
+            .init("arms", .object(armMembers)),
+        ])
+        try summary.dumps().appending("\n").write(toFile: outPath, atomically: true, encoding: .utf8)
+    }
+    if !pass { exit(1) }
+}
+
+func seconds(since start: SuspendingClock.Instant) -> Double {
+    let d = SuspendingClock.now - start
+    return Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
 }
 
 // MARK: - filter (a semantic `grep`: one decision per stdin line)

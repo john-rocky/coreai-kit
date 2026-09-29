@@ -9,6 +9,21 @@ policy.
 
 ### Added
 
+- **decider-2b-vision** — catalog id `decider-2b-vision` (the new `kind: visionDecision`), driven by the new
+  `KitVisionDecider` (`Sources/CoreAIKit/DeciderVision/`) and `CoreAI.decide(image:_:_:grid:options:)` (one question,
+  a dictionary or an array): typed decisions about an image — Mapika's decider transplanted into Qwen3.5-2B's
+  vision-language model (Apache-2.0). Choice, score and noul questions about an image and a state, every question of a
+  call read in one pass at its own answer slot, up to 10 options. The host is the model zoo's `apps/DeciderVision`
+  library: the image resized in Pillow's pass order to a fixed grid (`g256`, 64 image tokens; `g448`, 196), a vision
+  tower per grid (fp16 weights, fp32 math) and a two-function decoder (int8 with three fp16 layers; S = 1 `main`, S = 16
+  `prefill`) with the tower's rows as a static input, on the low-level runtime. 3,325 MB with the `g256` tower; the
+  `g448` tower (663 MB) downloads when first asked for. `Decision.Timing` gains `imageSeconds` and `decoderSeconds`
+  (nil for the text models). On an M4 Max through `decide-cli parity`, downloaded from the catalog pin: 108/108 slots
+  argmax-identical to the author's fp32 read-out, max |Δp| 0.0103, letter logits bit-equal to the zoo's Swift run;
+  the zoo gated the same files on an iPhone 18 Pro (device JIT, 108/108; the app needs the increased-memory-limit
+  entitlement), the kit has not run on a phone. Not behind `/v1/systemone`: the wire form has no image field.
+  `DeciderVisionTests` (the fixture's 76 prompt rows against the author's ids, with the tokenizer),
+  `DeciderVisionSmokeTests` (opt-in via `KIT_DECIDERVISION_*`).
 - **Audio8-TTS-Preview-0.6b** — catalog id `audio8-tts-preview-0.6b` (`kind: tts`), driven by the new
   `Audio8TTS` (`Sources/CoreAIKit/Audio8TTS/`): Edge0's DualAR text-to-speech (Fish Audio S2 Pro design), 11
   languages, zero-shot voice cloning from a 0.5–30 s reference (`Audio8Voice`: the reference's codec codes +

@@ -88,6 +88,9 @@ ALSO: dict[str, list[str] | dict[str, list[str]]] = {
     "fun-asr-nano-2512": ["gpu-pipelined/funasr_nano_audio_encoder_fp16w32_l500"],
     # VisualDocumentRetriever (CoreAIKitEmbeddings): doc encoder + query encoder.
     "colmodernvbert": ["query"],
+    # KitVisionDecider (DeciderVision/KitVisionDecider.swift): decoder + the default g256 tower; the g448
+    # tower downloads the first time a decision asks for it.
+    "decider-2b-vision": ["gpu-pipelined/decider_2b_vision_g256_vision_fp16w32"],
 }
 
 # Loaders that never download the variant path itself — it names a flat repo's root or a
