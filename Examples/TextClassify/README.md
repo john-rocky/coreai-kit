@@ -43,6 +43,46 @@ the zoo's GLiNER2.5-Decide export writes: `classifier.json`, a `tokenizer/` fold
 per sequence length (256 and 512 tokens). `--multi`, `--threshold`, `--prompt` and `--describe label=text` apply to the
 `--task` before them.
 
+## The inbox app
+
+`App/` is the same classifier as a screen: a support inbox of synthetic messages, one tap on
+Sort inbox, and every message gets an intent, an urgency and a sentiment from one forward each.
+The counts grow as the answers arrive, and the time on screen is measured by the app (the median
+milliseconds per message, messages per second, the total). Generate the project once and run it on
+an iPhone or a Mac:
+
+```bash
+cd App && xcodegen generate && open TextClassify.xcodeproj   # export DEVELOPMENT_TEAM=… first, or pick the team in Xcode
+```
+
+The model comes from the catalog on first launch (`gliner2.5-decide`, 1.8 GB, cached), or from a
+folder already on the device: on an iPhone, a copy of the bundle at `Documents/gliner25-decide/`
+(put there with `xcrun devicectl device copy to`); on a Mac, `-bundle <dir>`.
+
+The inbox is generated, not collected (`Sources/InboxCore/Inbox.swift`): an invented shop and app
+subscription, plain item names, first names only, no addresses or contact details. A seed gives the
+same messages on every platform. `swift run -c release textclassify-cli --inbox 1000 --seed 7` sorts
+the same inbox headless through the same `InboxSorter` and prints the same numbers as one JSON line
+(`--dump` prints the messages, `--jsonl <path>` writes every answer).
+
+For a recording or an unattended run, the app presses the button itself:
+
+```
+TextClassify -autoplay 1 -delay 3 -count 1000 -seed 7 -log 1 [-trigger <file>] [-bundle <dir>]
+```
+
+With `-log 1` the status line goes to `Documents/inbox-autoplay.log` as it changes, and every
+finished run writes `Documents/inbox-result-<epoch>.json`: the total, the per-message series, the
+label counts and the thermal state before and after, which `devicectl device copy from` reads back
+from a phone (put `--` before the app's arguments in `devicectl device process launch`, or it reads
+`-log` as its own option).
+
+Measured 2026-09-26, seed 7: 1,000 messages in 40.9 s on an iPhone 18 Pro (iOS 27.0, GPU), 39.2 ms
+median per message, all on the 256-token graph; 30.1 s on an M4 Max (30.0 ms). The phone holds
+about 38 ms per message for the first 20 s of a run and slows from there (1.25–1.5× by 41 s over
+five runs, with the thermal state still nominal), so a longer inbox takes more than its share:
+2,000 messages took 128.7 s.
+
 ## Notes
 
 - Progress goes to stderr, results to stdout (one JSON line, in gliner2's

@@ -8,6 +8,7 @@
 //       --task aspects=battery,keyboard,screen --multi --threshold 0.4 --task sentiment=positive,negative
 //   swift run textclassify-cli --bundle <dir> --readme <readme21.json>     # the model card's examples
 //   swift run textclassify-cli --bundle <dir> --gate <fixture.json>... [--pygpu <gate_s<S>_gpu.json>...]
+//   swift run -c release textclassify-cli --bundle <dir> --inbox 1000 --seed 7   # the inbox demo, headless
 //
 // --bundle is a directory holding classifier.json, tokenizer/ and the .aimodel files classifier.json
 // names; without it the catalog's gliner2.5-decide is downloaded on first use and cached. --multi /
@@ -16,9 +17,16 @@
 // the graph and compares decisions and logits (--collate-only stops after the first part); --pygpu
 // adds the zoo's Python engine gate on the same bundle, matched by case id and S. Exit 0 = all equal,
 // 3 = a difference, 1 = usage or load error.
+//
+// --inbox <count> generates the demo's synthetic support inbox (InboxCore, --seed N, default 7) and
+// sorts it with the app's InboxSorter — intent, urgency and sentiment from one forward per message —
+// after one warm-up run per graph: one summary JSON line on stdout (times, msg/s, the sequence-length
+// split, label counts, duplicates). --dump prints the messages instead, one per line, without loading
+// the model; --jsonl <path> also writes every message's answers and time.
 
 import CoreAIKitEmbeddings
 import Foundation
+import InboxCore
 
 func err(_ s: String) { FileHandle.standardError.write(Data((s + "\n").utf8)) }
 func fail(_ s: String) -> Never { err(s); exit(1) }
@@ -28,6 +36,7 @@ let usage = """
                             [--prompt <str>] [--describe label=<description>]... [--task ...]
            textclassify-cli [--bundle <dir>] --readme <readme21.json>
            textclassify-cli [--bundle <dir>] --gate <fixture.json>... [--pygpu <gate.json>...] [--collate-only]
+           textclassify-cli [--bundle <dir>] --inbox <count> [--seed N] [--dump] [--jsonl <path>]
     (no --bundle: the catalog's gliner2.5-decide, downloaded on first use)
     """
 
@@ -38,6 +47,10 @@ var readme: String?
 var gateFiles: [String] = []
 var pygpuFiles: [String] = []
 var collateOnly = false
+var inboxCount: Int?
+var inboxSeed: UInt64 = 7
+var inboxDump = false
+var inboxJSONL: String?
 
 @MainActor func lastTask(_ flag: String) -> Int {
     guard !tasks.isEmpty else { fail("\(flag) must follow a --task\n\(usage)") }
@@ -69,6 +82,14 @@ while let a = args.popFirst() {
     case "--pygpu":
         while let f = args.first, !f.hasPrefix("--") { pygpuFiles.append(f); args.removeFirst() }
     case "--collate-only": collateOnly = true
+    case "--inbox":
+        guard let n = args.popFirst().flatMap(Int.init), n > 0 else { fail(usage) }
+        inboxCount = n
+    case "--seed":
+        guard let n = args.popFirst().flatMap(UInt64.init) else { fail(usage) }
+        inboxSeed = n
+    case "--dump": inboxDump = true
+    case "--jsonl": inboxJSONL = args.popFirst()
     case "-h", "--help": print(usage); exit(0)
     default: fail("unknown arg \(a)\n\(usage)")
     }
@@ -223,6 +244,16 @@ func pad(_ s: String, _ n: Int) -> String { s.count >= n ? s : s + String(repeat
 
 // MARK: - main
 
+if let n = inboxCount, inboxDump {
+    let inbox = Inbox.generate(count: n, seed: inboxSeed)
+    for m in inbox { print(m.text) }
+    let words = inbox.map { Inbox.wordCount($0.text) }
+    err("[inbox] \(n) messages, seed \(inboxSeed): \(n - Set(inbox.map(\.text)).count) duplicates, "
+        + "\(words.min() ?? 0)–\(words.max() ?? 0) words (mean \(String(format: "%.1f", Double(words.reduce(0, +)) / Double(max(1, n)))))")
+    exit(0)
+}
+
+let loadStart = ContinuousClock.now
 err("[textclassify] loading \(bundle ?? "gliner2.5-decide (catalog)") …")
 let classifier: TextClassifier
 do {
@@ -233,6 +264,79 @@ do {
     }
 } catch { fail("[textclassify] load failed: \(error)") }
 err("[textclassify] ready: S \(classifier.sequenceLengths), MMAX \(classifier.maxLabels) (graphs load on first use)")
+
+if let n = inboxCount {
+    let inbox = Inbox.generate(count: n, seed: inboxSeed)
+    let duplicates = n - Set(inbox.map(\.text)).count
+    let words = inbox.map { Inbox.wordCount($0.text) }
+    let sorter = InboxSorter(classifier: classifier)
+    let warm: [Int: Double]
+    do { warm = try await sorter.warm() } catch { fail("[inbox] warm-up failed: \(error)") }
+    let loadSeconds = loadStart.duration(to: .now).inSeconds
+    err("[inbox] graphs loaded: " + warm.keys.sorted().map { String(format: "S=%d %.2f s", $0, warm[$0]!) }.joined(separator: ", ")
+        + String(format: " (load + warm-up %.2f s)", loadSeconds))
+    err("[inbox] sorting \(n) messages (seed \(inboxSeed), \(duplicates) duplicates, \(words.min() ?? 0)–\(words.max() ?? 0) words)")
+
+    // progress to stderr, about every tenth of the inbox
+    final class Progress: @unchecked Sendable {
+        let lock = NSLock()
+        var done = 0, next = 0
+        var ms: [Double] = []
+    }
+    let progress = Progress()
+    let step = max(1, n / 10)
+    let run: SortRun
+    do {
+        run = try await sorter.sort(inbox) { batch in
+            progress.lock.lock()
+            defer { progress.lock.unlock() }
+            progress.done += batch.count
+            progress.ms += batch.map { $0.seconds * 1000 }
+            guard progress.done >= progress.next, let last = batch.last else { return }
+            progress.next = progress.done + step
+            let p50 = Stats.percentile(progress.ms.sorted(), 0.5)
+            err(String(format: "[inbox] %d/%d · p50 %.1f ms · %.1f msg/s", progress.done, n, p50, Double(progress.done) / last.at))
+        }
+    } catch { fail("[inbox] \(error)") }
+
+    var out = run.summary()
+    out["seed"] = .int(Int(inboxSeed))
+    out["duplicates"] = .int(duplicates)
+    out["words"] = .object(["min": .int(words.min() ?? 0), "max": .int(words.max() ?? 0),
+                            "mean": .rounded(Double(words.reduce(0, +)) / Double(max(1, n)), 1)])
+    out["load_s"] = .rounded(loadSeconds, 3)
+    out["warm_s"] = .object(Dictionary(uniqueKeysWithValues: warm.map { ("\($0.key)", .rounded($0.value, 3)) }))
+    out["agree_with_written"] = .object(run.agreement(with: inbox).mapValues { .rounded($0, 3) })
+    out["bundle"] = .string(bundle ?? "catalog")
+    for task in ["intent", "urgency", "sentiment"] {
+        err("[inbox] \(task): written as → the model's answers")
+        let table = run.confusion(task, with: inbox)
+        for want in table.keys.sorted() {
+            let row = table[want]!.sorted { $0.value > $1.value }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")
+            err("   \(pad(want, 20)) \(row)")
+        }
+    }
+    if let path = inboxJSONL {
+        let lines = zip(inbox, run.results).map { m, r -> String in
+            let row: [String: JSONValue] = [
+                "id": .int(m.id), "text": .string(m.text),
+                "labels": .object(r.labels.mapValues { .string($0) }),
+                "confidence": .object(r.confidence.mapValues { .rounded(Double($0), 4) }),
+                "written": .object(["intent": .string(m.written.intent), "urgency": .string(m.written.urgency),
+                                    "sentiment": .string(m.written.sentiment)]),
+                "S": .int(r.sequenceLength), "tokens": .int(r.tokens), "truncated": .bool(r.truncated),
+                "ms": .rounded(r.seconds * 1000, 2),
+            ]
+            return JSONValue.object(row).json()
+        }
+        do { try (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8) } catch {
+            fail("[inbox] --jsonl \(path): \(error)")
+        }
+        err("[inbox] wrote \(lines.count) rows to \(path)")
+    }
+    print(JSONValue.object(out).json())
+    exit(0)
+}
 
 if !gateFiles.isEmpty {
     var cases: [Case] = []
