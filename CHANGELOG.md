@@ -27,8 +27,9 @@ policy.
   there would download the 15.9 GB decoder for a `TypedDecisions` that cannot read it). `TypedDecisions` refuses it by
   its kind, and a `decision` entry that says `jointHead` by its format, before downloading anything. `/v1/systemone`
   gains `images` (one image: a data URL, base64, or a file path, which `SystemOneServer` reads only on 127.0.0.1) and
-  `grid`. `systemone serve --model clef-flash`, `decide-cli serve` and the MCP server load it through the new
-  `SystemOne.backend(catalog:)`, and a backend that reads no images answers an image request with a 422 that names it.
+  `grid`. `systemone serve --model clef-flash` and the MCP server load it through the new `SystemOne.backend(catalog:)`;
+  `decide-cli ask` and `decide-cli serve` load `KitClefDecider` when the entry's kind is `jointDecision`. A backend that
+  reads no images answers an image request with a 422 that names it.
   On an M4 Max through `decide-cli parity`, downloaded from the catalog pin: 240 of the zoo fixture's runs (200 on its
   186 records, 40 on the 30 held out; its 14 `native` runs, at the processor's own grid, have no tower here — the zoo's
   gate fed 13 of them the author's image rows, `photo_01`'s 1,200 image rows being more than the decoder's 1,024-row
