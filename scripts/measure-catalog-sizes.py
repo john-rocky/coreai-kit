@@ -91,6 +91,9 @@ ALSO: dict[str, list[str] | dict[str, list[str]]] = {
     # KitVisionDecider (DeciderVision/KitVisionDecider.swift): decoder + the default g256 tower; the g448
     # tower downloads the first time a decision asks for it.
     "decider-2b-vision": ["gpu-pipelined/decider_2b_vision_g256_vision_fp16w32"],
+    # KitClefDecider (ClefFlash/KitClefDecider.swift): decoder + the head + the folder holding the lm_head table,
+    # the entry's `assets`; a tower downloads the first time an image asks for its grid.
+    "clef-flash": ["gpu-pipelined/clef_flash_head_bucket_fp16w32", "host"],
 }
 
 # Loaders that never download the variant path itself — it names a flat repo's root or a

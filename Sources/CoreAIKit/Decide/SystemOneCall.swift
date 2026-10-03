@@ -119,6 +119,7 @@ extension TypedDecisions {
     /// count, and the ids for duplicates, before anything runs. `request.model` is the caller's
     /// to resolve (`CoreAI.systemOne` does); this model answers, and the response names it.
     public func systemOne(_ request: SystemOne.Request) async throws -> SystemOne.Response {
+        if let refusal = imageRefusal(request) { throw refusal }
         try SystemOne.validateIDs(request.questions.map(\.id))
         for (_, question) in request.questions {
             try DecisionPrompt.validate(question, maxOptions: maxOptions)
@@ -130,5 +131,27 @@ extension TypedDecisions {
             answers.append(SystemOne.Answer(id: key, question: question, answer: try await prefilled.decide(question)))
         }
         return SystemOne.Response(model: id, answers: answers, stateTokens: prefilled.tokens, prefill: prefilled.timing)
+    }
+}
+
+@available(macOS 27, iOS 27, *)
+extension SystemOne {
+    /// The backend that answers for a catalog id: `KitClefDecider` for a `jointDecision` entry (clef-flash), else
+    /// `TypedDecisions`. What `systemone` and the MCP server load.
+    public static func backend(
+        catalog id: String, store: ModelStore = .default,
+        configuration: TypedDecisions.Configuration = TypedDecisions.Configuration(),
+        downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
+    ) async throws -> any DecisionBackend {
+        if try await ModelCatalog.entry(forID: id).kind == .jointDecision {
+            return try await KitClefDecider(catalog: id, store: store, downloadProgress: downloadProgress)
+        }
+        return try await TypedDecisions(
+            catalog: id, store: store, configuration: configuration, downloadProgress: downloadProgress)
+    }
+
+    /// Whether `systemone` and the MCP server can load this catalog entry as a decision backend.
+    public static func supports(_ entry: CatalogEntry) -> Bool {
+        TypedDecisions.supports(entry) || KitClefDecider.supports(entry)
     }
 }

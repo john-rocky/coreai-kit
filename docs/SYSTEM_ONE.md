@@ -67,6 +67,13 @@ A choice lists up to the hosted API's 255 options where the model reads that man
 sends 22 requests in those forms and checks every answer's shape, against this server or any
 other that speaks the route.
 
+A request can carry one image for a model that reads images, `clef-flash` today: `images` is an
+array holding it as a data URL (`"data:image/png;base64,…"`), plain base64, or a path on the
+server's machine, which `SystemOneServer` reads only when it listens on 127.0.0.1; `grid` picks the
+vision tower's tile, 448 (the default) or 256. Any other model answers such a request with a 422
+that names it, and a request without the field reads as before
+([every question at once](#every-question-at-once-clef-flash)).
+
 ## From a coding agent
 
 `systemone mcp` serves the same decisions as tools of a Model Context Protocol server on
@@ -125,8 +132,9 @@ the first question on a short state and 1.2 s for each later question on it. On 
 `minicpm5-2b`: of the five models run there, it scores highest on the hard items (0.459).
 Name a model with `options: .model("apus-decision-v1-4b")` in Swift, or
 `systemone serve --model apus-decision-v1-4b` for the server. A question about an image goes to
-`decider-2b-vision` through `CoreAI.decide(image:…)` ([below](#decisions-about-an-image)); the server
-and the tables here are text only.
+`decider-2b-vision` through `CoreAI.decide(image:…)` ([below](#decisions-about-an-image)), or to
+`clef-flash` with the request's `images` ([below](#every-question-at-once-clef-flash)); the tables
+here are text only.
 
 JevBench's 231 public items (48 easy, 72 standard, 111 hard), sent one question per request to
 `decide-cli serve` by the benchmark's own harness, which also scored them; M4 Max, macOS 27.0,
@@ -270,6 +278,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `apus-decision-v1-4b` | A–P | 16 |
 | `laya-multilingual` | a mask marker before each option, in one forward pass | 20 |
 | `decider-2b-vision` | A–J after each question's `Answer: (`, every question of a call in one row ([about an image](#decisions-about-an-image)) | 10 |
+| `clef-flash` | a joint head over every option of every question in one pass, 16 questions and 128 options a request ([every question at once](#every-question-at-once-clef-flash)) | 128 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its
 letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
@@ -359,8 +368,53 @@ needs `com.apple.developer.kernel.increased-memory-limit` — without it the dec
 specialization dies with `std::bad_alloc` — and the runtime's cache for the three graphs takes
 6.7 GB on the phone; the decoder loads in 21.6 s the first time and 7.9 s from that cache.
 
-`/v1/systemone` has no image field: `systemone serve` and `decide-cli serve` do not load this model,
-and `systemone models` does not list it.
+This model is not behind `/v1/systemone`: `systemone serve` and `decide-cli serve` do not load it,
+and `systemone models` does not list it. The wire's `images` field reaches `clef-flash`
+([below](#every-question-at-once-clef-flash)).
+
+## Every question at once: clef-flash
+
+`clef-flash` (Cloudflare, Apache-2.0, from Qwen3.5-9B) reads a whole request in one pass: the state as text or
+JSON and at most one image, then every question with its options. A joint schema head reads the decoder's hidden
+state at every position — each question's and each option's span, the last token, and each option's rows of the
+model's 2.03 GB lm_head table — and gives each option a logit; each question is a float32 softmax over its own
+options at temperature 1. Nothing is generated, and every answer sees every other question. A request takes up to
+16 questions and 128 options in all. Mac only: the decoder alone is 15.9 GB. Its catalog kind is `jointDecision`:
+`systemone models` lists it as that, `TypedDecisions(catalog:)` refuses it by name before downloading anything, and a
+kit released before it (0.7.3 and earlier) decodes the kind as `unknown` and lists it nowhere.
+
+```swift
+let decider = try await KitClefDecider(catalog: "clef-flash")          // 18.2 GB the first time
+let r = try await decider.systemOne(SystemOne.Request(
+    state: "Our checkout started returning errors and orders are blocked.",
+    questions: ["department": .choice("Which team should handle the message?", ["billing", "technical"]),
+                "outage": .noul("Is a service down?")]))
+r["department"]?.choice
+```
+
+On the server it is `systemone serve --model clef-flash`, and an image goes in the request's `images` (a data URL,
+base64, or a path on the server's machine) with `grid` 448 or 256. The host is the model zoo's `apps/ClefFlash`
+library with every numeric path unchanged: the request rendered as the author's `encode_record()`, each piece
+tokenized alone; the image resized by Pillow's own integer bicubic (a float resize lands one or two levels off on
+some tiles) and read by a tower baked at the grid; the decoder 64 tokens per call from zeroed states; the head graph
+and the table. Through `decide-cli parity` on the zoo's fixture, the model downloaded from the catalog pin (M4 Max,
+macOS 27.0 26A428, Release, 2026-10-04):
+
+| set | runs | ids and spans = the author's | argmax = the author's fp32 (top-2 margin > 0.02) | near-ties agreeing | max \|Δp\| | mean of run means |
+|---|---:|---:|---:|---:|---:|---:|
+| fixture (186 records) | 200 | 200/200 | 352/352 | 3/3 | 0.0122 | 0.00057 |
+| held out (30 records) | 40 | 40/40 | 186/186 | 2/2 | 0.0082 | 0.00037 |
+
+Against the zoo's own Swift run of the same files, the logits, the probabilities, the decoder's hidden rows and the
+responses are bit-equal on all 240 runs, and the first run read again repeats them bit for bit. The fixture's 14
+`native` runs, at the processor's own grid, are not run: no tower here has that grid. The zoo's gate fed 13 of them
+the author's image rows; `photo_01`'s 1,200 image rows are more than the decoder's 1,024-row buffer.
+
+`systemone serve --model clef-flash` passes `conformance/check.py`, 22 of 22 requests and the three routes (a
+choice past 128 options is the 422 that names the count). The fixture's receipt sent in `images`, as a data URL and
+as a path, comes back with the zoo Swift run's probabilities to the wire's four decimals, 14 of 14 values. The
+answers are in the server's form: `confidence` is 1 − normalised entropy, and `usage` counts the row once per
+answer, as for every model here; `metadata.row_tokens` is the row, read once.
 
 ## What runs
 
@@ -409,6 +463,10 @@ Clips of each on the Mac and on the iPhone are in
   Pillow's pass order, cut into the tower's patches), `DeciderVisionPromptRenderer` (the author's prompt and slot
   rule) and `DeciderVisionRuntime` (the tower and the two-function decoder on the low-level runtime), ported from
   the model zoo's `apps/DeciderVision`.
+- `Sources/CoreAIKit/ClefFlash/` — clef-flash: `KitClefDecider` (the model-level API and a `DecisionBackend`;
+  `readout` gives the row, every option's logit and the hidden state's digest), and the model zoo's
+  `apps/ClefFlash` host beside it, ported with every numeric path unchanged (`ClefPromptBuilder`, `ClefRenderer`,
+  `ClefImagePreprocess`, `ClefDecoder`, `ClefHead`, `ClefPipeline`).
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op (`decide(image:…)` for an image);
   `CoreAI+SystemOne.swift` — `CoreAI.systemOne`, the same op in the hosted request and
   response forms (the model from `options`, else the request's `model`, else the default).

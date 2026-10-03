@@ -145,7 +145,7 @@ let id = modelID
     let catalog = await ModelCatalog.load()
     let store = ModelStore.default
     print("id\tname\tkind\tdownload\tstatus")
-    for entry in catalog.available() where TypedDecisions.supports(entry) {
+    for entry in catalog.available() where SystemOne.supports(entry) {
         let size = entry.variant?.sizeMB.map { String(format: "%.1f GB", Double($0) / 1000) } ?? "-"
         let cached = entry.modelID.map(store.isCached) ?? false
         let marker = entry.id == CoreAI.defaultDecisionModel ? " *" : ""
@@ -183,7 +183,7 @@ func describe(_ answer: Decision.Answer) -> String {
         text = piped.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     guard let text, !text.isEmpty, !questions.isEmpty else { fail(usage, status: 2) }
-    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let decider = try await SystemOne.backend(catalog: id, downloadProgress: progress)
     let response = try await decider.systemOne(
         SystemOne.Request(state: text, questions: questions.map { (id: $0.0, question: $0.1) }))
     if json {
@@ -199,7 +199,7 @@ func describe(_ answer: Decision.Answer) -> String {
 
 @available(macOS 27, iOS 27, *)
 @MainActor func runServe() async throws {
-    let decider = try await TypedDecisions(catalog: id, downloadProgress: progress)
+    let decider = try await SystemOne.backend(catalog: id, downloadProgress: progress)
     let entry = try await ModelCatalog.entry(forID: id)
     // GET /v1/models in the hosted list form: the TypeSafe SDK's models.list() reads this one.
     let models = SystemOne.modelsValue(
@@ -209,7 +209,7 @@ func describe(_ answer: Decision.Answer) -> String {
         revision: entry.revision)
     let loaded = secondsSinceLaunch()
     stderrPrint("systemone \(systemoneVersion): loaded \(id) (\(await decider.modelName)) \(fmt(loaded, 1)) s after launch; one request at a time, questions share the state's prefill")
-    let server = SystemOneServer(host: host, port: port, modelID: id, models: models, decider: decider) { line in
+    let server = SystemOneServer(host: host, port: port, modelID: id, models: models, backend: decider) { line in
         if line.hasPrefix("listening") {
             stderrPrint("systemone serve: \(line); ready \(fmt(secondsSinceLaunch(), 1)) s after launch, Ctrl-C stops")
         } else {

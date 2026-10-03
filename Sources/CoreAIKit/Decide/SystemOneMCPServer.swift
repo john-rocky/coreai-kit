@@ -169,6 +169,7 @@ public final class SystemOneMCPServer: @unchecked Sendable {
                 let (response, modelID) = try await decisions.run {
                     if await self.cancelled.remove(request.id) { throw CallCancelled() }
                     let (decider, modelID) = try await self.decider(for: parsed.model)
+                    if let refusal = decider.imageRefusal(parsed) { throw refusal }
                     return (try await decider.systemOne(parsed), modelID)
                 }
                 log("decide  \(parsed.questions.count) question(s), state \(response.stateTokens) tokens, \(Int(response.milliseconds.rounded())) ms")
@@ -190,7 +191,7 @@ public final class SystemOneMCPServer: @unchecked Sendable {
 
     /// The resident model for `requested` (the default when nil), loading or replacing it.
     /// Called inside the decision queue, so two calls never load at once.
-    private func decider(for requested: String?) async throws -> (TypedDecisions, String) {
+    private func decider(for requested: String?) async throws -> (any DecisionBackend, String) {
         let id = requested ?? defaultModel
         if let current = await slot.current, current.id == id { return (current.decider, id) }
         if let previous = await slot.loaded {
@@ -198,7 +199,7 @@ public final class SystemOneMCPServer: @unchecked Sendable {
             await slot.clear()
         }
         let start = SuspendingClock.now
-        let decider = try await TypedDecisions(
+        let decider = try await SystemOne.backend(
             catalog: id, store: store, configuration: configuration, downloadProgress: downloadProgress)
         let elapsed = SuspendingClock.now - start
         let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
@@ -213,15 +214,15 @@ private struct CallCancelled: Error {}
 /// The one resident model.
 @available(macOS 27, iOS 27, *)
 private actor ModelSlot {
-    private var decider: TypedDecisions?
+    private var decider: (any DecisionBackend)?
     private(set) var loaded: String?
 
-    var current: (decider: TypedDecisions, id: String)? {
+    var current: (decider: any DecisionBackend, id: String)? {
         guard let decider, let loaded else { return nil }
         return (decider, loaded)
     }
 
-    func set(_ decider: TypedDecisions, id: String) {
+    func set(_ decider: any DecisionBackend, id: String) {
         self.decider = decider
         loaded = id
     }
