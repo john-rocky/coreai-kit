@@ -11,6 +11,10 @@
 // lists at most 255 options, a score 10 levels. A server that knows its model passes the
 // model's own option count (`TypedDecisions.maxOptions`) to `request(from:maxOptions:)`, so a
 // list the model cannot read is refused with that count; 255 stays the ceiling either way.
+//
+// One addition for a model that reads images (`KitClefDecider`): `images`, an array of one image
+// as a data URL, plain base64 or a file path on this machine, and `grid`, the vision tower's tile
+// side (256 or 448). A backend that reads no images refuses a request that carries one.
 
 import Foundation
 
@@ -23,12 +27,31 @@ public enum SystemOne {
         public let questions: [(id: String, question: Decision.Question)]
         /// True when `state` was structured data serialized the reference way.
         public let structuredState: Bool
+        /// The images the request carries (`images` on the wire, at most one); empty for most requests. Only a
+        /// backend that reads images (`DecisionBackend.readsImages`) answers a request that has one.
+        public let images: [Image]
+        /// The vision tower's tile side the request asks for (`grid` on the wire: 256 or 448), or nil for the
+        /// model's default.
+        public let grid: Int?
+        /// The request as parsed from the wire, members in order and numbers as written, for a backend that
+        /// renders the request's own values (`KitClefDecider`); nil for a request built in Swift.
+        let json: JSONValue?
 
         /// A request built in Swift rather than parsed: the state as text, the questions in the
         /// order their answers should come back, `model` a catalog id or nil for the caller's
         /// default.
         public init(state: String, model: String? = nil, questions: [(id: String, question: Decision.Question)]) {
             self.init(state: state, model: model, questions: questions, structuredState: false)
+        }
+
+        /// The same with one image, for a model that reads images; `grid` is the tower's tile side (256 or 448),
+        /// nil for the model's default.
+        public init(
+            state: String, model: String? = nil, questions: [(id: String, question: Decision.Question)],
+            image: Image, grid: Int? = nil
+        ) {
+            self.init(
+                state: state, model: model, questions: questions, structuredState: false, images: [image], grid: grid)
         }
 
         /// The same with the questions as a literal, in the order written:
@@ -51,12 +74,27 @@ public enum SystemOne {
             }
         }
 
-        init(state: String, model: String?, questions: [(id: String, question: Decision.Question)], structuredState: Bool) {
+        init(
+            state: String, model: String?, questions: [(id: String, question: Decision.Question)], structuredState: Bool,
+            images: [Image] = [], grid: Int? = nil, json: JSONValue? = nil
+        ) {
             self.state = state
             self.model = model
             self.questions = questions
             self.structuredState = structuredState
+            self.images = images
+            self.grid = grid
+            self.json = json
         }
+    }
+
+    /// One image of a request (`images` on the wire).
+    public enum Image: Sendable, Equatable {
+        /// The encoded file (PNG, JPEG, …): a data URL (`data:image/png;base64,…`) or plain base64 on the wire.
+        case data(Data)
+        /// A file on this machine: an absolute path or a `file://` URL on the wire. `SystemOneServer` takes one only
+        /// when it listens on the loopback address.
+        case file(URL)
     }
 
     /// A request the endpoint rejects — HTTP 422 with the message.
@@ -114,7 +152,53 @@ public enum SystemOne {
         }
         try validateIDs(questions.map(\.id))
         _ = members
-        return Request(state: state, model: model, questions: questions, structuredState: structured)
+        var images: [Image] = []
+        if let value = root["images"], value != .null {
+            guard let elements = value.elements else {
+                throw WireError("'images' must be an array holding one image (a data URL, base64, or a file path)")
+            }
+            guard elements.count <= 1 else {
+                throw WireError("'images' holds \(elements.count) images; a request carries at most one")
+            }
+            images = try elements.map(image(from:))
+        }
+        var grid: Int?
+        if let value = root["grid"], value != .null {
+            guard case .number(let text) = value, let side = Int(text) else {
+                throw WireError("'grid' must be an integer, the vision tower's tile side (256 or 448)")
+            }
+            grid = side
+        }
+        return Request(
+            state: state, model: model, questions: questions, structuredState: structured, images: images, grid: grid,
+            json: root)
+    }
+
+    /// One `images` element: a data URL, plain base64, an absolute path or a `file://` URL.
+    static func image(from value: JSONValue) throws -> Image {
+        guard let text = value.stringValue, !text.isEmpty else {
+            throw WireError("an image must be a string: a data URL, base64, or a file path")
+        }
+        if text.hasPrefix("data:") {
+            guard let comma = text.firstIndex(of: ","), text[..<comma].hasSuffix(";base64"),
+                let data = Data(base64Encoded: String(text[text.index(after: comma)...]), options: .ignoreUnknownCharacters)
+            else { throw WireError("an image data URL must be base64 (data:<type>;base64,…)") }
+            return .data(data)
+        }
+        if text.hasPrefix("file://") {
+            guard let url = URL(string: text), url.isFileURL else { throw WireError("an image file URL could not be read: \(text)") }
+            return .file(url)
+        }
+        // A path has a character base64 has not ('.', '~', '-', a space); plain base64 of a JPEG starts with "/9j/".
+        if text.hasPrefix("/") || text.hasPrefix("~/"),
+            text.unicodeScalars.contains(where: { !(CharacterSet.alphanumerics.contains($0) && $0.isASCII) && !"+/=".unicodeScalars.contains($0) })
+        {
+            return .file(URL(fileURLWithPath: (text as NSString).expandingTildeInPath))
+        }
+        guard let data = Data(base64Encoded: text, options: .ignoreUnknownCharacters), !data.isEmpty else {
+            throw WireError("an image must be a data URL, base64, or an absolute file path")
+        }
+        return .data(data)
     }
 
     /// Every question id once: the answers are keyed by them, and a second answer under the same

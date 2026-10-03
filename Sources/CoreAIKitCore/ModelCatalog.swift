@@ -109,7 +109,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// read at a control token; the bundle's metadata declares it too), `sharedState` (a
     /// `Shared state:` + JSON task user turn read at the option letters), `encoder` (an
     /// encoder-type model read at a mask marker per option in one forward pass; the bundle's
-    /// metadata declares it too). nil = the kind's default (`decider` for a decision entry).
+    /// metadata declares it too), `jointHead` (every question read at once by a head graph over
+    /// the decoder's hidden states, with `assets` naming the other parts; `KitClefDecider`, not
+    /// `TypedDecisions`). nil = the kind's default (`decider` for a decision entry).
     public let format: String?
     /// The weights' license when it restricts what an app may do with them — the SPDX
     /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
@@ -120,11 +122,16 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// at by default, fitted by the maintainer on labelled rows (`decide-cli calibrate`). nil =
     /// the model's own temperature — its bundle's declaration, or its prompt form's default.
     public let calibration: Calibration?
+    /// The parts a loader downloads beside the variant path, by role, as repo paths at the entry's
+    /// revision, for a model whose parts the kit does not name in code (clef-flash). nil for the
+    /// others. A kit built before the field ignores it.
+    public let assets: Assets?
 
     public init(
         id: String, name: String, repo: String, revision: String? = nil, kind: Kind,
         variants: [String: Variant], thinking: Bool? = nil, engine: String? = nil,
-        format: String? = nil, license: String? = nil, calibration: Calibration? = nil
+        format: String? = nil, license: String? = nil, calibration: Calibration? = nil,
+        assets: Assets? = nil
     ) {
         self.id = id
         self.name = name
@@ -137,6 +144,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.format = format
         self.license = license
         self.calibration = calibration
+        self.assets = assets
     }
 
     static var platformKey: String {
@@ -184,6 +192,21 @@ extension CatalogEntry {
         /// The temperature for a question type: its own when fitted apart, else `temperature`.
         public func temperature(forType type: String) -> Double {
             byType?[type] ?? temperature
+        }
+    }
+
+    /// A joint-head model's parts beside its decoder (`format: jointHead`, clef-flash): the head bundle, the
+    /// host table file — the Hub lists folders, so the folder holding it is what downloads — and a vision tower
+    /// per grid name (`g256`, `g448`), each downloaded the first time a decision asks for its grid.
+    public struct Assets: Sendable, Codable, Hashable {
+        public let head: String?
+        public let table: String?
+        public let towers: [String: String]?
+
+        public init(head: String? = nil, table: String? = nil, towers: [String: String]? = nil) {
+            self.head = head
+            self.table = table
+            self.towers = towers
         }
     }
 }
@@ -258,7 +281,7 @@ public struct ModelCatalog: Sendable, Codable {
                 return CatalogEntry(
                     id: e.id, name: e.name, repo: e.repo, revision: rev, kind: e.kind,
                     variants: e.variants, thinking: e.thinking, engine: e.engine, format: e.format,
-                    license: e.license, calibration: e.calibration)
+                    license: e.license, calibration: e.calibration, assets: e.assets)
             })
     }
 
@@ -497,6 +520,28 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "gpu-pipelined/decider_2b_vision_decode_int8mix_pf16", sizeMB: 3325),
                     "ios": .init(path: "gpu-pipelined/decider_2b_vision_decode_int8mix_pf16", sizeMB: 3325),
                 ]),
+            // ── clef-flash (Cloudflare, Apache-2.0, from Qwen3.5-9B): typed decisions read by a joint schema head —
+            //    every question of a request (text, JSON, and at most one image) in one pass. `format: jointHead`:
+            //    a decoder that returns hidden states (fp16, 64 tokens per call), the head graph and a 2.03 GB fp16
+            //    lm_head table on the host, named in `assets` with a vision tower per grid; driven by
+            //    `KitClefDecider`, which `TypedDecisions` points to. sizeMB is the decoder + the head + the table's
+            //    folder; a tower (909 MB g256, 912 MB g448) downloads the first time an image asks for its grid.
+            //    macOS only: the decoder alone is 15.9 GB, and the first load specializes it (56 s and 31.8 GB of
+            //    runtime cache in the zoo's run). The zoo's int8mix decoder (11.8 GB) is not in the catalog; its
+            //    card has it. ──
+            CatalogEntry(
+                id: "clef-flash", name: "clef-flash",
+                repo: "mlboydaisuke/clef-flash-CoreAI", kind: .decision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/clef_flash_decode_fp16_pf64", sizeMB: 18178),
+                ],
+                format: "jointHead",
+                assets: .init(
+                    head: "gpu-pipelined/clef_flash_head_bucket_fp16w32", table: "host/lm_head_fp16.bin",
+                    towers: [
+                        "g256": "gpu-pipelined/clef_flash_g256_vision_fp16w32",
+                        "g448": "gpu-pipelined/clef_flash_g448_vision_fp16w32",
+                    ])),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

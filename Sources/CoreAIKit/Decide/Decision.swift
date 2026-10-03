@@ -78,6 +78,13 @@ public enum Decision {
         /// itself (`decision.head == "encoder"` in its metadata.json, with its window, head
         /// budget, special ids and temperatures). `EncoderPrompt.swift`, `EncoderDecider.swift`.
         case encoder
+        /// The joint schema form (clef-flash): the whole request — the state (text, JSON or one image) and every
+        /// question with its options as canonical JSON — in one row, a decoder that returns the hidden state at
+        /// every position, and a separate head graph that reads every question at once (span means, the last
+        /// token, the lm_head rows of each option) into one logit per option, softmaxed per question at
+        /// temperature 1. Driven by `KitClefDecider`, not `TypedDecisions`: no engine of the kit returns hidden
+        /// states. `ClefFlash/`.
+        case jointHead
     }
 
     /// One listed answer for a `choice` question. `id` is what the answer reports;

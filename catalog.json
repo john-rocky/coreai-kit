@@ -429,6 +429,28 @@
       }
     },
     {
+      "id": "clef-flash",
+      "name": "clef-flash",
+      "repo": "mlboydaisuke/clef-flash-CoreAI",
+      "revision": "220ac149ed1136465f7d9dac93aaf0dfc55d6b73",
+      "kind": "decision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/clef_flash_decode_fp16_pf64",
+          "sizeMB": 18178
+        }
+      },
+      "format": "jointHead",
+      "assets": {
+        "head": "gpu-pipelined/clef_flash_head_bucket_fp16w32",
+        "table": "host/lm_head_fp16.bin",
+        "towers": {
+          "g256": "gpu-pipelined/clef_flash_g256_vision_fp16w32",
+          "g448": "gpu-pipelined/clef_flash_g448_vision_fp16w32"
+        }
+      }
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

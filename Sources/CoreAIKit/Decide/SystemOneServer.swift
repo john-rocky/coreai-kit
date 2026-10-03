@@ -287,6 +287,15 @@ public final class SystemOneServer: @unchecked Sendable {
         } catch {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: "\(error)"))
         }
+        if let refusal = backend.imageRefusal(parsed) {
+            return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: refusal.message))
+        }
+        // A file path names a file on this machine: read only for a client on this machine.
+        if !Self.isLoopback(host), parsed.images.contains(where: { if case .file = $0 { true } else { false } }) {
+            return .json(422, SystemOne.errorValue(
+                type: "invalid_request_error",
+                message: "this server listens on \(host); send the image as base64 (a file path is read only on 127.0.0.1)"))
+        }
         do {
             let response = try await decisions.run { [backend] in try await backend.systemOne(parsed) }
             // The system model counts the state inside each answer, not as a prefix.
@@ -296,8 +305,15 @@ public final class SystemOneServer: @unchecked Sendable {
                 model: modelID, answers: response.answers.map { ($0.id, $0.question, $0.answer) }, metadata: response.metadata))
         } catch let error as DecisionError {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.localizedDescription))
+        } catch let error as SystemOne.WireError {
+            return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: error.message))
         } catch {
             return .json(500, SystemOne.errorValue(type: "server_error", message: error.localizedDescription))
         }
+    }
+
+    static func isLoopback(_ host: String) -> Bool {
+        if host == "::1" { return true }
+        return IPv4Address(host).map { $0.rawValue.first == 127 } ?? false
     }
 }

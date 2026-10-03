@@ -247,10 +247,10 @@ public struct SystemOneMCP: Sendable {
         try SystemOne.request(from: arguments)
     }
 
-    /// `models`: the catalog ids `TypedDecisions` loads on this platform.
+    /// `models`: the catalog ids a decision backend loads on this platform (`SystemOne.supports`).
     @available(macOS 27, iOS 27, *)
     public static func modelsResult(catalog: ModelCatalog = .builtin, default defaultID: String, loaded: String?) -> JSONValue {
-        let entries = catalog.available().filter { TypedDecisions.supports($0) }
+        let entries = catalog.available().filter { SystemOne.supports($0) }
         return .object([
             .init("models", .array(entries.map { entry in
                 var members: [JSONValue.Member] = [
@@ -307,6 +307,17 @@ public struct SystemOneMCP: Sendable {
                 "model": {
                   "type": "string",
                   "description": "A catalog id from the models tool. Omit for the server's default; naming another id loads it (a few seconds)."
+                },
+                "images": {
+                  "type": "array",
+                  "description": "One image the questions are also about, for a model that reads images (clef-flash): a data URL, base64, or an absolute file path. Other models refuse it.",
+                  "items": {"type": "string"},
+                  "maxItems": 1
+                },
+                "grid": {
+                  "type": "integer",
+                  "description": "The vision tower's tile side for the image: 448 (default) or 256.",
+                  "enum": [256, 448]
                 }
               },
               "required": ["state", "questions"],

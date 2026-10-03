@@ -17,6 +17,11 @@
 //   swift run -c release decide-cli ask --image frame.png [--grid 256|448] --state "…" --choice "…|…|…"   (decider-2b-vision)
 //   swift run -c release decide-cli parity --fixture fixtures-decider-2b-vision.json --images <dir> [--reference <zoo Swift run>]
 //   (an image-decision fixture, coreai-decider-vision-fixtures/1: the author's ids, slots and fp32 probabilities per run)
+//   swift run -c release decide-cli ask --model clef-flash --state "…" --choice "…|…|…" [--image x.png --grid 256|448]
+//   swift run -c release decide-cli parity --fixture fixtures-clef-flash.json --images <dir>[,<dir>] \
+//       [--reference <zoo Swift fixture.json>[,<heldout.json>]] [--out summary.json] [--limit <n>]
+//   (a clef-flash fixture, coreai-clef-flash-fixtures/1: the author's ids, spans and fp32 probabilities per run, every
+//    option of every question; --reference adds the zoo Swift host's run of the same assets, compared bit for bit)
 //   (an encoder model's fixture, coreai-encoder-fixtures/1: tokens and markers, then the raw logits at T = 1;
 //    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
@@ -50,6 +55,10 @@ let usage = """
                              [--compute gpu|ane|cpu|cpuonly] [--act-compute gpu|ane|cpu|cpuonly])
                             (an image-decision fixture: --images <dir> [--reference <zoo Swift run .json>] [--timed <passes>]
                              [--out <summary.json>])
+                            (a clef-flash fixture: --images <dir>[,<dir>] [--reference <zoo Swift run .json>[,<.json>]]
+                             [--out <summary.json>] [--limit <n>]; --bundle <decoder dir> --head <dir> --table <file>
+                             [--tower-g256 <graph>] [--tower-g448 <graph>] reads local files instead of the catalog;
+                             ask, serve and mcp take --model clef-flash, ask --image too)
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
@@ -148,8 +157,13 @@ var modelGiven = false
 /// `ask --image`: the image the questions are about, and the square it is resized to.
 var imagePath: String?
 var grid: KitVisionDecider.Grid = .g256
+/// `--grid` given: clef-flash otherwise reads its own default (448).
+var gridGiven = false
 /// A local decider-2b-vision's towers, beside `--bundle` (the decoder).
 var towerPaths: [KitVisionDecider.Grid: String] = [:]
+/// A local clef-flash beside `--bundle` (the decoder): the head bundle directory and the lm_head table file.
+var headPath: String?
+var tablePath: String?
 /// `parity` on an image-decision fixture: where its images are, and how many timed passes follow the checked one.
 var imagesDir: String?
 var timedPasses = 1
@@ -276,6 +290,9 @@ while let arg = args.popFirst() {
     case "--grid":
         guard let tile = Int(args.popFirst() ?? ""), let g = KitVisionDecider.Grid(tile: tile) else { fail(usage) }
         grid = g
+        gridGiven = true
+    case "--head": headPath = args.popFirst()
+    case "--table": tablePath = args.popFirst()
     case "--tower-g256": towerPaths[.g256] = args.popFirst()
     case "--tower-g448": towerPaths[.g448] = args.popFirst()
     case "--timed": timedPasses = Int(args.popFirst() ?? "") ?? timedPasses
@@ -307,6 +324,19 @@ let id = modelID
 
 @MainActor func runAsk() async throws {
     guard let state, !questions.isEmpty else { fail(usage) }
+    if modelGiven, try await isJointHead(id) {
+        // clef-flash: the whole request, and the image when given, read in one pass by its joint head.
+        let decider = try await KitClefDecider(catalog: id, downloadProgress: progress)
+        let asked = questions.map { (id: $0.0, question: $0.1) }
+        let request = imagePath.map {
+            SystemOne.Request(
+                state: state, questions: asked, image: .file(URL(fileURLWithPath: $0)), grid: gridGiven ? grid.tile : nil)
+        } ?? SystemOne.Request(state: state, questions: asked)
+        stderrPrint("model: \(decider.id) (\(decider.modelName))\(imagePath == nil ? "" : "   grid: \(gridGiven ? grid.description : "g448")")")
+        let response = try await decider.systemOne(request)
+        for answer in response.answers { print("\(answer.id): \(describe(answer.answer))") }
+        return
+    }
     if let imagePath {
         // decider-2b-vision: every question about the image is one block of one row, read in one pass.
         let image = try ImageFile.load(URL(fileURLWithPath: imagePath)).cgImage
@@ -1449,6 +1479,10 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
         try await runVisionParity(data)
         return
     }
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-clef-flash-fixtures") {
+        try await runClefParity(data)
+        return
+    }
     let fx = try JSONDecoder().decode(DeciderFixture.self, from: data)
     var stateByRequest: [String: String] = [:]
     for request in fx.requests { if let state = request.state { stateByRequest[request.id] = state } }
@@ -1797,6 +1831,221 @@ func seconds(since start: SuspendingClock.Instant) -> Double {
     return Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
 }
 
+// MARK: - parity on clef-flash's fixture (coreai-clef-flash-fixtures/1)
+
+/// One run of a reference run file (the zoo Swift host's `clef-flash fixture` output, clef-flash-swift-fixture/1).
+struct ClefReferenceRun {
+    let logits: [Float]
+    let probabilities: [[Float]]
+    let hidden: String
+    let response: JSONValue
+}
+
+/// The tally of one set (the fixture's 186 records, the 30 held out) against the author's fp32 read-out.
+struct ClefSetTally {
+    var runs = 0, skipped = 0, idsEqual = 0, spansEqual = 0
+    var questions = 0, nonNearTie = 0, argmaxNonNearTie = 0, nearTies = 0, argmaxNearTie = 0
+    var maxDelta = 0.0, worst = ""
+    var runMeans: [Double] = []
+    var refRuns = 0, refLogitsBitEqual = 0, refProbsBitEqual = 0, refHiddenEqual = 0, refResponseEqual = 0
+    var mean: Double { runMeans.reduce(0, +) / Double(max(1, runMeans.count)) }
+}
+
+func floats(_ value: JSONValue?) -> [Float] { (value?.elements ?? []).compactMap { $0.doubleValue.map(Float.init) } }
+
+@MainActor func runClefParity(_ data: Data) async throws {
+    let root = try JSONValue.parse(data)
+    guard let records = root["records"]?.elements, let runs = root["runs"]?.elements else {
+        fail("\(fixture ?? ""): no records / runs (coreai-clef-flash-fixtures/1)")
+    }
+    var requests: [String: Data] = [:]
+    for record in records {
+        if let rid = record["id"]?.stringValue, let request = record["request"] { requests[rid] = Data(request.dumps().utf8) }
+    }
+    let imageDirs = (imagesDir ?? "").split(separator: ",").map { URL(fileURLWithPath: String($0)) }
+    var reference: [String: ClefReferenceRun] = [:]
+    for path in (referencePath ?? "").split(separator: ",") {
+        let file = try JSONValue.parse(Data(contentsOf: URL(fileURLWithPath: String(path))))
+        for run in file["runs"]?.elements ?? [] {
+            guard let rid = run["id"]?.stringValue, let arm = run["arm"]?.stringValue else { continue }
+            reference["\(rid)/\(arm)"] = ClefReferenceRun(
+                logits: floats(run["logits"]), probabilities: (run["probabilities"]?.elements ?? []).map(floats),
+                hidden: run["hidden_sha256"]?.stringValue ?? "", response: run["response"] ?? .null)
+        }
+    }
+
+    let started = SuspendingClock.now
+    let decider: KitClefDecider
+    if let bundlePath {
+        guard let headPath, let tablePath else {
+            fail("--bundle reads a local clef-flash: pass --head <head bundle dir> --table <lm_head_fp16.bin>")
+        }
+        var towers: [KitClefDecider.Grid: URL] = [:]
+        for (g, path) in towerPaths { towers[g == .g256 ? .g256 : .g448] = URL(fileURLWithPath: path) }
+        decider = try await KitClefDecider(
+            decoderAt: URL(fileURLWithPath: bundlePath), headAt: URL(fileURLWithPath: headPath),
+            tableAt: URL(fileURLWithPath: tablePath), towersAt: towers)
+    } else {
+        decider = try await KitClefDecider(catalog: modelGiven ? modelID : "clef-flash", downloadProgress: progress)
+    }
+    let loadSeconds = seconds(since: started)
+    print("model: \(decider.id) (\(decider.modelName))   load \(fmt(loadSeconds, 1)) s   reference runs: \(reference.count)")
+
+    func read(_ run: JSONValue) async throws -> KitClefDecider.Readout? {
+        guard let rid = run["id"]?.stringValue, let arm = run["arm"]?.stringValue, let request = requests[rid] else { return nil }
+        var image: CGImage? = nil
+        if arm == "g256" || arm == "g448" {
+            guard let name = run["image_files"]?.elements?.first?.stringValue,
+                let url = imageDirs.map({ $0.appendingPathComponent(name) }).first(where: { FileManager.default.fileExists(atPath: $0.path) })
+            else { fail("\(rid)/\(arm): its image is in none of --images \(imagesDir ?? "(none)")") }
+            image = try KitClefDecider.cgImage(.file(url))
+        } else if arm != "text" {
+            return nil  // `native`: the zoo fed the oracle's image rows at the processor's own grid; no tower here has it
+        }
+        return try await decider.readout(requestJSON: request, image: image, grid: arm == "g256" ? .g256 : .g448)
+    }
+
+    var tallies: [String: ClefSetTally] = [:]
+    var rows: [JSONValue] = []
+    var first: (key: String, readout: KitClefDecider.Readout)?
+    var done = 0
+    for run in runs {
+        guard done < limit else { break }
+        guard let rid = run["id"]?.stringValue, let arm = run["arm"]?.stringValue else { continue }
+        let set = run["set"]?.stringValue ?? "fixture"
+        var t = tallies[set] ?? ClefSetTally()
+        let start = SuspendingClock.now
+        guard let r = try await read(run) else {
+            t.skipped += 1
+            tallies[set] = t
+            stderrPrint("  \(rid)/\(arm): skipped (\(arm == "native" ? "the oracle's own grid" : "no request"))")
+            continue
+        }
+        let wall = seconds(since: start)
+        done += 1
+        if first == nil { first = ("\(rid)/\(arm)", r) }
+        t.runs += 1
+        let idsOK = r.ids == (run["ids"]?.elements ?? []).compactMap { $0.doubleValue.map(Int.init) }
+        if idsOK { t.idsEqual += 1 }
+        let oracle = run["questions"]?.elements ?? []
+        var spansOK = oracle.count == r.questions.count
+        var deltas: [Double] = []
+        var runMax = 0.0
+        var argmaxOK = true
+        for (k, (q, o)) in zip(r.questions, oracle).enumerated() {
+            let ints: (JSONValue?) -> [Int] = { ($0?.elements ?? []).compactMap { $0.doubleValue.map(Int.init) } }
+            if q.questionSpan != ints(o["question_span"]) || q.optionSpans != (o["option_spans"]?.elements ?? []).map(ints)
+                || q.optionIDs != (o["option_ids"]?.elements ?? []).compactMap(\.stringValue)
+            {
+                spansOK = false
+            }
+            let po = (o["probs"]?.elements ?? []).compactMap(\.doubleValue)
+            let p = r.probabilities[k].map(Double.init)
+            let d = zip(p, po).map { abs($0 - $1) }
+            deltas += d
+            runMax = max(runMax, d.max() ?? 0)
+            let best = p.indices.max { p[$0] < p[$1] } ?? 0
+            let oracleBest = Int(o["argmax_index"]?.doubleValue ?? -1)
+            t.questions += 1
+            if o["near_tie"] == .bool(true) {
+                t.nearTies += 1
+                if best == oracleBest { t.argmaxNearTie += 1 }
+            } else {
+                t.nonNearTie += 1
+                if best == oracleBest { t.argmaxNonNearTie += 1 } else { argmaxOK = false }
+            }
+        }
+        if spansOK { t.spansEqual += 1 }
+        if runMax > t.maxDelta {
+            t.maxDelta = runMax
+            t.worst = "\(rid)/\(arm)"
+        }
+        let runMean = deltas.reduce(0, +) / Double(max(1, deltas.count))
+        t.runMeans.append(runMean)
+        var refMembers: [JSONValue.Member] = []
+        if let ref = reference["\(rid)/\(arm)"] {
+            t.refRuns += 1
+            let logitsEqual = r.logits.map(\.bitPattern) == ref.logits.map(\.bitPattern)
+            let probsEqual = r.probabilities.map { $0.map(\.bitPattern) } == ref.probabilities.map { $0.map(\.bitPattern) }
+            let hiddenEqual = r.hiddenSHA256 == ref.hidden
+            let responseEqual = (try? JSONValue.parse(r.response)) == ref.response
+            if logitsEqual { t.refLogitsBitEqual += 1 }
+            if probsEqual { t.refProbsBitEqual += 1 }
+            if hiddenEqual { t.refHiddenEqual += 1 }
+            if responseEqual { t.refResponseEqual += 1 }
+            refMembers = [
+                .init("logits_bit_equal_ref", .bool(logitsEqual)), .init("probabilities_bit_equal_ref", .bool(probsEqual)),
+                .init("hidden_sha256_equal_ref", .bool(hiddenEqual)), .init("response_equal_ref", .bool(responseEqual)),
+            ]
+            if !(logitsEqual && hiddenEqual && responseEqual) {
+                stderrPrint("  \(rid)/\(arm): differs from the reference — logits \(logitsEqual), hidden \(hiddenEqual), response \(responseEqual)")
+            }
+        }
+        tallies[set] = t
+        rows.append(.object([
+            .init("id", .string(rid)), .init("arm", .string(arm)), .init("set", .string(set)), .init("tokens", .int(r.ids.count)),
+            .init("bucket", .string(r.bucket)), .init("calls", .int(r.calls)), .init("ids_equal_oracle", .bool(idsOK)),
+            .init("spans_equal_oracle", .bool(spansOK)), .init("argmax_equal_non_near_tie", .bool(argmaxOK)),
+            .init("max_abs_dp", .number("\(runMax)")), .init("mean_abs_dp", .number("\(runMean)")),
+            .init("hidden_sha256", .string(r.hiddenSHA256)), .init("wall_s", .number("\(wall)")),
+        ] + refMembers))
+        if verbose || !idsOK || !spansOK || !argmaxOK {
+            stderrPrint("  \(rid)/\(arm): \(r.ids.count) tokens, max |Δp| \(fmt(runMax, 4))\(idsOK ? "" : "  ids DIFF")\(spansOK ? "" : "  spans DIFF")\(argmaxOK ? "" : "  argmax DIFF")")
+        }
+    }
+
+    // The first run again, after every other: the decoder's states are zeroed per row, so it repeats bit for bit.
+    var repeatEqual: Bool?
+    if let first, let again = runs.first(where: { "\($0["id"]?.stringValue ?? "")/\($0["arm"]?.stringValue ?? "")" == first.key }),
+        let r = try await read(again)
+    {
+        repeatEqual = r.logits.map(\.bitPattern) == first.readout.logits.map(\.bitPattern) && r.hiddenSHA256 == first.readout.hiddenSHA256
+    }
+
+    print("| set | runs | ids = author | spans = author | argmax (margin > 0.02) | near-ties agreeing | max \\|Δp\\| (run) | mean of run means |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|")
+    var setMembers: [JSONValue.Member] = []
+    var pass = true
+    for set in ["fixture", "heldout"] {
+        guard let t = tallies[set] else { continue }
+        print("| \(set) | \(t.runs) | \(t.idsEqual)/\(t.runs) | \(t.spansEqual)/\(t.runs) | \(t.argmaxNonNearTie)/\(t.nonNearTie) | "
+            + "\(t.argmaxNearTie)/\(t.nearTies) | \(fmt(t.maxDelta, 4)) (\(t.worst)) | \(fmt(t.mean, 5)) |")
+        if t.refRuns > 0 {
+            print("  vs the reference: logits bit-equal \(t.refLogitsBitEqual)/\(t.refRuns), probabilities bit-equal \(t.refProbsBitEqual)/\(t.refRuns), "
+                + "hidden sha256 equal \(t.refHiddenEqual)/\(t.refRuns), response equal \(t.refResponseEqual)/\(t.refRuns)")
+        }
+        let setPass = t.idsEqual == t.runs && t.spansEqual == t.runs && t.argmaxNonNearTie == t.nonNearTie
+            && t.maxDelta <= 0.02 && t.mean <= 0.002
+        pass = pass && setPass
+        setMembers.append(.init(set, .object([
+            .init("runs", .int(t.runs)), .init("skipped", .int(t.skipped)), .init("ids_equal", .int(t.idsEqual)),
+            .init("spans_equal", .int(t.spansEqual)), .init("questions", .int(t.questions)),
+            .init("questions_non_near_tie", .int(t.nonNearTie)), .init("argmax_equal_non_near_tie", .int(t.argmaxNonNearTie)),
+            .init("near_tie_questions", .int(t.nearTies)), .init("argmax_equal_near_tie", .int(t.argmaxNearTie)),
+            .init("max_abs_dp", .number("\(t.maxDelta)")), .init("worst_run", .string(t.worst)),
+            .init("mean_of_run_mean_abs_dp", .number("\(t.mean)")), .init("reference_runs", .int(t.refRuns)),
+            .init("reference_logits_bit_equal", .int(t.refLogitsBitEqual)),
+            .init("reference_probabilities_bit_equal", .int(t.refProbsBitEqual)),
+            .init("reference_hidden_sha256_equal", .int(t.refHiddenEqual)),
+            .init("reference_response_equal", .int(t.refResponseEqual)), .init("bar", .string(setPass ? "PASS" : "FAIL")),
+        ])))
+    }
+    if let repeatEqual { print("repeat: the first run again, logits and hidden bit-equal: \(repeatEqual)") }
+    print("the zoo's bar — ids and spans on every run, argmax on every question with margin > 0.02, max |Δp| ≤ 0.02, "
+        + "mean of run means ≤ 0.002: " + (pass ? "PASS" : "FAIL"))
+    if let outPath {
+        let summary = JSONValue.object([
+            .init("schema", .string("decide-cli-clef-parity/1")), .init("model", .string(decider.id)),
+            .init("bundle", .string(decider.modelName)), .init("fixture", .string(fixture ?? "")),
+            .init("reference", .string(referencePath ?? "")), .init("load_seconds", .number("\(loadSeconds)")),
+            .init("sets", .object(setMembers)), .init("repeat_bit_equal", repeatEqual.map { .bool($0) } ?? .null),
+            .init("bar", .string(pass ? "PASS" : "FAIL")), .init("runs", .array(rows)),
+        ])
+        try summary.dumps().appending("\n").write(toFile: outPath, atomically: true, encoding: .utf8)
+    }
+    if !pass { exit(1) }
+}
+
 // MARK: - filter (a semantic `grep`: one decision per stdin line)
 
 @MainActor func runFilter() async throws {
@@ -1849,7 +2098,12 @@ func seconds(since start: SuspendingClock.Instant) -> Double {
         try await server.run()
         return
     }
-    let decider = try await loadDecider()
+    let decider: any DecisionBackend
+    if try await isJointHead(id) {
+        decider = try await KitClefDecider(catalog: id, downloadProgress: progress)
+    } else {
+        decider = try await loadDecider()
+    }
     let models: JSONValue
     if bundlePath == nil {
         let entry = try await ModelCatalog.entry(forID: id)
@@ -1862,10 +2116,16 @@ func seconds(since start: SuspendingClock.Instant) -> Double {
             id: id, description: "local bundle \(await decider.modelName), on this machine", revision: nil)
     }
     stderrPrint("loaded \(id) (\(await decider.modelName)); one request at a time, questions share the state's prefill")
-    let server = SystemOneServer(host: host, port: port, modelID: id, models: models, decider: decider) { line in
+    let server = SystemOneServer(host: host, port: port, modelID: id, models: models, backend: decider) { line in
         stderrPrint("decide-cli serve: \(line)  (Ctrl-C stops)")
     }
     try await server.run()
+}
+
+/// Whether the catalog entry for `id` reads through a joint head (clef-flash: `KitClefDecider`).
+@MainActor func isJointHead(_ id: String) async throws -> Bool {
+    guard bundlePath == nil else { return false }
+    return KitClefDecider.supports(try await ModelCatalog.entry(forID: id))
 }
 
 // MARK: - mcp (the same decisions as Model Context Protocol tools — `SystemOneMCPServer` in the kit;

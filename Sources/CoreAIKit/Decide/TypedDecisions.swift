@@ -198,6 +198,7 @@ public actor TypedDecisions {
     public static func supports(_ entry: CatalogEntry) -> Bool {
         (entry.kind == .chat || entry.kind == .decision) && entry.modelID != nil
             && entry.id != Gemma4MetalRuntime.catalogID && GemmaModelID.byCatalogID[entry.id] == nil
+            && entry.format != Decision.Format.jointHead.rawValue
     }
 
     /// Loads a model by its catalog id (`kind: chat`); downloads on first use.
@@ -220,6 +221,11 @@ public actor TypedDecisions {
         if entry.id == Gemma4MetalRuntime.catalogID || GemmaModelID.byCatalogID[entry.id] != nil {
             throw DecisionError.unsupportedModel(
                 id: id, reason: "its runtime samples on the GPU and exposes no logits")
+        }
+        // A joint-head model reads hidden states through its own head graph: refused before the download.
+        if entry.format == Decision.Format.jointHead.rawValue {
+            throw DecisionError.unsupportedModel(
+                id: id, reason: "it reads every question through a joint head graph; load it with KitClefDecider")
         }
         let url = try await store.download(model, progress: downloadProgress)
         if let layout = try EncoderPrompt.Layout.read(bundleAt: url) {
@@ -298,6 +304,9 @@ public actor TypedDecisions {
         var labels = LabelTable(names: [], ids: [])
         var numbers = LabelTable(names: [], ids: [])
         switch format {
+        case .jointHead:
+            throw DecisionError.unsupportedModel(
+                id: id, reason: "Format.jointHead reads hidden states through a head graph; load it with KitClefDecider")
         case .encoder:
             throw DecisionError.unsupportedModel(
                 id: id, reason: "its metadata.json declares no encoder head ('decision' block), which Format.encoder needs")
@@ -393,6 +402,7 @@ public actor TypedDecisions {
         case .scalar: return ScalarPrompt.maxOptions
         case .slot: return slot?.maxOptions ?? DecisionPrompt.maxOptions
         case .encoder: return EncoderPrompt.maxOptions
+        case .jointHead: return 0  // never held: init refuses it
         }
     }
 
@@ -546,6 +556,7 @@ public actor TypedDecisions {
                     for: question, probabilities: DeciderPrompt.combine(fit: fit), timing: total, fit: fit)
             }
             return DecisionPrompt.answer(for: question, probabilities: last, timing: total)
+        case .jointHead: throw DecisionError.noLogits  // never held: init refuses it
         case .encoder:
             // One forward pass per question; the options read at their markers.
             guard case .encoder(let encoder) = backend else { throw DecisionError.noLogits }
@@ -618,6 +629,7 @@ public actor TypedDecisions {
             return ScalarPrompt.statePrefix(state: state, layout: layout, tokenizer: runtime.tokenizer)
         case .letterList: return try LetterListPrompt.statePrefix(state: state, tokenizer: runtime.tokenizer)
         case .encoder: throw DecisionError.noLogits  // an encoder bundle has no language prompt
+        case .jointHead: throw DecisionError.noLogits  // never held: init refuses it
         }
     }
 
@@ -693,6 +705,7 @@ public actor TypedDecisions {
         case .letterList:
             let rendered = try LetterListPrompt.render(state: state, question: question, tokenizer: runtime.tokenizer)
             return [(rendered.tokens, rendered.slots)]
+        case .jointHead: throw DecisionError.noLogits  // never held: init refuses it
         case .encoder:
             // One row; the slots are the option markers' positions in it.
             guard case .encoder(let encoder) = backend else { throw DecisionError.noLogits }
