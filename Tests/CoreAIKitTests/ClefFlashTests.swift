@@ -25,7 +25,7 @@ struct ClefFlashTests {
     @available(macOS 27, iOS 27, *)
     @Test func theCatalogEntryNamesEveryPartAtItsPin() throws {
         let entry = try #require(ModelCatalog.builtin.entry(id: "clef-flash"))
-        #expect(entry.kind == .decision)
+        #expect(entry.kind == .jointDecision)
         #expect(entry.format == Decision.Format.jointHead.rawValue)
         #expect(entry.revision == Self.revision)
         #expect(entry.variants["ios"] == nil)  // the Mac only: the decoder is 15.9 GB
@@ -40,18 +40,40 @@ struct ClefFlashTests {
         ])
     }
 
-    /// `TypedDecisions` would read the decoder's hidden states as logits: a joint-head entry is `KitClefDecider`'s,
-    /// and every other decision entry stays where it was.
+    /// `TypedDecisions` would read the decoder's hidden states as logits: a `jointDecision` entry is
+    /// `KitClefDecider`'s, every decision entry stays where it was, and `TypedDecisions(catalog:)` refuses clef-flash
+    /// by name before it downloads anything. A `decision` entry that says `jointHead` is neither's.
     @available(macOS 27, iOS 27, *)
-    @Test func onlyKitClefDeciderLoadsAJointHeadEntry() throws {
+    @Test func onlyKitClefDeciderLoadsAJointDecisionEntry() async throws {
         let entry = try #require(ModelCatalog.builtin.entry(id: "clef-flash"))
         #expect(!TypedDecisions.supports(entry))
         #expect(KitClefDecider.supports(entry))
         #expect(SystemOne.supports(entry))
-        for other in ModelCatalog.builtin.available(.decision) where other.id != entry.id {
+        for other in ModelCatalog.builtin.available(.decision) {
             #expect(TypedDecisions.supports(other), "\(other.id)")
             #expect(!KitClefDecider.supports(other), "\(other.id)")
         }
+        let mislabeled = CatalogEntry(
+            id: entry.id, name: entry.name, repo: entry.repo, revision: entry.revision, kind: .decision,
+            variants: entry.variants, format: entry.format, assets: entry.assets)
+        #expect(!TypedDecisions.supports(mislabeled) && !KitClefDecider.supports(mislabeled))
+
+        // The store's Hub is a closed local port: a download would fail on the transport, not on the kind.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ModelStore(directory: root, hubBaseURL: URL(string: "http://127.0.0.1:9")!)
+        do {
+            _ = try await TypedDecisions(catalog: "clef-flash", store: store)
+            Issue.record("TypedDecisions loaded clef-flash")
+        } catch let error as CoreAIKitError {
+            guard case .catalogKindMismatch(let id, let expected, let found) = error else {
+                Issue.record("not the kind refusal: \(error)")
+                return
+            }
+            #expect(id == "clef-flash" && expected == "chat or decision" && found == "jointDecision")
+            #expect(error.localizedDescription.contains("'clef-flash' is a 'jointDecision' model"))
+        }
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).isEmpty)
     }
 
     @available(macOS 27, iOS 27, *)

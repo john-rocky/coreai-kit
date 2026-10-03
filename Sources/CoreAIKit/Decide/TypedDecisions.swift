@@ -222,7 +222,8 @@ public actor TypedDecisions {
             throw DecisionError.unsupportedModel(
                 id: id, reason: "its runtime samples on the GPU and exposes no logits")
         }
-        // A joint-head model reads hidden states through its own head graph: refused before the download.
+        // A joint-head model reads hidden states through its own head graph. Its kind, `jointDecision`, is refused
+        // above; a `decision` entry that says `jointHead` is refused here, still before the download.
         if entry.format == Decision.Format.jointHead.rawValue {
             throw DecisionError.unsupportedModel(
                 id: id, reason: "it reads every question through a joint head graph; load it with KitClefDecider")

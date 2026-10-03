@@ -60,6 +60,13 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// vision tower per grid and a two-function decoder, driven by `KitVisionDecider` and
         /// `CoreAI.decide(image:…)`; not `decision`, whose `TypedDecisions` has no image input.
         case visionDecision
+        /// Typed decisions read by a joint schema head (clef-flash): state (text, JSON, at most one
+        /// image) + questions → a probability per option, every question of a request read at once
+        /// over the decoder's hidden states. A head graph and a host lm_head table beside the decoder
+        /// (`format: jointHead`, `assets`), driven by `KitClefDecider`; not `decision`, which a kit
+        /// built before this case would list in `systemone models` and hand, after downloading the
+        /// 15.9 GB decoder, to a `TypedDecisions` that cannot read it.
+        case jointDecision
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -109,9 +116,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// read at a control token; the bundle's metadata declares it too), `sharedState` (a
     /// `Shared state:` + JSON task user turn read at the option letters), `encoder` (an
     /// encoder-type model read at a mask marker per option in one forward pass; the bundle's
-    /// metadata declares it too), `jointHead` (every question read at once by a head graph over
-    /// the decoder's hidden states, with `assets` naming the other parts; `KitClefDecider`, not
-    /// `TypedDecisions`). nil = the kind's default (`decider` for a decision entry).
+    /// metadata declares it too). A `jointDecision` entry says `jointHead` (every question read at
+    /// once by a head graph over the decoder's hidden states, with `assets` naming the other parts;
+    /// `KitClefDecider`). nil = the kind's default (`decider` for a decision entry).
     public let format: String?
     /// The weights' license when it restricts what an app may do with them — the SPDX
     /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
@@ -524,14 +531,16 @@ public struct ModelCatalog: Sendable, Codable {
             //    every question of a request (text, JSON, and at most one image) in one pass. `format: jointHead`:
             //    a decoder that returns hidden states (fp16, 64 tokens per call), the head graph and a 2.03 GB fp16
             //    lm_head table on the host, named in `assets` with a vision tower per grid; driven by
-            //    `KitClefDecider`, which `TypedDecisions` points to. sizeMB is the decoder + the head + the table's
-            //    folder; a tower (909 MB g256, 912 MB g448) downloads the first time an image asks for its grid.
-            //    macOS only: the decoder alone is 15.9 GB, and the first load specializes it (56 s and 31.8 GB of
-            //    runtime cache in the zoo's run). The zoo's int8mix decoder (11.8 GB) is not in the catalog; its
-            //    card has it. ──
+            //    `KitClefDecider`. Its own kind, `jointDecision`: a kit built before it decodes the entry as
+            //    `unknown` and leaves it out of `available(_:)`, where `decision` would list it in `systemone
+            //    models` and download the decoder for a `TypedDecisions` that cannot read it. sizeMB is the
+            //    decoder + the head + the table's folder; a tower (909 MB g256, 912 MB g448) downloads the first
+            //    time an image asks for its grid. macOS only: the decoder alone is 15.9 GB, and the first load
+            //    specializes it (56 s and 31.8 GB of runtime cache in the zoo's run). The zoo's int8mix decoder
+            //    (11.8 GB) is not in the catalog; its card has it. ──
             CatalogEntry(
                 id: "clef-flash", name: "clef-flash",
-                repo: "mlboydaisuke/clef-flash-CoreAI", kind: .decision,
+                repo: "mlboydaisuke/clef-flash-CoreAI", kind: .jointDecision,
                 variants: [
                     "macos": .init(path: "gpu-pipelined/clef_flash_decode_fp16_pf64", sizeMB: 18178),
                 ],

@@ -177,22 +177,22 @@ public actor KitClefDecider: DecisionBackend {
 
     /// Whether `entry` is a joint-head model this type loads.
     public static func supports(_ entry: CatalogEntry) -> Bool {
-        entry.kind == .decision && entry.format == Decision.Format.jointHead.rawValue && entry.modelID != nil
+        entry.kind == .jointDecision && entry.format == Decision.Format.jointHead.rawValue && entry.modelID != nil
     }
 
-    /// Loads clef-flash by its catalog id (`kind: decision`, `format: jointHead`), downloading on first use: the
-    /// decoder, the head and the lm_head table. A grid's tower downloads the first time an image asks for it, unless
-    /// `grids` names it here.
+    /// Loads clef-flash by its catalog id (`kind: jointDecision`, `format: jointHead`), downloading on first use:
+    /// the decoder, the head and the lm_head table. A grid's tower downloads the first time an image asks for it,
+    /// unless `grids` names it here.
     public init(
         catalog id: String,
         grids: Set<Grid> = [],
         store: ModelStore = .default,
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws {
-        let entry = try await ModelCatalog.entry(forID: id, expecting: .decision)
+        let entry = try await ModelCatalog.entry(forID: id, expecting: .jointDecision)
         guard Self.supports(entry) else {
             throw DecisionError.unsupportedModel(
-                id: id, reason: "its catalog format is not jointHead; load it with TypedDecisions")
+                id: id, reason: "its catalog format is \(entry.format.map { "'\($0)'" } ?? "not given"), not jointHead")
         }
         let model = try ClefFlashModelID(entry: entry)
         let decoderURL = try await store.download(model.decoder, progress: downloadProgress)

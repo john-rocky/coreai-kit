@@ -379,7 +379,9 @@ JSON and at most one image, then every question with its options. A joint schema
 state at every position — each question's and each option's span, the last token, and each option's rows of the
 model's 2.03 GB lm_head table — and gives each option a logit; each question is a float32 softmax over its own
 options at temperature 1. Nothing is generated, and every answer sees every other question. A request takes up to
-16 questions and 128 options in all. Mac only: the decoder alone is 15.9 GB.
+16 questions and 128 options in all. Mac only: the decoder alone is 15.9 GB. Its catalog kind is `jointDecision`:
+`systemone models` lists it as that, `TypedDecisions(catalog:)` refuses it by name before downloading anything, and a
+kit released before it (0.7.3 and earlier) decodes the kind as `unknown` and lists it nowhere.
 
 ```swift
 let decider = try await KitClefDecider(catalog: "clef-flash")          // 18.2 GB the first time
@@ -404,8 +406,9 @@ macOS 27.0 26A428, Release, 2026-10-04):
 | held out (30 records) | 40 | 40/40 | 186/186 | 2/2 | 0.0082 | 0.00037 |
 
 Against the zoo's own Swift run of the same files, the logits, the probabilities, the decoder's hidden rows and the
-responses are bit-equal on all 240 runs, and the first run read again repeats them bit for bit. The 14 runs the zoo
-fed the author's image rows at the processor's own grid are not run: no tower here has that grid.
+responses are bit-equal on all 240 runs, and the first run read again repeats them bit for bit. The fixture's 14
+`native` runs, at the processor's own grid, are not run: no tower here has that grid. The zoo's gate fed 13 of them
+the author's image rows; `photo_01`'s 1,200 image rows are more than the decoder's 1,024-row buffer.
 
 `systemone serve --model clef-flash` passes `conformance/check.py`, 22 of 22 requests and the three routes (a
 choice past 128 options is the 422 that names the count). The fixture's receipt sent in `images`, as a data URL and

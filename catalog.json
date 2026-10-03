@@ -433,7 +433,7 @@
       "name": "clef-flash",
       "repo": "mlboydaisuke/clef-flash-CoreAI",
       "revision": "220ac149ed1136465f7d9dac93aaf0dfc55d6b73",
-      "kind": "decision",
+      "kind": "jointDecision",
       "variants": {
         "macos": {
           "path": "gpu-pipelined/clef_flash_decode_fp16_pf64",

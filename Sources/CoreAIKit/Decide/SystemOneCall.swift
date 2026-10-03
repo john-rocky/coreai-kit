@@ -136,14 +136,14 @@ extension TypedDecisions {
 
 @available(macOS 27, iOS 27, *)
 extension SystemOne {
-    /// The backend that answers for a catalog id: `KitClefDecider` for a joint-head entry (clef-flash), else
+    /// The backend that answers for a catalog id: `KitClefDecider` for a `jointDecision` entry (clef-flash), else
     /// `TypedDecisions`. What `systemone` and the MCP server load.
     public static func backend(
         catalog id: String, store: ModelStore = .default,
         configuration: TypedDecisions.Configuration = TypedDecisions.Configuration(),
         downloadProgress: (@Sendable (DownloadProgress) -> Void)? = nil
     ) async throws -> any DecisionBackend {
-        if KitClefDecider.supports(try await ModelCatalog.entry(forID: id)) {
+        if try await ModelCatalog.entry(forID: id).kind == .jointDecision {
             return try await KitClefDecider(catalog: id, store: store, downloadProgress: downloadProgress)
         }
         return try await TypedDecisions(

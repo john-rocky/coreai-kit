@@ -9,7 +9,7 @@ policy.
 
 ### Added
 
-- **clef-flash** — catalog id `clef-flash` (`kind: decision` with the new `format: jointHead`), driven by the new
+- **clef-flash** — catalog id `clef-flash` (the new `kind: jointDecision`, `format: jointHead`), driven by the new
   `KitClefDecider` (`Sources/CoreAIKit/ClefFlash/`): Cloudflare's decision model from Qwen3.5-9B (Apache-2.0). Every
   question of a request (noul, choice, score) is read in one pass by its joint schema head, with the state as text or
   JSON and at most one image, and every option gets a probability; nothing is generated. The host is the model zoo's
@@ -22,13 +22,17 @@ policy.
   (909 MB `g256`, 912 MB `g448`) downloads the first time an image asks for its grid. macOS only (the decoder alone is
   15.9 GB); the zoo measured a first load that specializes the decoder in 56 s into 31.8 GB of the runtime's cache, and
   4.5 s from that cache. The entry names the head, the table and the towers in a new `assets` field, which a kit built
-  before it ignores; `TypedDecisions` refuses a `jointHead` entry before downloading it. `/v1/systemone` gains `images`
-  (one image: a data URL, base64, or a file path, which `SystemOneServer` reads only on 127.0.0.1) and `grid`.
-  `systemone serve --model clef-flash`, `decide-cli serve` and the MCP server load it through the new
+  before it ignores. Its kind is the new `jointDecision` (a kit built before it decodes the entry as `unknown` and
+  leaves it out of `available(_:)`; `decision` would list it in a shipped kit's `systemone models`, and loading it
+  there would download the 15.9 GB decoder for a `TypedDecisions` that cannot read it). `TypedDecisions` refuses it by
+  its kind, and a `decision` entry that says `jointHead` by its format, before downloading anything. `/v1/systemone`
+  gains `images` (one image: a data URL, base64, or a file path, which `SystemOneServer` reads only on 127.0.0.1) and
+  `grid`. `systemone serve --model clef-flash`, `decide-cli serve` and the MCP server load it through the new
   `SystemOne.backend(catalog:)`, and a backend that reads no images answers an image request with a 422 that names it.
   On an M4 Max through `decide-cli parity`, downloaded from the catalog pin: 240 of the zoo fixture's runs (200 on its
-  186 records, 40 on the 30 held out; the 14 it fed the author's image rows at the processor's own grid have no tower
-  here), ids and spans equal to the author's on every run, the argmax equal to the author's fp32 read-out on every
+  186 records, 40 on the 30 held out; its 14 `native` runs, at the processor's own grid, have no tower here — the zoo's
+  gate fed 13 of them the author's image rows, `photo_01`'s 1,200 image rows being more than the decoder's 1,024-row
+  buffer), ids and spans equal to the author's on every run, the argmax equal to the author's fp32 read-out on every
   question with a top-2 margin above 0.02 (352/352 and 186/186; near-ties 3/3 and 2/2), max |Δp| 0.0122 and 0.0082, and
   logits, probabilities, the decoder's hidden rows and the responses bit-equal to the zoo's Swift run of the same files
   on all 240. `systemone serve --model clef-flash` passes `conformance/check.py` (22 requests and the three routes), and

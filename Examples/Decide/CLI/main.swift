@@ -104,7 +104,7 @@ guard let command = args.popFirst() else { fail(usage) }
 
 if command == "--list-models" {
     for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision)
-        + ModelCatalog.builtin.available(.visionDecision)
+        + ModelCatalog.builtin.available(.visionDecision) + ModelCatalog.builtin.available(.jointDecision)
     {
         print("\(entry.id)  —  \(entry.name)  [\(entry.kind.rawValue)]")
     }
@@ -2122,10 +2122,11 @@ func floats(_ value: JSONValue?) -> [Float] { (value?.elements ?? []).compactMap
     try await server.run()
 }
 
-/// Whether the catalog entry for `id` reads through a joint head (clef-flash: `KitClefDecider`).
+/// Whether the catalog entry for `id` is a `jointDecision` model, read through a joint head (clef-flash:
+/// `KitClefDecider`).
 @MainActor func isJointHead(_ id: String) async throws -> Bool {
     guard bundlePath == nil else { return false }
-    return KitClefDecider.supports(try await ModelCatalog.entry(forID: id))
+    return try await ModelCatalog.entry(forID: id).kind == .jointDecision
 }
 
 // MARK: - mcp (the same decisions as Model Context Protocol tools — `SystemOneMCPServer` in the kit;
