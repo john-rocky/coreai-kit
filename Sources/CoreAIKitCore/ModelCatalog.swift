@@ -67,6 +67,12 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// built before this case would list in `systemone models` and hand, after downloading the
         /// 15.9 GB decoder, to a `TypedDecisions` that cannot read it.
         case jointDecision
+        /// Typed decisions read one row per question by a pointer head (Kev-0.8B, Kev-4B): state (text or JSON) +
+        /// questions → a probability per option, each question its own row — the state, the question and its options
+        /// between the author's delimiter tokens — and the author's head on the host over the decoder's hidden states
+        /// (`format: pointerHead`), driven by `KitKevDecider`; not `decision`, which a kit built before this case would
+        /// list in `systemone models` and hand, after downloading the bundle, to a `TypedDecisions` that cannot read it.
+        case rowDecision
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -118,7 +124,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// encoder-type model read at a mask marker per option in one forward pass; the bundle's
     /// metadata declares it too). A `jointDecision` entry says `jointHead` (every question read at
     /// once by a head graph over the decoder's hidden states, with `assets` naming the other parts;
-    /// `KitClefDecider`). nil = the kind's default (`decider` for a decision entry).
+    /// `KitClefDecider`). A `rowDecision` entry says `pointerHead` (one row per question, read by a pointer head over
+    /// the decoder's hidden states; `KitKevDecider`). nil = the kind's default (`decider` for a decision entry).
     public let format: String?
     /// The weights' license when it restricts what an app may do with them — the SPDX
     /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
@@ -551,6 +558,33 @@ public struct ModelCatalog: Sendable, Codable {
                         "g256": "gpu-pipelined/clef_flash_g256_vision_fp16w32",
                         "g448": "gpu-pipelined/clef_flash_g448_vision_fp16w32",
                     ])),
+            // ── Kev-0.8B / Kev-4B (Jared Palmer, Apache-2.0; a rank-16 LoRA adapter and a pointer head on Qwen3.5-0.8B-Base
+            //    and Qwen3.5-4B-Base): typed decisions, one row per question — the state, the question and its options
+            //    between the author's delimiter tokens — read by the author's pointer head on the host over the decoder's
+            //    hidden states (fp16, no vocabulary head, a static 128 tokens per call). `format: pointerHead`, driven by
+            //    `KitKevDecider`; the head and the tokenizer are inside the bundle. Their own kind, `rowDecision`: a kit
+            //    built before it decodes the entries as `unknown` and leaves them out of `available(_:)`, where `decision`
+            //    would list them in `systemone models` and download the bundle for a `TypedDecisions` that cannot read it.
+            //    The first load specializes the graph: 3.3 s for 0.8B, 16.6 s and a 15.55 GB runtime cache entry for 4B
+            //    (the zoo's runs on an M4 Max). 0.8B ships the same `.aimodel` to both platforms (the zoo gated it on an
+            //    iPhone 18 Pro by device JIT, without the increased-memory-limit entitlement). 4B is macOS only: the one
+            //    load of an iPhone AOT asset of an earlier 4B graph crashed in the runtime, and this graph was not loaded on
+            //    a phone. ──
+            CatalogEntry(
+                id: "kev-0.8b", name: "Kev 0.8B",
+                repo: "mlboydaisuke/Kev-0.8B-CoreAI", kind: .rowDecision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/kev_0_8b_decode_fp16_metal_pf128", sizeMB: 1520),
+                    "ios": .init(path: "gpu-pipelined/kev_0_8b_decode_fp16_metal_pf128", sizeMB: 1520),
+                ],
+                format: "pointerHead"),
+            CatalogEntry(
+                id: "kev-4b", name: "Kev 4B",
+                repo: "mlboydaisuke/Kev-4B-CoreAI", kind: .rowDecision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/kev_4b_decode_fp16_metal_pf128", sizeMB: 8431),
+                ],
+                format: "pointerHead"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,
