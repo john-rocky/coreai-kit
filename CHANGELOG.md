@@ -9,6 +9,36 @@ policy.
 
 ### Added
 
+- **Kev-0.8B and Kev-4B** — catalog ids `kev-0.8b` and `kev-4b` (the new `kind: rowDecision`, `format: pointerHead`),
+  driven by the new `KitKevDecider` (`Sources/CoreAIKit/Kev/`): Jared Palmer's decision models, a rank-16 LoRA adapter
+  and a pointer head on Qwen3.5-0.8B-Base and Qwen3.5-4B-Base (Apache-2.0). A state (text or JSON) and typed questions
+  (noul, choice, score) go in, and every option of every question comes back with a probability; nothing is generated.
+  Each question is its own row: the state, then the question and its options between the author's delimiter tokens. The
+  host is the model zoo's `apps/Kev` library (9e06b5a) with every numeric path unchanged: the author's rendering and row
+  form, the decoder (fp16, no vocabulary head, a static 128 tokens per call, each Gated DeltaNet recurrence in an fp32
+  Metal kernel) returning the hidden state at every position, and the author's pointer head on the host in float64 at
+  the author's temperature, each p rounded to float32 once. The shared prefix is on by default: a request's state runs
+  its whole 128-token calls once, and on this graph every row's hidden state equals the direct run's bit for bit.
+  `prepare(state:)` and `decide(prepared:questionsJSON:)` answer later questions on a kept state. A choice lists up to 255
+  options; a row holds at most 3,968 tokens. 1,520 MB for Kev-0.8B, the same `.aimodel` on macOS and iOS (the zoo gated
+  it on an iPhone 18 Pro; the kit has not run on a phone), and 8,431 MB for Kev-4B, macOS only. The first load specializes
+  the graph: 3.3 s for 0.8B, 16.6 s and a 15.55 GB runtime cache entry for 4B in the zoo's runs. The kind is new: kits
+  0.1.0–0.7.3 decode `rowDecision` as `unknown` and leave both entries out of `available(_:)` (each tag's own catalog
+  code, compiled and run on this catalog.json); `decision` would list them in a shipped kit's `systemone models`, and
+  loading one there would download the bundle for a `TypedDecisions` that cannot read it. `TypedDecisions` refuses them by
+  their kind before downloading anything. `KitKevDecider` refuses a bundle whose graph takes a dynamic query length
+  (measured in the zoo and not shipped: its memory grows). `systemone serve`, `systemone mcp` and
+  `SystemOne.backend(catalog:)` load `KitKevDecider` for the kind, and so do `decide-cli ask`, `serve` and `parity`.
+  `CoreAI.decide` and `CoreAI.systemOne` load through `TypedDecisions`, so they refuse Kev by its kind.
+  On an M4 Max through `decide-cli parity`, downloaded from the catalog pin, on the zoo fixture's 155 records that carry
+  their text (186 questions): the author's row ids on every question, the argmax equal to the author's fp32 read-out on
+  every question with a top-2 margin above 0.02 (Kev-0.8B 181/181, near-ties 4/5; Kev-4B 182/182, near-ties 3/4), max
+  |Δp| 0.0124 and 0.0153, and the hidden rows and p bit-equal to the zoo's Swift host's run of the same bundle on all 186
+  questions of each model, the answers on all 155 records (Kev-0.8B with the shared prefix on and off, Kev-4B on).
+  `systemone serve --model kev-0.8b` passes `conformance/check.py` (22 requests and the three routes); a request with
+  `images` gets a 422. `KevTests` (the catalog entries, the request in the author's form, the refusals; with
+  `KIT_KEV_GATE=1` / `KIT_KEV_GATE_4B=1`, 10 Kev-0.8B and 3 Kev-4B records bit for bit against the zoo's Swift host,
+  direct and shared).
 - **clef-flash** — catalog id `clef-flash` (the new `kind: jointDecision`, `format: jointHead`), driven by the new
   `KitClefDecider` (`Sources/CoreAIKit/ClefFlash/`): Cloudflare's decision model from Qwen3.5-9B (Apache-2.0). Every
   question of a request (noul, choice, score) is read in one pass by its joint schema head, with the state as text or
