@@ -451,6 +451,38 @@
       }
     },
     {
+      "id": "kev-0.8b",
+      "name": "Kev 0.8B",
+      "repo": "mlboydaisuke/Kev-0.8B-CoreAI",
+      "revision": "3368b4e970fa17dd145c9341c387d628b0277cb3",
+      "kind": "rowDecision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/kev_0_8b_decode_fp16_metal_pf128",
+          "sizeMB": 1520
+        },
+        "ios": {
+          "path": "gpu-pipelined/kev_0_8b_decode_fp16_metal_pf128",
+          "sizeMB": 1520
+        }
+      },
+      "format": "pointerHead"
+    },
+    {
+      "id": "kev-4b",
+      "name": "Kev 4B",
+      "repo": "mlboydaisuke/Kev-4B-CoreAI",
+      "revision": "dad3eb2b2e338b6be6d259a9317db37bbeb2e0d7",
+      "kind": "rowDecision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/kev_4b_decode_fp16_metal_pf128",
+          "sizeMB": 8431
+        }
+      },
+      "format": "pointerHead"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

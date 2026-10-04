@@ -22,6 +22,12 @@
 //       [--reference <zoo Swift fixture.json>[,<heldout.json>]] [--out summary.json] [--limit <n>]
 //   (a clef-flash fixture, coreai-clef-flash-fixtures/1: the author's ids, spans and fp32 probabilities per run, every
 //    option of every question; --reference adds the zoo Swift host's run of the same assets, compared bit for bit)
+//   swift run -c release decide-cli ask --model kev-0.8b --state "…" --choice "…|…|…"
+//   swift run -c release decide-cli parity --fixture fixtures-kev-0.8b.json [--model kev-4b] \
+//       [--reference <zoo kev fixture output .json>] [--out summary.json] [--limit <n>] [--no-share]
+//   (a Kev fixture, coreai-kev-fixtures/1: the author's row ids (as sha256) and fp32 probabilities per question; the
+//    records that carry their text are run, with the shared prefix unless --no-share; --reference adds the zoo Swift
+//    host's run of the same bundle, compared bit for bit)
 //   (an encoder model's fixture, coreai-encoder-fixtures/1: tokens and markers, then the raw logits at T = 1;
 //    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
@@ -59,6 +65,8 @@ let usage = """
                              [--out <summary.json>] [--limit <n>]; --bundle <decoder dir> --head <dir> --table <file>
                              [--tower-g256 <graph>] [--tower-g448 <graph>] reads local files instead of the catalog;
                              ask, serve and mcp take --model clef-flash, ask --image too)
+                            (a Kev fixture: [--reference <zoo kev fixture output .json>] [--out <summary.json>] [--limit <n>]
+                             [--no-share]; --bundle <dir> reads a local bundle; ask, serve and mcp take --model kev-0.8b)
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
@@ -105,6 +113,7 @@ guard let command = args.popFirst() else { fail(usage) }
 if command == "--list-models" {
     for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision)
         + ModelCatalog.builtin.available(.visionDecision) + ModelCatalog.builtin.available(.jointDecision)
+        + ModelCatalog.builtin.available(.rowDecision)
     {
         print("\(entry.id)  —  \(entry.name)  [\(entry.kind.rawValue)]")
     }
@@ -324,6 +333,15 @@ let id = modelID
 
 @MainActor func runAsk() async throws {
     guard let state, !questions.isEmpty else { fail(usage) }
+    if modelGiven, try await isRowDecision(id) {
+        // Kev: one row per question, the state's whole calls run once (unless --no-share).
+        let decider = try await KitKevDecider(catalog: id, sharePrefix: !noShare, downloadProgress: progress)
+        stderrPrint("model: \(decider.id) (\(decider.modelName))   shared prefix: \(decider.sharePrefix)")
+        let asked = questions.map { (id: $0.0, question: $0.1) }
+        let response = try await decider.systemOne(SystemOne.Request(state: state, questions: asked))
+        for answer in response.answers { print("\(answer.id): \(describe(answer.answer))") }
+        return
+    }
     if modelGiven, try await isJointHead(id) {
         // clef-flash: the whole request, and the image when given, read in one pass by its joint head.
         let decider = try await KitClefDecider(catalog: id, downloadProgress: progress)
@@ -1483,6 +1501,10 @@ func numbers(_ value: JSONValue?) -> [Double] { (value?.elements ?? []).compactM
         try await runClefParity(data)
         return
     }
+    if let schema = try JSONValue.parse(data)["schema"]?.stringValue, schema.hasPrefix("coreai-kev-fixtures") {
+        try await runKevParity(data)
+        return
+    }
     let fx = try JSONDecoder().decode(DeciderFixture.self, from: data)
     var stateByRequest: [String: String] = [:]
     for request in fx.requests { if let state = request.state { stateByRequest[request.id] = state } }
@@ -2046,6 +2068,167 @@ func floats(_ value: JSONValue?) -> [Float] { (value?.elements ?? []).compactMap
     if !pass { exit(1) }
 }
 
+// MARK: - parity on Kev's fixture (coreai-kev-fixtures/1)
+
+/// One record of a reference file (the zoo Swift host's `kev fixture` output, kev-swift-fixture/1): per question the
+/// hidden-row digest and p bits, direct and shared, and the answers as `json.dumps` writes them.
+struct KevReferenceRecord {
+    let hidden: [String]
+    let sharedHidden: [String]
+    let pBits: [[Int]]
+    let sharedPBits: [[Int]]
+    let answers: String
+    let sharedAnswers: String
+}
+
+@MainActor func runKevParity(_ data: Data) async throws {
+    let root = try JSONValue.parse(data)
+    guard let records = root["records"]?.elements else { fail("\(fixture ?? ""): no records (coreai-kev-fixtures/1)") }
+    let ints: (JSONValue?) -> [Int] = { ($0?.elements ?? []).compactMap { $0.doubleValue.map(Int.init) } }
+    var reference: [String: KevReferenceRecord] = [:]
+    for path in (referencePath ?? "").split(separator: ",") {
+        let file = try JSONValue.parse(Data(contentsOf: URL(fileURLWithPath: String(path))))
+        for record in file["records"]?.elements ?? [] {
+            guard let rid = record["id"]?.stringValue else { continue }
+            let rows = record["rows"]?.elements ?? []
+            reference[rid] = KevReferenceRecord(
+                hidden: rows.map { $0["hidden_sha256"]?.stringValue ?? "" },
+                sharedHidden: rows.map { $0["shared_hidden_sha256"]?.stringValue ?? "" },
+                pBits: rows.map { ints($0["p_bits"]) }, sharedPBits: rows.map { ints($0["shared_p_bits"]) },
+                answers: record["direct"]?["answers_json"]?.stringValue ?? "",
+                sharedAnswers: record["shared"]?["answers_json"]?.stringValue ?? "")
+        }
+    }
+    // The catalog id: --model, else the fixture's checkpoint (jaredpalmer/kev-0.8b -> kev-0.8b).
+    let fixtureModel = root["model"]?["hf_id"]?.stringValue?.split(separator: "/").last.map(String.init) ?? "kev-0.8b"
+    let started = SuspendingClock.now
+    let decider: KitKevDecider
+    if let bundlePath {
+        decider = try await KitKevDecider(bundleAt: URL(fileURLWithPath: bundlePath))
+    } else {
+        decider = try await KitKevDecider(catalog: modelGiven ? modelID : fixtureModel, downloadProgress: progress)
+    }
+    let loadSeconds = seconds(since: started)
+    let shared = !noShare
+    print("model: \(decider.id) (\(decider.modelName))   load \(fmt(loadSeconds, 1)) s   shared prefix: \(shared)   "
+        + "reference records: \(reference.count)")
+
+    var rowsOut: [JSONValue] = []
+    var ran = 0, skipped = 0, questions = 0, idsEqual = 0
+    var nonNearTie = 0, argmaxNonNearTie = 0, nearTies = 0, argmaxNearTie = 0
+    var maxDelta = 0.0, worst = "", rowMeans: [Double] = []
+    var refQuestions = 0, refHiddenEqual = 0, refPEqual = 0, refRecords = 0, refAnswersEqual = 0
+    var first: (id: String, request: Data, readout: KitKevDecider.Readout)?
+    for record in records {
+        guard ran < limit else { break }
+        guard let rid = record["id"]?.stringValue, let request = record["request"] else {
+            skipped += 1  // a reference to the author's file, or a withheld record: no text to run
+            continue
+        }
+        ran += 1
+        let requestJSON = Data(request.dumps().utf8)
+        let r = try await decider.readout(requestJSON: requestJSON, shared: shared)
+        if first == nil { first = (rid, requestJSON, r) }
+        let oracle = record["questions"]?.elements ?? []
+        let ref = reference[rid]
+        if let ref {
+            refRecords += 1
+            if r.answersJSON == (shared ? ref.sharedAnswers : ref.answers) { refAnswersEqual += 1 }
+        }
+        for (k, (row, o)) in zip(r.rows, oracle).enumerated() {
+            questions += 1
+            let littleEndian = row.ids.flatMap { id in withUnsafeBytes(of: Int32(id).littleEndian) { Array($0) } }
+            let digest = SHA256.hash(data: Data(littleEndian)).map { String(format: "%02x", $0) }.joined()
+            let idsOK = digest == o["row_ids_sha256"]?.stringValue && row.decide == Int(o["decide"]?.doubleValue ?? -1)
+                && row.options == ints(o["opts"]) && row.keys == (o["keys"]?.elements ?? []).compactMap(\.stringValue)
+            if idsOK { idsEqual += 1 }
+            let po = (o["oracle"]?["probs"]?.elements ?? []).compactMap(\.doubleValue)
+            let p = row.probabilities.map(Double.init)
+            let d = zip(p, po).map { abs($0 - $1) }
+            let rowMax = d.max() ?? 0
+            rowMeans.append(d.reduce(0, +) / Double(max(1, d.count)))
+            if rowMax > maxDelta {
+                maxDelta = rowMax
+                worst = "\(rid):q\(k)"
+            }
+            var best = 0
+            for i in p.indices where p[i] > p[best] { best = i }
+            let oracleBest = Int(o["oracle"]?["argmax"]?.doubleValue ?? -1)
+            if o["oracle"]?["near_tie"] == .bool(true) {
+                nearTies += 1
+                if best == oracleBest { argmaxNearTie += 1 }
+            } else {
+                nonNearTie += 1
+                if best == oracleBest { argmaxNonNearTie += 1 }
+            }
+            var refMembers: [JSONValue.Member] = []
+            if let ref, k < ref.hidden.count {
+                refQuestions += 1
+                let hiddenOK = row.hiddenSHA256 == (shared ? ref.sharedHidden[k] : ref.hidden[k])
+                let pOK = row.probabilities.map { Int($0.bitPattern) } == (shared ? ref.sharedPBits[k] : ref.pBits[k])
+                if hiddenOK { refHiddenEqual += 1 }
+                if pOK { refPEqual += 1 }
+                refMembers = [.init("hidden_sha256_equal_ref", .bool(hiddenOK)), .init("p_bits_equal_ref", .bool(pOK))]
+                if !(hiddenOK && pOK) {
+                    stderrPrint("  \(rid):q\(k): differs from the reference — hidden \(hiddenOK), p \(pOK)")
+                }
+            }
+            rowsOut.append(.object([
+                .init("id", .string(rid)), .init("q", .int(k)), .init("tokens", .int(row.ids.count)),
+                .init("ids_equal_author", .bool(idsOK)), .init("max_abs_dp", .number("\(rowMax)")),
+                .init("argmax_equal", .bool(best == oracleBest)), .init("near_tie", o["oracle"]?["near_tie"] ?? .null),
+                .init("hidden_sha256", .string(row.hiddenSHA256)),
+                .init("p_bits", .array(row.probabilities.map { .int(Int($0.bitPattern)) })),
+            ] + refMembers))
+            if verbose || !idsOK {
+                stderrPrint("  \(rid):q\(k): \(row.ids.count) tokens, max |Δp| \(fmt(rowMax, 4))\(idsOK ? "" : "  ids DIFF")")
+            }
+        }
+    }
+    // The first record again, after every other: the decoder's states are zeroed per row, so it repeats bit for bit.
+    var repeatEqual: Bool?
+    if let first {
+        let again = try await decider.readout(requestJSON: first.request, shared: shared)
+        let bits: (KitKevDecider.Readout) -> [[UInt32]] = { $0.rows.map { $0.probabilities.map(\.bitPattern) } }
+        repeatEqual = again.rows.map(\.hiddenSHA256) == first.readout.rows.map(\.hiddenSHA256) && bits(again) == bits(first.readout)
+    }
+    let mean = rowMeans.reduce(0, +) / Double(max(1, rowMeans.count))
+    print("| records | questions | rows = author | argmax (margin > 0.02) | near-ties agreeing | max \\|Δp\\| (row) | mean of row means |")
+    print("|---:|---:|---:|---:|---:|---:|---:|")
+    print("| \(ran) | \(questions) | \(idsEqual)/\(questions) | \(argmaxNonNearTie)/\(nonNearTie) | \(argmaxNearTie)/\(nearTies) | "
+        + "\(fmt(maxDelta, 4)) (\(worst)) | \(fmt(mean, 5)) |")
+    if skipped > 0 {
+        print("skipped \(skipped) records without their text (references to the author's file, withheld records)")
+    }
+    if refQuestions > 0 {
+        print("vs the reference: hidden sha256 equal \(refHiddenEqual)/\(refQuestions), p bits equal \(refPEqual)/\(refQuestions), "
+            + "answers equal \(refAnswersEqual)/\(refRecords)")
+    }
+    if let repeatEqual { print("repeat: the first record again, hidden rows and p bit-equal: \(repeatEqual)") }
+    let pass = idsEqual == questions && argmaxNonNearTie == nonNearTie && maxDelta <= 0.02 && mean <= 0.002
+    print("the zoo's bar — the author's row ids on every question, argmax on every question with margin > 0.02, "
+        + "max |Δp| ≤ 0.02, mean of row means ≤ 0.002: " + (pass ? "PASS" : "FAIL"))
+    if let outPath {
+        let summary = JSONValue.object([
+            .init("schema", .string("decide-cli-kev-parity/1")), .init("model", .string(decider.id)),
+            .init("bundle", .string(decider.modelName)), .init("fixture", .string(fixture ?? "")),
+            .init("reference", .string(referencePath ?? "")), .init("shared", .bool(shared)),
+            .init("load_seconds", .number("\(loadSeconds)")), .init("records", .int(ran)), .init("skipped", .int(skipped)),
+            .init("questions", .int(questions)), .init("ids_equal", .int(idsEqual)),
+            .init("questions_non_near_tie", .int(nonNearTie)), .init("argmax_equal_non_near_tie", .int(argmaxNonNearTie)),
+            .init("near_tie_questions", .int(nearTies)), .init("argmax_equal_near_tie", .int(argmaxNearTie)),
+            .init("max_abs_dp", .number("\(maxDelta)")), .init("worst_row", .string(worst)),
+            .init("mean_of_row_mean_abs_dp", .number("\(mean)")), .init("reference_questions", .int(refQuestions)),
+            .init("reference_hidden_sha256_equal", .int(refHiddenEqual)), .init("reference_p_bits_equal", .int(refPEqual)),
+            .init("reference_records", .int(refRecords)), .init("reference_answers_equal", .int(refAnswersEqual)),
+            .init("repeat_bit_equal", repeatEqual.map { .bool($0) } ?? .null), .init("bar", .string(pass ? "PASS" : "FAIL")),
+            .init("rows", .array(rowsOut)),
+        ])
+        try summary.dumps().appending("\n").write(toFile: outPath, atomically: true, encoding: .utf8)
+    }
+    if !pass { exit(1) }
+}
+
 // MARK: - filter (a semantic `grep`: one decision per stdin line)
 
 @MainActor func runFilter() async throws {
@@ -2101,6 +2284,8 @@ func floats(_ value: JSONValue?) -> [Float] { (value?.elements ?? []).compactMap
     let decider: any DecisionBackend
     if try await isJointHead(id) {
         decider = try await KitClefDecider(catalog: id, downloadProgress: progress)
+    } else if try await isRowDecision(id) {
+        decider = try await KitKevDecider(catalog: id, sharePrefix: !noShare, downloadProgress: progress)
     } else {
         decider = try await loadDecider()
     }
@@ -2127,6 +2312,13 @@ func floats(_ value: JSONValue?) -> [Float] { (value?.elements ?? []).compactMap
 @MainActor func isJointHead(_ id: String) async throws -> Bool {
     guard bundlePath == nil else { return false }
     return try await ModelCatalog.entry(forID: id).kind == .jointDecision
+}
+
+/// Whether the catalog entry for `id` is a `rowDecision` model, read one row per question by a pointer head (Kev:
+/// `KitKevDecider`).
+@MainActor func isRowDecision(_ id: String) async throws -> Bool {
+    guard bundlePath == nil else { return false }
+    return try await ModelCatalog.entry(forID: id).kind == .rowDecision
 }
 
 // MARK: - mcp (the same decisions as Model Context Protocol tools — `SystemOneMCPServer` in the kit;

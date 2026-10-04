@@ -279,6 +279,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `laya-multilingual` | a mask marker before each option, in one forward pass | 20 |
 | `decider-2b-vision` | A–J after each question's `Answer: (`, every question of a call in one row ([about an image](#decisions-about-an-image)) | 10 |
 | `clef-flash` | a joint head over every option of every question in one pass, 16 questions and 128 options a request ([every question at once](#every-question-at-once-clef-flash)) | 128 |
+| `kev-0.8b`, `kev-4b` | a pointer head at each option's closing token, one row per question ([one row per question](#one-row-per-question-kev)) | 255 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its
 letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
@@ -416,6 +417,43 @@ as a path, comes back with the zoo Swift run's probabilities to the wire's four 
 answers are in the server's form: `confidence` is 1 − normalised entropy, and `usage` counts the row once per
 answer, as for every model here; `metadata.row_tokens` is the row, read once.
 
+## One row per question: Kev
+
+`kev-0.8b` and `kev-4b` (Jared Palmer, Apache-2.0: a rank-16 LoRA adapter and a pointer head on Qwen3.5-0.8B-Base and
+Qwen3.5-4B-Base) read each question as its own row: the state, then the question and its options between the author's
+delimiter tokens. The author's head compares the decoder's hidden state at the row's last token with the state at each
+option's closing token. Each question is a softmax over its own options at the author's temperature, and nothing is
+generated. A choice lists up to 255 options, and a row holds at most 3,968 tokens. Kev-0.8B (1.5 GB) runs on the Mac and
+the iPhone, Kev-4B (8.4 GB) on the Mac. The catalog kind is `rowDecision`: `TypedDecisions(catalog:)` refuses it by name,
+and a kit released before it (0.7.3 and earlier) decodes the kind as `unknown` and lists it nowhere.
+
+```swift
+let decider = try await KitKevDecider(catalog: "kev-0.8b")              // 1.5 GB the first time
+let r = try await decider.systemOne(try SystemOne.request(from: body))   // a text or JSON state
+r["team"]?.choice
+let prepared = try await decider.prepare(state: ticket)                  // the state's calls, once
+let later = try await decider.decide(prepared: prepared, questionsJSON: questions)
+```
+
+On the server it is `systemone serve --model kev-0.8b`; a request with `images` gets a 422 that names the model. The host
+is the model zoo's `apps/Kev` library with every numeric path unchanged: the author's rendering of the state and the
+options, the decoder 128 tokens per call from zeroed states, and the head on the host in float64. By default a request's
+state runs once and each question continues from a copy of the decoder's states; on this graph that gives the same
+hidden rows as running each row whole, bit for bit. Through `decide-cli parity` on the zoo's fixture, its 155 records
+that carry their text, the model downloaded from the catalog pin (M4 Max, macOS 27.0 26A428, 2026-10-04):
+
+| model | questions | row ids = the author's | argmax = the author's fp32 (top-2 margin > 0.02) | near-ties agreeing | max \|Δp\| | mean of row means |
+|---|---:|---:|---:|---:|---:|---:|
+| `kev-0.8b` | 186 | 186/186 | 181/181 | 4/5 | 0.0124 | 0.00107 |
+| `kev-4b` | 186 | 186/186 | 182/182 | 3/4 | 0.0153 | 0.00081 |
+
+Against the zoo's own Swift run of the same bundle, the hidden rows and the probabilities are bit-equal on every question
+(186 of 186 for each model) and the answers on every record (155 of 155); the first record read again repeats them bit
+for bit. `systemone serve --model kev-0.8b` passes `conformance/check.py`, 22 of 22 requests and the three routes (a
+choice of 255 options makes a row past 3,968 tokens, the 422 that says so). The answers are in the server's form:
+`confidence` is 1 − normalised entropy and `usage` counts each question's row; `metadata.packed_tokens` is the author's
+count (the state once, then each question).
+
 ## What runs
 
 Ten whole uses, one action and the complete result, from the same sources on the Mac and the
@@ -467,6 +505,10 @@ Clips of each on the Mac and on the iPhone are in
   `readout` gives the row, every option's logit and the hidden state's digest), and the model zoo's
   `apps/ClefFlash` host beside it, ported with every numeric path unchanged (`ClefPromptBuilder`, `ClefRenderer`,
   `ClefImagePreprocess`, `ClefDecoder`, `ClefHead`, `ClefPipeline`).
+- `Sources/CoreAIKit/Kev/` — Kev: `KitKevDecider` (the model-level API and a `DecisionBackend`; `prepare(state:)` keeps a
+  state for later questions; `readout` gives the rows, each row's hidden digest, and every option's logit and p), and the
+  model zoo's `apps/Kev` host beside it, ported with every numeric path unchanged (`KevEncoder`, `KevDecoder`, `KevHead`,
+  `KevPipeline`).
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op (`decide(image:…)` for an image);
   `CoreAI+SystemOne.swift` — `CoreAI.systemOne`, the same op in the hosted request and
   response forms (the model from `options`, else the request's `model`, else the default).
