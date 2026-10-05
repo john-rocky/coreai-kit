@@ -214,6 +214,14 @@ or zoo app — that runs the same model. (Media lives in
 
 <p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/coder-ornith.gif" alt="Agentic coding on Mac" width="720"><br>Agentic coding — Ornith-1.0-9B on M4 Max · <a href="https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChatMac">zoo <code>CoreAIChatMac</code></a></p>
 
+## Projects using CoreAIKit
+
+- [AnyDecisionModel](https://github.com/mattt/AnyDecisionModel) — a Swift package for typed
+  decisions from language models (probabilities, choices, and scores). Since 0.4.0 its
+  `CoreAIDecisionModel`, enabled by the package's `CoreAI` trait, runs a Core AI language
+  bundle through CoreAIKit's `TypedDecisions` API
+  ([release notes](https://github.com/mattt/AnyDecisionModel/releases/tag/0.4.0)).
+
 ## Model downloads and storage
 
 ModelStore uses [swift-huggingface](https://github.com/huggingface/swift-huggingface)
