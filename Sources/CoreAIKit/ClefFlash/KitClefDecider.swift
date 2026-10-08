@@ -288,6 +288,7 @@ public actor KitClefDecider: DecisionBackend {
     /// wire is rendered from its own values (numbers as written, structured values as canonical JSON); one built in
     /// Swift from its typed questions. `images` holds at most one image, read at `grid` (448 by default).
     public func systemOne(_ request: SystemOne.Request) async throws -> SystemOne.Response {
+        if let refusal = audioRefusal(request) { throw refusal }
         try SystemOne.validateIDs(request.questions.map(\.id))
         guard request.questions.count <= Self.maxQuestions else {
             throw SystemOne.WireError(

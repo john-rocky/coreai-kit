@@ -12,9 +12,12 @@
 // model's own option count (`TypedDecisions.maxOptions`) to `request(from:maxOptions:)`, so a
 // list the model cannot read is refused with that count; 255 stays the ceiling either way.
 //
-// One addition for a model that reads images (`KitClefDecider`): `images`, an array of one image
+// One addition for a model that reads images (`KitClefDecider`, `KitD1OmniDecider`): `images`, an array of one image
 // as a data URL, plain base64 or a file path on this machine, and `grid`, the vision tower's tile
 // side (256 or 448). A backend that reads no images refuses a request that carries one.
+// One for a model that reads a clip (`KitD1OmniDecider`): `audio`, one 16 kHz mono 16-bit PCM WAV in the same three
+// forms; such a request may leave `state` out, the publisher's `state=None` for a clip. A backend that reads no audio
+// refuses a request that carries it.
 
 import Foundation
 
@@ -33,6 +36,9 @@ public enum SystemOne {
         /// The vision tower's tile side the request asks for (`grid` on the wire: 256 or 448), or nil for the
         /// model's default.
         public let grid: Int?
+        /// The clip the request carries (`audio` on the wire), or nil. Only a backend that reads audio
+        /// (`DecisionBackend.readsAudio`) answers a request that has one.
+        public let audio: Audio?
         /// The request as parsed from the wire, members in order and numbers as written, for a backend that
         /// renders the request's own values (`KitClefDecider`); nil for a request built in Swift.
         let json: JSONValue?
@@ -52,6 +58,13 @@ public enum SystemOne {
         ) {
             self.init(
                 state: state, model: model, questions: questions, structuredState: false, images: [image], grid: grid)
+        }
+
+        /// The same with one clip, for a model that reads audio (a 16 kHz mono 16-bit PCM WAV).
+        public init(
+            state: String, model: String? = nil, questions: [(id: String, question: Decision.Question)], audio: Audio
+        ) {
+            self.init(state: state, model: model, questions: questions, structuredState: false, audio: audio)
         }
 
         /// The same with the questions as a literal, in the order written:
@@ -76,7 +89,7 @@ public enum SystemOne {
 
         init(
             state: String, model: String?, questions: [(id: String, question: Decision.Question)], structuredState: Bool,
-            images: [Image] = [], grid: Int? = nil, json: JSONValue? = nil
+            images: [Image] = [], grid: Int? = nil, audio: Audio? = nil, json: JSONValue? = nil
         ) {
             self.state = state
             self.model = model
@@ -84,6 +97,7 @@ public enum SystemOne {
             self.structuredState = structuredState
             self.images = images
             self.grid = grid
+            self.audio = audio
             self.json = json
         }
     }
@@ -94,6 +108,14 @@ public enum SystemOne {
         case data(Data)
         /// A file on this machine: an absolute path or a `file://` URL on the wire. `SystemOneServer` takes one only
         /// when it listens on the loopback address.
+        case file(URL)
+    }
+
+    /// The clip of a request (`audio` on the wire): a RIFF/WAVE file of 16-bit PCM, mono, 16 kHz.
+    public enum Audio: Sendable, Equatable {
+        /// The file's bytes: a data URL (`data:audio/wav;base64,…`) or plain base64 on the wire.
+        case data(Data)
+        /// A file on this machine, read as an image file is (`Image.file`).
         case file(URL)
     }
 
@@ -128,16 +150,25 @@ public enum SystemOne {
     /// object rather than its bytes).
     public static func request(from root: JSONValue, maxOptions: Int = maxOptions) throws -> Request {
         guard let members = root.members else { throw WireError("the request must be a JSON object") }
-        guard let stateValue = root["state"] else { throw WireError("'state' is required") }
+        var audio: Audio?
+        if let value = root["audio"], value != .null {
+            audio = try Self.audio(from: value)
+        }
         let state: String
         let structured: Bool
-        switch stateValue {
-        case .string(let s):
+        switch root["state"] {
+        case .string(let s)?:
             state = s
             structured = false
-        case .null:
+        case nil where audio != nil, .null? where audio != nil:
+            // a clip without a state: the publisher's state=None (the raw request keeps the absence)
+            state = ""
+            structured = false
+        case nil:
+            throw WireError("'state' is required")
+        case .null?:
             throw WireError("'state' must be a string, an object or an array")
-        default:
+        case let stateValue?:
             state = stateValue.dumps()
             structured = true
         }
@@ -171,22 +202,41 @@ public enum SystemOne {
         }
         return Request(
             state: state, model: model, questions: questions, structuredState: structured, images: images, grid: grid,
-            json: root)
+            audio: audio, json: root)
     }
 
     /// One `images` element: a data URL, plain base64, an absolute path or a `file://` URL.
     static func image(from value: JSONValue) throws -> Image {
+        switch try media(from: value, noun: "an image") {
+        case .data(let data): return .data(data)
+        case .file(let url): return .file(url)
+        }
+    }
+
+    /// The `audio` value: one clip as a data URL, plain base64, an absolute path or a `file://` URL.
+    static func audio(from value: JSONValue) throws -> Audio {
+        guard value.elements == nil else {
+            throw WireError("'audio' must be one clip (a data URL, base64, or a file path), not an array")
+        }
+        switch try media(from: value, noun: "a clip") {
+        case .data(let data): return .data(data)
+        case .file(let url): return .file(url)
+        }
+    }
+
+    /// A media value on the wire, `noun` naming it in the 422s.
+    private static func media(from value: JSONValue, noun: String) throws -> Image {
         guard let text = value.stringValue, !text.isEmpty else {
-            throw WireError("an image must be a string: a data URL, base64, or a file path")
+            throw WireError("\(noun) must be a string: a data URL, base64, or a file path")
         }
         if text.hasPrefix("data:") {
             guard let comma = text.firstIndex(of: ","), text[..<comma].hasSuffix(";base64"),
                 let data = Data(base64Encoded: String(text[text.index(after: comma)...]), options: .ignoreUnknownCharacters)
-            else { throw WireError("an image data URL must be base64 (data:<type>;base64,…)") }
+            else { throw WireError("\(noun) data URL must be base64 (data:<type>;base64,…)") }
             return .data(data)
         }
         if text.hasPrefix("file://") {
-            guard let url = URL(string: text), url.isFileURL else { throw WireError("an image file URL could not be read: \(text)") }
+            guard let url = URL(string: text), url.isFileURL else { throw WireError("\(noun) file URL could not be read: \(text)") }
             return .file(url)
         }
         // A path has a character base64 has not ('.', '~', '-', a space); plain base64 of a JPEG starts with "/9j/".
@@ -196,7 +246,7 @@ public enum SystemOne {
             return .file(URL(fileURLWithPath: (text as NSString).expandingTildeInPath))
         }
         guard let data = Data(base64Encoded: text, options: .ignoreUnknownCharacters), !data.isEmpty else {
-            throw WireError("an image must be a data URL, base64, or an absolute file path")
+            throw WireError("\(noun) must be a data URL, base64, or an absolute file path")
         }
         return .data(data)
     }

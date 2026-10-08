@@ -310,13 +310,17 @@ public struct SystemOneMCP: Sendable {
                 },
                 "images": {
                   "type": "array",
-                  "description": "One image the questions are also about, for a model that reads images (clef-flash): a data URL, base64, or an absolute file path. Other models refuse it.",
+                  "description": "One image the questions are also about, for a model that reads images (clef-flash, d1-omni-600m): a data URL, base64, or an absolute file path. Other models refuse it.",
                   "items": {"type": "string"},
                   "maxItems": 1
                 },
+                "audio": {
+                  "type": "string",
+                  "description": "One clip the questions are about, for a model that reads audio (d1-omni-600m): a 16 kHz mono 16-bit WAV as a data URL, base64, or an absolute file path; with no state to give, send state {} (what the model reads for a clip without one). Other models refuse it."
+                },
                 "grid": {
                   "type": "integer",
-                  "description": "The vision tower's tile side for the image: 448 (default) or 256.",
+                  "description": "clef-flash's vision tower tile side for the image: 448 (default) or 256.",
                   "enum": [256, 448]
                 }
               },

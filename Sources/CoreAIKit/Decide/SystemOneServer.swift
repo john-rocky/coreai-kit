@@ -287,7 +287,7 @@ public final class SystemOneServer: @unchecked Sendable {
         } catch {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: "\(error)"))
         }
-        if let refusal = backend.imageRefusal(parsed) {
+        if let refusal = backend.mediaRefusal(parsed) {
             return .json(422, SystemOne.errorValue(type: "invalid_request_error", message: refusal.message))
         }
         // A file path names a file on this machine: read only for a client on this machine.
@@ -295,6 +295,11 @@ public final class SystemOneServer: @unchecked Sendable {
             return .json(422, SystemOne.errorValue(
                 type: "invalid_request_error",
                 message: "this server listens on \(host); send the image as base64 (a file path is read only on 127.0.0.1)"))
+        }
+        if !Self.isLoopback(host), case .file? = parsed.audio {
+            return .json(422, SystemOne.errorValue(
+                type: "invalid_request_error",
+                message: "this server listens on \(host); send the clip as base64 (a file path is read only on 127.0.0.1)"))
         }
         do {
             let response = try await decisions.run { [backend] in try await backend.systemOne(parsed) }

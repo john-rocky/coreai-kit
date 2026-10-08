@@ -169,7 +169,7 @@ public final class SystemOneMCPServer: @unchecked Sendable {
                 let (response, modelID) = try await decisions.run {
                     if await self.cancelled.remove(request.id) { throw CallCancelled() }
                     let (decider, modelID) = try await self.decider(for: parsed.model)
-                    if let refusal = decider.imageRefusal(parsed) { throw refusal }
+                    if let refusal = decider.mediaRefusal(parsed) { throw refusal }
                     return (try await decider.systemOne(parsed), modelID)
                 }
                 log("decide  \(parsed.questions.count) question(s), state \(response.stateTokens) tokens, \(Int(response.milliseconds.rounded())) ms")
