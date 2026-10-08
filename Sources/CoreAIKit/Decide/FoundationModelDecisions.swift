@@ -136,7 +136,7 @@ public actor FoundationModelDecisions: DecisionBackend {
     /// each generation and reports its tokens on the answer — and its `metadata` names this
     /// backend.
     public func systemOne(_ request: SystemOne.Request) async throws -> SystemOne.Response {
-        if let refusal = imageRefusal(request) { throw refusal }
+        if let refusal = mediaRefusal(request) { throw refusal }
         try SystemOne.validateIDs(request.questions.map(\.id))
         for (_, question) in request.questions {
             try DecisionPrompt.validate(question, maxOptions: maxOptions)

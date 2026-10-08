@@ -483,6 +483,24 @@
       "format": "pointerHead"
     },
     {
+      "id": "d1-omni-600m",
+      "name": "d1-omni 600M",
+      "repo": "mlboydaisuke/d1-omni-600M-CoreAI",
+      "revision": "914184e50fb1e4ef2ece2454d656cbd9031728ff",
+      "kind": "omniDecision",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 6458
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 6458
+        }
+      },
+      "format": "markerScores"
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

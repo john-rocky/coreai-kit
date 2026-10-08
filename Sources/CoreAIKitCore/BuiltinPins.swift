@@ -14,6 +14,7 @@ enum BuiltinPins {
         "clef-flash": "220ac149ed1136465f7d9dac93aaf0dfc55d6b73",
         "clip-vit-b32": "01a6965ddfa33a11d7a4bd299077c2672c0a72cc",
         "colmodernvbert": "8b1e802cabc8f3980be5fb58d179139c5118a72a",
+        "d1-omni-600m": "914184e50fb1e4ef2ece2454d656cbd9031728ff",
         "decider-0.8b": "ff60ccf563556efbf83442e891e57d68a1840728",
         "decider-2b-vision": "4948e3231035df85c7b03c90b766eb17a08d9451",
         "depth-anything-3-small": "719d8a1ea61644863fcf07690e93fc4ebcc49811",

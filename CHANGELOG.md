@@ -9,6 +9,31 @@ policy.
 
 ### Added
 
+- **d1-omni-600M** — catalog id `d1-omni-600m` (the new `kind: omniDecision`, `format: markerScores`), driven by the new
+  `KitD1OmniDecider` (`Sources/CoreAIKit/D1Omni/`): Liquid AI's decision model (LFM Open License v1.0; an
+  LFM2.5-Encoder-350M trunk with a typed decision head, a SigLIP2 vision tower and a FastConformer audio tower). A state
+  (text or JSON) with images or one 16 kHz clip, and typed questions (noul, choice, score) go in; every option of every
+  question comes back with a probability; nothing is generated. Each question is its own row in the publisher's form, a
+  `<|mask|>` marker before each option, read from one forward pass of a static fp16 decision graph at the smallest of
+  seven lengths (64 to 4,096 positions) that holds the row, behind the prefix rows of the vision graph (one call per
+  image crop) or the audio graph (5 / 10 / 20 / 30 s buckets). The host is the model zoo's `apps/D1Omni` library
+  (f9e0e09) with every numeric path unchanged: across its twelve files only names (prefixed `D1`; the zoo's `D1Omni` is
+  `D1OmniPipeline`), access, `@available(macOS 27, iOS 27, *)` and a provenance line differ, and a request's state is
+  tokenized once for all its questions. 6,458 MB, the same `.aimodel`s on macOS and iOS: the platform folder's twelve
+  bundles download whole on first use, each its own download, so an iPhone takes the JIT `ios/` graphs and never the
+  repo's `ios-h19p/` AOT set (which has no L4096); a graph loads the first time a row or a medium needs it. The kind is
+  new: kits 0.1.0–0.7.3 decode an unknown kind as `unknown` and leave the entry out of `available(_:)` (each tag's
+  `ModelCatalog.swift`, read); the bundle's metadata says `decision.head = "encoder"`, so `decision` would put it in
+  front of laya's encoder path, which cannot read its rows. `TypedDecisions` refuses it by its kind before downloading
+  anything. `/v1/systemone` gains `audio` (one clip: a data URL, base64, or a file path, which `SystemOneServer` reads
+  only on 127.0.0.1); a request with `audio` may leave `state` out, and every backend but `KitD1OmniDecider` refuses
+  it with a 422 that names the model. `systemone serve`, `systemone mcp` (the `decide` tool's schema gains `audio`) and
+  `SystemOne.backend(catalog:)` load `KitD1OmniDecider` for the kind, and so do `decide-cli ask` (`--image`, `--audio`)
+  and `serve` (`--bundle` takes the repo's `macos/` folder). `D1OmniTests` (the catalog entry, the refusals, the wire's
+  `audio`, the request in the publisher's form, the readout of 38 fixture rows against the publisher's response text;
+  with the repo's `tokenizer/` and `reference/`, the zoo's 360 public rows token for token; with the bundles, 14
+  requests — 20 text rows at 64 to 4,096 positions, 3 images, 3 clips — bit for bit against the zoo's Swift host,
+  measured on an M4 Max: 38 of 38 rows and 14 of 14 responses).
 - **Kev-0.8B and Kev-4B** — catalog ids `kev-0.8b` and `kev-4b` (the new `kind: rowDecision`, `format: pointerHead`),
   driven by the new `KitKevDecider` (`Sources/CoreAIKit/Kev/`): Jared Palmer's decision models, a rank-16 LoRA adapter
   and a pointer head on Qwen3.5-0.8B-Base and Qwen3.5-4B-Base (Apache-2.0). A state (text or JSON) and typed questions

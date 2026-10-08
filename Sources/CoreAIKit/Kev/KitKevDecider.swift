@@ -201,7 +201,7 @@ public actor KitKevDecider: DecisionBackend {
     /// its own values (numbers as written, structured values rendered the author's way); one built in Swift from its
     /// typed questions.
     public func systemOne(_ request: SystemOne.Request) async throws -> SystemOne.Response {
-        if let refusal = imageRefusal(request) { throw refusal }
+        if let refusal = mediaRefusal(request) { throw refusal }
         try SystemOne.validateIDs(request.questions.map(\.id))
         for (_, question) in request.questions {
             try DecisionPrompt.validate(question, maxOptions: maxOptions)

@@ -73,6 +73,14 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// (`format: pointerHead`), driven by `KitKevDecider`; not `decision`, which a kit built before this case would
         /// list in `systemone models` and hand, after downloading the bundle, to a `TypedDecisions` that cannot read it.
         case rowDecision
+        /// Typed decisions about a text, images or a clip, every option read at its marker in one forward pass of a static
+        /// decision graph (d1-omni-600M): state (text or JSON, an image or a 16 kHz clip) + questions → a probability per
+        /// option, one row per question at the smallest of seven graph lengths that holds it, the media prefix from a
+        /// vision or an audio graph (`format: markerScores`), driven by `KitD1OmniDecider`. Its bundle declares
+        /// `decision.head = "encoder"`, but its rows, temperatures and media prefixes are not laya's: a kit built before
+        /// this case decodes the entry as `unknown` and leaves it out of `available(_:)`, where `decision` would list it
+        /// in `systemone models` and download 6.5 GB for a `TypedDecisions` that cannot read it.
+        case omniDecision
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -125,7 +133,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// metadata declares it too). A `jointDecision` entry says `jointHead` (every question read at
     /// once by a head graph over the decoder's hidden states, with `assets` naming the other parts;
     /// `KitClefDecider`). A `rowDecision` entry says `pointerHead` (one row per question, read by a pointer head over
-    /// the decoder's hidden states; `KitKevDecider`). nil = the kind's default (`decider` for a decision entry).
+    /// the decoder's hidden states; `KitKevDecider`). An `omniDecision` entry says `markerScores` (one row per question,
+    /// every option read at its marker from the decision graph's scores; `KitD1OmniDecider`). nil = the kind's default
+    /// (`decider` for a decision entry).
     public let format: String?
     /// The weights' license when it restricts what an app may do with them — the SPDX
     /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
@@ -585,6 +595,26 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "gpu-pipelined/kev_4b_decode_fp16_metal_pf128", sizeMB: 8431),
                 ],
                 format: "pointerHead"),
+            // ── d1-omni-600M (Liquid AI, LFM Open License v1.0: LFM2.5-Encoder-350M with a typed decision head, a SigLIP2
+            //    vision tower and a FastConformer audio tower): typed decisions about a text, images or a 16 kHz clip. One
+            //    row per question in the publisher's form, each option read at its `<|mask|>` marker from the scores of a
+            //    static fp16 decision graph at the smallest of seven lengths (64 to 4,096 positions) that holds the row,
+            //    the media prefix from the vision graph (one call per crop) or the audio graph of the clip's 5 / 10 / 20 /
+            //    30 s bucket. `format: markerScores`, driven by `KitD1OmniDecider`. Its own kind, `omniDecision`: the
+            //    bundle says `decision.head = "encoder"` but is not laya's form, and a kit built before the kind decodes
+            //    the entry as `unknown` and leaves it out of `available(_:)`. The variant path is the platform folder of
+            //    twelve bundles (seven decision lengths, the vision graph, four audio buckets), all downloaded on first
+            //    use; a graph loads the first time a row or a medium needs it. The same JIT `.aimodel`s on both platforms
+            //    (the zoo gated them on an iPhone 18 Pro by device JIT); the repo's `ios-h19p/` AOT set, which has no
+            //    L4096 (its compile exceeds the phone's per-process memory limit), is not used. ──
+            CatalogEntry(
+                id: "d1-omni-600m", name: "d1-omni 600M",
+                repo: "mlboydaisuke/d1-omni-600M-CoreAI", kind: .omniDecision,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 6458),
+                    "ios": .init(path: "ios", sizeMB: 6458),
+                ],
+                format: "markerScores"),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

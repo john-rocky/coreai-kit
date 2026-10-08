@@ -119,7 +119,7 @@ extension TypedDecisions {
     /// count, and the ids for duplicates, before anything runs. `request.model` is the caller's
     /// to resolve (`CoreAI.systemOne` does); this model answers, and the response names it.
     public func systemOne(_ request: SystemOne.Request) async throws -> SystemOne.Response {
-        if let refusal = imageRefusal(request) { throw refusal }
+        if let refusal = mediaRefusal(request) { throw refusal }
         try SystemOne.validateIDs(request.questions.map(\.id))
         for (_, question) in request.questions {
             try DecisionPrompt.validate(question, maxOptions: maxOptions)
@@ -137,8 +137,8 @@ extension TypedDecisions {
 @available(macOS 27, iOS 27, *)
 extension SystemOne {
     /// The backend that answers for a catalog id: `KitClefDecider` for a `jointDecision` entry (clef-flash),
-    /// `KitKevDecider` for a `rowDecision` entry (Kev; `configuration.sharePrefix` reaches it), else `TypedDecisions`.
-    /// What `systemone` and the MCP server load.
+    /// `KitKevDecider` for a `rowDecision` entry (Kev; `configuration.sharePrefix` reaches it), `KitD1OmniDecider` for an
+    /// `omniDecision` entry (d1-omni-600m), else `TypedDecisions`. What `systemone` and the MCP server load.
     public static func backend(
         catalog id: String, store: ModelStore = .default,
         configuration: TypedDecisions.Configuration = TypedDecisions.Configuration(),
@@ -150,6 +150,8 @@ extension SystemOne {
         case .rowDecision:
             return try await KitKevDecider(
                 catalog: id, sharePrefix: configuration.sharePrefix, store: store, downloadProgress: downloadProgress)
+        case .omniDecision:
+            return try await KitD1OmniDecider(catalog: id, store: store, downloadProgress: downloadProgress)
         default:
             return try await TypedDecisions(
                 catalog: id, store: store, configuration: configuration, downloadProgress: downloadProgress)
@@ -159,5 +161,6 @@ extension SystemOne {
     /// Whether `systemone` and the MCP server can load this catalog entry as a decision backend.
     public static func supports(_ entry: CatalogEntry) -> Bool {
         TypedDecisions.supports(entry) || KitClefDecider.supports(entry) || KitKevDecider.supports(entry)
+            || KitD1OmniDecider.supports(entry)
     }
 }

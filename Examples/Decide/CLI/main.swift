@@ -28,6 +28,9 @@
 //   (a Kev fixture, coreai-kev-fixtures/1: the author's row ids (as sha256) and fp32 probabilities per question; the
 //    records that carry their text are run, with the shared prefix unless --no-share; --reference adds the zoo Swift
 //    host's run of the same bundle, compared bit for bit)
+//   swift run -c release decide-cli ask --model d1-omni-600m --state "…" --choice "…|…|…" [--image x.png | --audio x.wav]
+//   (d1-omni-600m: a text, an image or a 16 kHz mono 16-bit WAV, every question its own row; with --image or --audio
+//    --state may be left out, the publisher's None; --bundle <the repo's macos/ folder> reads local files)
 //   (an encoder model's fixture, coreai-encoder-fixtures/1: tokens and markers, then the raw logits at T = 1;
 //    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
@@ -67,6 +70,9 @@ let usage = """
                              ask, serve and mcp take --model clef-flash, ask --image too)
                             (a Kev fixture: [--reference <zoo kev fixture output .json>] [--out <summary.json>] [--limit <n>]
                              [--no-share]; --bundle <dir> reads a local bundle; ask, serve and mcp take --model kev-0.8b)
+           decide-cli ask   --model d1-omni-600m [--state <text>] [--image <file> | --audio <16 kHz mono WAV>] (--noul … | --choice … | --score …)…
+                            (ask and serve also read a local platform folder, --bundle <the repo's macos/>; mcp takes
+                             --model d1-omni-600m)
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
@@ -113,7 +119,7 @@ guard let command = args.popFirst() else { fail(usage) }
 if command == "--list-models" {
     for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision)
         + ModelCatalog.builtin.available(.visionDecision) + ModelCatalog.builtin.available(.jointDecision)
-        + ModelCatalog.builtin.available(.rowDecision)
+        + ModelCatalog.builtin.available(.rowDecision) + ModelCatalog.builtin.available(.omniDecision)
     {
         print("\(entry.id)  —  \(entry.name)  [\(entry.kind.rawValue)]")
     }
@@ -165,6 +171,8 @@ var dumpProbsPath: String?
 var modelGiven = false
 /// `ask --image`: the image the questions are about, and the square it is resized to.
 var imagePath: String?
+/// `ask --audio`: the clip the questions are about (d1-omni-600m: a 16 kHz mono 16-bit WAV).
+var audioPath: String?
 var grid: KitVisionDecider.Grid = .g256
 /// `--grid` given: clef-flash otherwise reads its own default (448).
 var gridGiven = false
@@ -295,6 +303,7 @@ while let arg = args.popFirst() {
         if kind == .fm { modelID = FoundationModelDecisions.modelID }
     case "--dump-probs": dumpProbsPath = args.popFirst()
     case "--image": imagePath = args.popFirst()
+    case "--audio": audioPath = args.popFirst()
     case "--images": imagesDir = args.popFirst()
     case "--grid":
         guard let tile = Int(args.popFirst() ?? ""), let g = KitVisionDecider.Grid(tile: tile) else { fail(usage) }
@@ -332,6 +341,23 @@ let id = modelID
 // MARK: - ask
 
 @MainActor func runAsk() async throws {
+    if try await isOmniDecision(id) {
+        // d1-omni-600m: every question its own row over the text, the image or the clip; no state is the publisher's None.
+        guard !questions.isEmpty, state != nil || imagePath != nil || audioPath != nil else { fail(usage) }
+        let decider = try await loadOmniDecider()
+        let asked = questions.map { (id: $0.0, question: $0.1) }
+        let images: [SystemOne.Image] = imagePath.map { [.file(URL(fileURLWithPath: $0))] } ?? []
+        let audio = audioPath.map { SystemOne.Audio.file(URL(fileURLWithPath: $0)) }
+        stderrPrint("model: \(decider.id) (\(decider.modelName))\(imagePath.map { "   image: \($0)" } ?? "")\(audioPath.map { "   audio: \($0)" } ?? "")")
+        let response = try await decider.systemOne(
+            state: state.map { .string($0) }, questions: asked, images: images, audio: audio)
+        for answer in response.answers { print("\(answer.id): \(describe(answer.answer))") }
+        if let buckets = response.metadata?["buckets"]?.elements {
+            stderrPrint("rows at lengths \(buckets.map { $0.dumps() }.joined(separator: ", ")), prefix rows \(response.stateTokens)")
+        }
+        return
+    }
+    if audioPath != nil { fail("--audio reads a clip with d1-omni-600m (--model d1-omni-600m, or --bundle <its macos/>)") }
     guard let state, !questions.isEmpty else { fail(usage) }
     if modelGiven, try await isRowDecision(id) {
         // Kev: one row per question, the state's whole calls run once (unless --no-share).
@@ -2282,7 +2308,9 @@ struct KevReferenceRecord {
         return
     }
     let decider: any DecisionBackend
-    if try await isJointHead(id) {
+    if try await isOmniDecision(id) {
+        decider = try await loadOmniDecider()
+    } else if try await isJointHead(id) {
         decider = try await KitClefDecider(catalog: id, downloadProgress: progress)
     } else if try await isRowDecision(id) {
         decider = try await KitKevDecider(catalog: id, sharePrefix: !noShare, downloadProgress: progress)
@@ -2319,6 +2347,23 @@ struct KevReferenceRecord {
 @MainActor func isRowDecision(_ id: String) async throws -> Bool {
     guard bundlePath == nil else { return false }
     return try await ModelCatalog.entry(forID: id).kind == .rowDecision
+}
+
+/// Whether the model is d1-omni (`KitD1OmniDecider`): an `omniDecision` catalog entry, or a `--bundle` folder of its
+/// `decide-fp16-L<L>/` bundles (the repo's `macos/`).
+@MainActor func isOmniDecision(_ id: String) async throws -> Bool {
+    if let bundlePath {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: bundlePath)) ?? []
+        return names.contains { $0.hasPrefix("decide-fp16-L") }
+    }
+    guard modelGiven else { return false }
+    return try await ModelCatalog.entry(forID: id).kind == .omniDecision
+}
+
+/// d1-omni from the `--bundle` folder when given, else the catalog.
+@MainActor func loadOmniDecider() async throws -> KitD1OmniDecider {
+    if let bundlePath { return try await KitD1OmniDecider(folderAt: URL(fileURLWithPath: bundlePath)) }
+    return try await KitD1OmniDecider(catalog: id, downloadProgress: progress)
 }
 
 // MARK: - mcp (the same decisions as Model Context Protocol tools — `SystemOneMCPServer` in the kit;
