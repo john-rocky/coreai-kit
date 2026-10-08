@@ -67,12 +67,14 @@ A choice lists up to the hosted API's 255 options where the model reads that man
 sends 22 requests in those forms and checks every answer's shape, against this server or any
 other that speaks the route.
 
-A request can carry one image for a model that reads images, `clef-flash` today: `images` is an
+A request can carry one image for a model that reads images, `clef-flash` and `d1-omni-600m`: `images` is an
 array holding it as a data URL (`"data:image/png;base64,…"`), plain base64, or a path on the
-server's machine, which `SystemOneServer` reads only when it listens on 127.0.0.1; `grid` picks the
-vision tower's tile, 448 (the default) or 256. Any other model answers such a request with a 422
+server's machine, which `SystemOneServer` reads only when it listens on 127.0.0.1; `grid` picks
+clef-flash's vision tower tile, 448 (the default) or 256. Any other model answers such a request with a 422
 that names it, and a request without the field reads as before
-([every question at once](#every-question-at-once-clef-flash)).
+([every question at once](#every-question-at-once-clef-flash)). A request for `d1-omni-600m` can carry one clip
+instead: `audio`, a 16 kHz mono 16-bit WAV in the same three forms, with `state` optional
+([text, images or audio](#text-images-or-audio-d1-omni)); every other model answers it with a 422.
 
 ## From a coding agent
 
@@ -133,8 +135,8 @@ the first question on a short state and 1.2 s for each later question on it. On 
 Name a model with `options: .model("apus-decision-v1-4b")` in Swift, or
 `systemone serve --model apus-decision-v1-4b` for the server. A question about an image goes to
 `decider-2b-vision` through `CoreAI.decide(image:…)` ([below](#decisions-about-an-image)), or to
-`clef-flash` with the request's `images` ([below](#every-question-at-once-clef-flash)); the tables
-here are text only.
+`clef-flash` with the request's `images` ([below](#every-question-at-once-clef-flash)); a question about an image or a
+voice clip to `d1-omni-600m` ([below](#text-images-or-audio-d1-omni)); the tables here are text only.
 
 JevBench's 231 public items (48 easy, 72 standard, 111 hard), sent one question per request to
 `decide-cli serve` by the benchmark's own harness, which also scored them; M4 Max, macOS 27.0,
@@ -280,6 +282,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `decider-2b-vision` | A–J after each question's `Answer: (`, every question of a call in one row ([about an image](#decisions-about-an-image)) | 10 |
 | `clef-flash` | a joint head over every option of every question in one pass, 16 questions and 128 options a request ([every question at once](#every-question-at-once-clef-flash)) | 128 |
 | `kev-0.8b`, `kev-4b` | a pointer head at each option's closing token, one row per question ([one row per question](#one-row-per-question-kev)) | 255 |
+| `d1-omni-600m` | the score at a mask marker before each option, one row per question at the smallest of seven graph lengths that holds it ([text, images or audio](#text-images-or-audio-d1-omni)) | 255 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its
 letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
@@ -454,6 +457,63 @@ choice of 255 options makes a row past 3,968 tokens, the 422 that says so). The 
 `confidence` is 1 − normalised entropy and `usage` counts each question's row; `metadata.packed_tokens` is the author's
 count (the state once, then each question).
 
+## Text, images or audio: d1-omni
+
+`d1-omni-600m` (Liquid AI, LFM Open License v1.0: an LFM2.5-Encoder-350M trunk with a typed decision head, a SigLIP2
+vision tower and a FastConformer audio tower) reads each question as its own row: the state, then the question and each
+option between the publisher's delimiter tokens, a `<|mask|>` marker before each option. One forward pass of a static
+decision graph scores every position, and each option is read at its marker: on a text row divided by the publisher's
+temperature for the question's type and option count, then softmaxed per question in float32. Nothing is generated. A
+request can also carry images or one clip, not both: the vision graph reads each image crop, the audio graph the clip
+(16 kHz mono 16-bit WAV, cut at 30 s), and their rows go in front of each question's ids. The decision graph has seven
+lengths, 64 to 4,096 positions, and a row runs at the smallest one that holds it; a row longer than 4,096 positions is
+refused (the publisher's own limit is 16,384). 6.5 GB, the same `.aimodel`s on the Mac and the iPhone; each graph loads
+the first time a row or a medium needs it. The catalog kind is `omniDecision`: `TypedDecisions(catalog:)` refuses it by
+name, and a kit released before it (0.7.3 and earlier) decodes the kind as `unknown` and lists it nowhere. The weights'
+licence allows commercial use below 10 million US dollars in annual revenue (its Section 5).
+
+```swift
+let decider = try await KitD1OmniDecider(catalog: "d1-omni-600m")     // 6.5 GB the first time
+let r = try await decider.systemOne(try SystemOne.request(from: body))  // a text or JSON state, `images` or `audio`
+let heard = try await decider.systemOne(
+    state: nil, questions: [(id: "refund", question: .noul("Does the caller want a refund?"))], audio: .file(clip))
+heard["refund"]?.noul
+```
+
+On the server it is `systemone serve --model d1-omni-600m`. A request carries one image in `images`, or one clip in
+`audio` as a data URL, base64, or a path on the server's machine (read only on 127.0.0.1). With `audio`, `state` may be
+left out: the model then reads the `{}` its audio questions were trained on, which an MCP client, whose schema asks
+for a state, sends as `"state": {}`. For an image, `"state": ""` reads as no state. `grid` is refused: the image is
+read at the publisher's own crops. The host is the model zoo's `apps/D1Omni` library with every numeric path unchanged:
+the publisher's rows (caller text escaped so that it cannot write a delimiter, the state tokenized once per request),
+an image decoded as PIL reads it (ImageIO, or libjpeg's arithmetic for a baseline JPEG whose components share one
+sampling factor), vision.py's crops resized by torchvision's float32 antialias kernel, the clip's log-mel in float64,
+and the publisher's readout. A JPEG with chroma subsampling or progressive coding goes to ImageIO, which the zoo found
+up to 3 levels off PIL on a 4:4:4 photo and did not compare on such files.
+
+The zoo measured one decision (the graph inputs, the calls, the readout; no tokenizing, image decoding or mel) on the
+same graphs:
+
+| | Mac (M4 Max, macOS 27.0) | iPhone 18 Pro (iOS 27.2) |
+|---|---:|---:|
+| One question, 47 positions (L64) | 7.35 ms | 10.79 ms |
+| One question on a 384 × 384 image (144 + 39 positions) | 38.3 ms | 57.67 ms |
+| One question on 9.6 s of audio (121 + 63 positions) | 24.94 ms | 27.02 ms |
+
+The Mac column is the Core AI Python runtime on the graphs compiled for the Mac's GPU inside a measurement window, the
+iPhone column the zoo's Swift host in its gate app, the `.aimodel` specialized on the phone
+(`models/d1-omni-600m/gate-d1-omni-600m-timing-mac.json` and `gate-d1-omni-600m-iphone.json` in the zoo). The kit was
+not timed.
+
+Through `D1OmniTests` (M4 Max, macOS 27.0 26A428, 2026-10-09), with the repo's files at the catalog pin: the zoo's 360
+public fixture rows rebuilt by the kit with its swift-transformers 1.3.3 are the publisher's ids, markers and graph
+lengths; 14 requests (20 text rows at 64 to 4,096 positions, 3 images, 3 clips) through `KitD1OmniDecider(catalog:)` give
+the zoo's Swift host's marker logits and probabilities bit for bit on all 38 rows and the publisher's response text on
+all 14 requests, an image and a clip again over the wire give the same probabilities, and only the six lengths those
+rows need loaded. The iPhone has not been run through the kit; the zoo's gate app ran the same graphs on an iPhone 18
+Pro (78 fixture rows within the gate), and the memory of several decision lengths loaded in one process there was not
+measured.
+
 ## What runs
 
 Ten whole uses, one action and the complete result, from the same sources on the Mac and the
@@ -509,6 +569,10 @@ Clips of each on the Mac and on the iPhone are in
   state for later questions; `readout` gives the rows, each row's hidden digest, and every option's logit and p), and the
   model zoo's `apps/Kev` host beside it, ported with every numeric path unchanged (`KevEncoder`, `KevDecoder`, `KevHead`,
   `KevPipeline`).
+- `Sources/CoreAIKit/D1Omni/` — d1-omni: `KitD1OmniDecider` (the model-level API and a `DecisionBackend` that reads images
+  and audio; `readout` gives each row, its graph length and the marker logits, and the response in the publisher's
+  form), and the model zoo's `apps/D1Omni` host beside it, ported with every numeric path unchanged (`D1Prompt`,
+  `D1Readout`, `D1DecisionGraph`, `D1MediaGraphs`, `D1ImagePreprocess`, `D1AudioPreprocess`, `D1OmniPipeline`).
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op (`decide(image:…)` for an image);
   `CoreAI+SystemOne.swift` — `CoreAI.systemOne`, the same op in the hosted request and
   response forms (the model from `options`, else the request's `model`, else the default).
