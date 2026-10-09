@@ -1,13 +1,16 @@
-// WeekScreen — the whole app: one calendar week planned by an on-device model. Top to bottom: the
-// state pill (READY / ● PLANNING / DONE) with the clock from Plan (0.1 s steps) and the count
-// planned; one latency line; the spotlight, one event large enough to read in a small video (the
-// latest answer with its chip; before a run, the first event with the question and the seven
-// answers); the week, each event turning white with a chip for what it needs as its answer arrives,
-// scrolled so the event being planned sits in the lower third; the seven answers as growing bars;
-// Before your week, the events that need something; a small footer. The look is TextClassify's
-// InboxScreen (its colors, pill and line sizes, in units of width / 402).
+// WeekScreen — the whole app: one week planned by an on-device model. Top to bottom: the state pill
+// (READY / ● PLANNING / DONE) with the clock from Plan (0.1 s steps) and the count planned; where
+// the week comes from (your calendar, pasted lines, the sample week) and one line about it; one
+// latency line; the spotlight, one event large enough to read in a small video (the latest answer
+// with its chip; before a run, the first event with the question and the seven answers); the week,
+// each event turning white with a chip for what it needs as its answer arrives, scrolled so the
+// event being planned sits in the lower third; the seven answers as growing bars; Before your week,
+// the events that need something; a small footer. With no week to plan, one card says why and
+// offers the other sources. The look is TextClassify's InboxScreen (its colors, pill and line
+// sizes, in units of width / 402).
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum WeekStyle {
     static let background = Color(rgb: 0x0E1116)
@@ -17,6 +20,8 @@ enum WeekStyle {
     static let axis = Color(rgb: 0x8A919C)
     static let latency = Color(rgb: 0xB8BEC6)
     static let action = Color(rgb: 0x4285F4)
+    /// A line about the week that is not the plan: lines skipped, access off, nothing to plan.
+    static let warn = Color(rgb: 0xFFB74D)
 
     static func badge(_ phase: WeekModel.Phase, detail: String) -> (text: String, color: Color) {
         switch phase {
@@ -60,7 +65,7 @@ extension WeekEvent {
 }
 
 struct WeekScreen: View {
-    let model: WeekModel
+    @Bindable var model: WeekModel
 
     var body: some View {
         GeometryReader { geo in
@@ -68,18 +73,35 @@ struct WeekScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 WeekHeader(model: model, u: u)
                     .padding(.top, 8 * u)
+                SourcePicker(model: model, u: u)
+                    .padding(.top, 12 * u)
                 Text(latencyLine)
                     .font(.system(size: 13.4 * u).monospacedDigit())
                     .foregroundStyle(WeekStyle.latency)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.top, 10 * u)
-                WeekSpotlight(model: model, u: u)
-                    .padding(.top, 12 * u)
-                WeekList(model: model, u: u)
-                    .padding(.top, 10 * u)
-                WeekPanel(model: model, u: u)
-                    .padding(.top, 12 * u)
+                if model.events.isEmpty {
+                    EmptyWeek(model: model, u: u)
+                        .padding(.top, 12 * u)
+                    Spacer(minLength: 0)
+                } else {
+                    if let note = model.note {
+                        Text(note)
+                            .font(.system(size: 13 * u, weight: .semibold))
+                            .foregroundStyle(WeekStyle.warn)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .padding(.top, 4 * u)
+                            .accessibilityIdentifier("week-note")
+                    }
+                    WeekSpotlight(model: model, u: u)
+                        .padding(.top, 10 * u)
+                    WeekList(model: model, u: u)
+                        .padding(.top, 10 * u)
+                    WeekPanel(model: model, u: u)
+                        .padding(.top, 12 * u)
+                }
                 Text(footer)
                     .font(.system(size: 10.4 * u).monospacedDigit())
                     .foregroundStyle(WeekStyle.axis)
@@ -91,14 +113,18 @@ struct WeekScreen: View {
             .padding(.horizontal, 16 * u)
         }
         .background(WeekStyle.background.ignoresSafeArea())
+        .sheet(isPresented: $model.showingPaste) {
+            PasteSheet(model: model)
+        }
     }
 
     private var latencyLine: String {
         switch model.phase {
         case .loading:
-            return model.detail == "calendar"
-                ? "\(model.count) events · reading the Demo week calendar" : "\(model.count) events · loading the model"
-        case .ready: return "\(model.count) events · tap Plan my week"
+            return model.readingWeek ? "loading the model · reading the week" : "\(model.count) events · loading the model"
+        case .ready:
+            if model.readingWeek { return "reading the week" }
+            return model.events.isEmpty ? "nothing to plan yet" : "\(model.count) events · tap Plan my week"
         case .planning, .done:
             return WeekModel.ms(model.medianMs) + " per event · " + WeekModel.rate(model.rate) + " · int8 · Core AI GPU"
         case .failed: return model.detail
@@ -106,7 +132,144 @@ struct WeekScreen: View {
     }
 
     private var footer: String {
-        ["decider-0.8b int8", model.weekSource, Device.os].joined(separator: " · ")
+        ["decider-0.8b int8", model.source.weekName, Device.os].joined(separator: " · ")
+    }
+}
+
+/// Where the week comes from: three buttons, the current one filled. Paste opens the sheet again
+/// when it is already picked; the calendar is read again. Off while planning.
+struct SourcePicker: View {
+    let model: WeekModel
+    let u: CGFloat
+
+    var body: some View {
+        HStack(spacing: 6 * u) {
+            ForEach(WeekModel.Source.allCases, id: \.self) { source in
+                let picked = model.source == source
+                Button {
+                    Task { await model.select(source) }
+                } label: {
+                    Text(source.title)
+                        .font(.system(size: 13 * u, weight: .semibold))
+                        .foregroundStyle(picked ? .white : WeekStyle.latency)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7 * u)
+                        .background(picked ? WeekStyle.action : WeekStyle.lane, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(model.phase == .planning)
+                .accessibilityIdentifier("source-\(source.rawValue)")
+            }
+        }
+        .opacity(model.phase == .planning ? 0.5 : 1)
+    }
+}
+
+/// No week to plan: why (the calendar is being read, access is off, no event this week, nothing
+/// pasted) and the ways to get one.
+struct EmptyWeek: View {
+    let model: WeekModel
+    let u: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14 * u) {
+            Text(headline)
+                .font(.system(size: 17 * u, weight: .semibold))
+                .foregroundStyle(model.readingWeek ? .white : WeekStyle.warn)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("week-note")
+            if !model.readingWeek {
+                HStack(spacing: 10 * u) {
+                    choice("Paste your week", primary: true) { Task { await model.select(.paste) } }
+                    if model.source != .sample {
+                        choice("Try the sample week", primary: false) { Task { await model.select(.sample) } }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14 * u)
+        .padding(.vertical, 16 * u)
+        .background(WeekStyle.lane, in: RoundedRectangle(cornerRadius: 12 * u))
+    }
+
+    private var headline: String {
+        if model.readingWeek { return model.source == .calendar ? "Reading this week from your calendar…" : "Reading…" }
+        return model.note ?? "Nothing to plan"
+    }
+
+    private func choice(_ title: String, primary: Bool, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Text(title)
+                .font(.system(size: 14 * u, weight: .semibold))
+                .foregroundStyle(primary ? .white : WeekStyle.latency)
+                .padding(.horizontal, 14 * u)
+                .padding(.vertical, 9 * u)
+                .background(primary ? WeekStyle.action : WeekStyle.background, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Paste your week: one event a line, read as it is typed (how many events, how many lines
+/// skipped, or why nothing can be planned), or a `week-cli dump --out` file imported as lines.
+/// Plan puts the week on screen and plans it.
+struct PasteSheet: View {
+    @Bindable var model: WeekModel
+    @State private var importing = false
+
+    var body: some View {
+        let reading = model.pasteReading
+        let refused = model.pasteRefusal != nil || reading.problem != nil
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Paste your week")
+                .font(.title3.weight(.semibold))
+            Text(verbatim: "One event a line: day, time, title · place · Notes: …\n"
+                + "Mon 11:00 Lease renewal signing · the property office · Notes: bring two forms of ID")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: $model.pasteText)
+                .font(.system(.footnote, design: .monospaced))
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(WeekStyle.lane, in: RoundedRectangle(cornerRadius: 8))
+                .frame(minHeight: 280)
+                .accessibilityIdentifier("paste-text")
+            Text(model.pasteStatus)
+                .font(.footnote.weight(.semibold).monospacedDigit())
+                .foregroundStyle(refused ? WeekStyle.warn : WeekStyle.latency)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("paste-status")
+            HStack(spacing: 10) {
+                Button("Import .json…") { importing = true }
+                Spacer()
+                Button("Cancel") { model.showingPaste = false }
+                    .keyboardShortcut(.cancelAction)
+                Button(planTitle(reading)) { model.submitPaste() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(reading.problem != nil)
+                    .accessibilityIdentifier("paste-plan")
+            }
+        }
+        .padding(16)
+        #if os(macOS)
+        .frame(width: 400, height: 520)  // no wider than the phone-shaped window it hangs from
+        #endif
+        .background(WeekStyle.background)
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.json, .plainText]) { result in
+            if case .success(let url) = result { model.importFile(url) }
+        }
+        .onChange(of: model.pasteText) { model.pasteEdited() }
+    }
+
+    private func planTitle(_ reading: WeekInput.Reading) -> String {
+        let n = reading.events.count
+        guard reading.problem == nil, n > 0 else { return "Plan" }
+        let events = "\(n) event\(n == 1 ? "" : "s")"
+        return model.phase == .loading ? "Use \(events)" : "Plan \(events)"
     }
 }
 
@@ -275,7 +438,8 @@ struct WeekList: View {
             action("Plan my week", primary: true) { model.planWeek() }
         } else if model.phase == .done {
             if model.canAddReminders {
-                action("Add \(model.plan.count) reminders", primary: true) { Task { await model.addReminders() } }
+                let n = model.upcoming.count
+                action("Add \(n) reminder\(n == 1 ? "" : "s")", primary: true) { Task { await model.addReminders() } }
             } else if model.addingReminders {
                 action("Adding reminders…", primary: false) {}
             } else {
@@ -377,10 +541,8 @@ struct WeekPanel: View {
 
     private var doneLine: String {
         guard let run = model.run else { return " " }
-        var line = "\(run.count) events · " + String(format: "%.1f s", run.totalSeconds) + " · median "
-            + WeekModel.ms(model.medianMs)
-        if !model.fromCalendar { line += " · in-app sample week" }
-        return line
+        return "\(run.count) events · " + String(format: "%.1f s", run.totalSeconds) + " · median "
+            + WeekModel.ms(model.medianMs) + " · " + model.source.weekName
     }
 
     private func bar(_ bin: WeekBin, count: Int, scale: Double) -> some View {
@@ -459,16 +621,13 @@ struct BeforeYourWeek: View {
     }
 
     private var heading: String {
+        if let error = model.remindersError { return " · \(error)" }
         if let added = model.remindersAdded {
-            var s = " · \(added) reminders added"
+            var s = " · \(added) reminder\(added == 1 ? "" : "s") added"
             if model.remindersExisting > 0 { s += ", \(model.remindersExisting) already there" }
-            if model.remindersError != nil { s += " · failed" }
             return s
         }
         if model.addingReminders { return " · adding reminders" }
-        if model.phase == .done, model.fromCalendar, model.access.reminders != "fullAccess" {
-            return " · Reminders access \(model.access.reminders)"
-        }
         let n = model.plan.count
         return n == 0 ? "" : " · \(n) to do"
     }

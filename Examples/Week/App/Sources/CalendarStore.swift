@@ -1,11 +1,7 @@
-// CalendarStore — the app's only EventKit code: the Calendar and Reminders permissions, the
-// app's own `Demo week` calendar (created once, filled with the synthetic week when it holds no
-// event this week, and the only calendar ever read), and the `Before your week` reminders list.
-//
-// Both live in the device's local source ("On My iPhone") and nowhere else: a calendar or a list
-// in a synced source (iCloud, CalDAV, Exchange) reaches every device on that account. Without a
-// local source the app does not write at all and plans its in-app week; `-syncedStore 1` is the
-// only way to let it write into the default source instead.
+// CalendarStore — the app's only EventKit code. It reads this week's events, Monday to Sunday, from
+// every calendar on the device, after asking for full Calendar access; it never writes to a
+// calendar and never creates one. The one write is Add reminders: pressed, it asks for Reminders
+// access and adds one reminder per listed event to the Reminders list new reminders go to.
 //
 // The completion-handler forms of EventKit are wrapped in continuations, so no event store
 // object crosses an actor boundary.
@@ -15,16 +11,11 @@ import Foundation
 
 @MainActor
 final class CalendarStore {
-    static let calendarTitle = "Demo week"
-    static let listTitle = "Before your week"
-    /// `calendar_source` when there is no local source to write into.
-    static let noLocalSource = "none (no local source; in-app sample week)"
+    /// The calendar an earlier version of this app wrote a synthetic week into; never read.
+    static let oldDemoCalendar = "Demo week"
 
     private let store = EKEventStore()
-    /// Whether a synced source may be written into when the local one cannot (`-syncedStore 1`).
-    let synced: Bool
-    /// Where the Demo week calendar and the Before your week list live ("On My iPhone (local)").
-    private(set) var calendarSource = ""
+    /// The account of the list the reminders went to ("iCloud (calDAV)"), once they were added.
     private(set) var listSource = ""
     /// Weeks start on Monday, whatever the locale says.
     private let calendar: Calendar = {
@@ -33,10 +24,6 @@ final class CalendarStore {
         c.timeZone = .current
         return c
     }()
-
-    init(synced: Bool = false) {
-        self.synced = synced
-    }
 
     // MARK: - access
 
@@ -52,17 +39,23 @@ final class CalendarStore {
         }
     }
 
-    /// Asks for full Calendar access, then full Reminders access. The system shows each alert once;
-    /// after that, the calls return the answer at once.
-    func requestAccess() async -> (events: Bool, reminders: Bool) {
-        let events = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+    /// Asks for full Calendar access. The system shows its alert once; after that the call returns
+    /// the answer at once.
+    func requestCalendarAccess() async -> Bool {
+        let granted = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
             store.requestFullAccessToEvents { granted, _ in done.resume(returning: granted) }
         }
-        let reminders = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+        if granted { store.refreshSourcesIfNecessary() }
+        return granted
+    }
+
+    /// Asks for full Reminders access, the same way.
+    func requestRemindersAccess() async -> Bool {
+        let granted = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
             store.requestFullAccessToReminders { granted, _ in done.resume(returning: granted) }
         }
-        if events || reminders { store.refreshSourcesIfNecessary() }
-        return (events, reminders)
+        if granted { store.refreshSourcesIfNecessary() }
+        return granted
     }
 
     // MARK: - the week
@@ -79,109 +72,44 @@ final class CalendarStore {
         return calendar.date(bySettingHour: event.start / 60, minute: event.start % 60, second: 0, of: day)!
     }
 
-    /// Finds or creates the Demo week calendar and, when it holds no event this week, writes
-    /// `generated` into it. Returns this week's events read back from that calendar alone, in
-    /// time order, with how many were written now. An event the generator wrote keeps its
-    /// written label (matched by day, time and title) for the result file.
-    func prepareWeek(_ generated: [WeekEvent]) throws -> (events: [WeekEvent], inserted: Int) {
-        let demo = try demoCalendar()
+    /// This week's events from every event calendar (the old Demo week calendar excepted): those
+    /// that start between Monday 00:00 and Sunday midnight, all-day, cancelled and declined events
+    /// left out, their text cleaned as a pasted line's is (`WeekInput`). Unordered; `WeekInput.checked`
+    /// orders them.
+    func readThisWeek() -> [WeekEvent] {
         let week = currentWeek
-        var inserted = 0
-        if events(in: demo, week: week).isEmpty {
-            for event in generated {
-                let e = EKEvent(eventStore: store)
-                e.calendar = demo
-                e.title = event.title
-                e.startDate = startDate(of: event)
-                e.endDate = e.startDate.addingTimeInterval(TimeInterval(event.minutes * 60))
-                e.location = event.location
-                e.notes = event.notes
-                try store.save(e, span: .thisEvent, commit: false)
-                inserted += 1
-            }
-            try store.commit()
-        }
-        let written = Dictionary(
-            generated.map { ("\($0.day) \($0.start) \($0.title)", $0.written) }, uniquingKeysWith: { a, _ in a })
-        let read = events(in: demo, week: week).compactMap { e -> WeekEvent? in
-            guard !e.isAllDay, let start = e.startDate, let end = e.endDate else { return nil }
-            let dayStart = calendar.startOfDay(for: start)
-            guard let day = calendar.dateComponents([.day], from: week.start, to: dayStart).day, (0..<7).contains(day)
+        let calendars = store.calendars(for: .event).filter { $0.title != Self.oldDemoCalendar }
+        guard !calendars.isEmpty else { return [] }
+        let found = store.events(matching: store.predicateForEvents(withStart: week.start, end: week.end, calendars: calendars))
+        return found.compactMap { e -> WeekEvent? in
+            guard !e.isAllDay, e.status != .canceled, !Self.declined(e),
+                  let start = e.startDate, let end = e.endDate, start >= week.start, start < week.end
+            else { return nil }
+            guard let day = calendar.dateComponents([.day], from: week.start, to: calendar.startOfDay(for: start)).day,
+                  (0..<7).contains(day)
             else { return nil }
             let time = calendar.dateComponents([.hour, .minute], from: start)
-            let minuteOfDay = (time.hour ?? 0) * 60 + (time.minute ?? 0)
-            let title = e.title ?? ""
-            return WeekEvent(
-                id: 0, day: day, start: minuteOfDay, minutes: max(1, Int(end.timeIntervalSince(start) / 60)),
-                title: title, location: e.location.flatMap { $0.isEmpty ? nil : $0 },
-                notes: e.notes.flatMap { $0.isEmpty ? nil : $0 },
-                written: written["\(day) \(minuteOfDay) \(title)"] ?? nil)
+            let title = (e.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return WeekInput.event(
+                day: day, start: (time.hour ?? 0) * 60 + (time.minute ?? 0),
+                minutes: Int(end.timeIntervalSince(start) / 60), title: title.isEmpty ? "Untitled" : title,
+                location: e.location, notes: e.notes)
         }
-        let ordered = read.sorted { ($0.day, $0.start, $0.title) < ($1.day, $1.start, $1.title) }
-            .enumerated().map { $0.element.with(id: $0.offset) }
-        return (ordered, inserted)
     }
 
-    private func events(in demo: EKCalendar, week: (start: Date, end: Date)) -> [EKEvent] {
-        store.events(matching: store.predicateForEvents(withStart: week.start, end: week.end, calendars: [demo]))
-    }
-
-    /// The app's own calendar: one titled Demo week in a source it may write into, else a new one
-    /// in the local source (then, with `-syncedStore 1` only, where new events go by default).
-    private func demoCalendar() throws -> EKCalendar {
-        let demo = try store.calendars(for: .event).first(where: { $0.title == Self.calendarTitle && writable($0.source) })
-            ?? create(.event, title: Self.calendarTitle, in: sources(default: store.defaultCalendarForNewEvents?.source))
-        calendarSource = Self.describe(demo.source)
-        return demo
-    }
-
-    /// The sources the app may write into, in order: the local one, and the default one only with
-    /// `-syncedStore 1`.
-    private func sources(default fallback: EKSource?) -> [EKSource] {
-        var out: [EKSource] = []
-        if let local = store.sources.first(where: { $0.sourceType == .local }) { out.append(local) }
-        if synced, let fallback, !out.contains(where: { $0.sourceIdentifier == fallback.sourceIdentifier }) {
-            out.append(fallback)
-        }
-        return out
-    }
-
-    private func writable(_ source: EKSource?) -> Bool {
-        guard let source else { return false }
-        return source.sourceType == .local || synced
-    }
-
-    /// What `calendar_source` will say, before anything is written: the local source, else (with
-    /// `-syncedStore 1`) the default one, else `noLocalSource`. For access.json.
-    var plannedCalendarSource: String {
-        sources(default: store.defaultCalendarForNewEvents?.source).first.map { Self.describe($0) } ?? Self.noLocalSource
-    }
-
-    /// A new calendar or list, in the given sources in order until one accepts it.
-    private func create(_ type: EKEntityType, title: String, in sources: [EKSource]) throws -> EKCalendar {
-        guard !sources.isEmpty else { throw CalendarStoreError.noLocalSource }
-        var reason = ""
-        for source in sources {
-            let c = EKCalendar(for: type, eventStore: store)
-            c.title = title
-            c.source = source
-            do {
-                try store.saveCalendar(c, commit: true)
-                return c
-            } catch {
-                reason = error.localizedDescription
-            }
-        }
-        throw CalendarStoreError.saveFailed(title: title, reason: reason)
+    /// An invitation this device's user said no to.
+    private static func declined(_ e: EKEvent) -> Bool {
+        e.attendees?.contains { $0.isCurrentUser && $0.participantStatus == .declined } ?? false
     }
 
     // MARK: - reminders
 
-    /// One reminder per planned event in the Before your week list: title `<bin>: <event title>`,
+    /// One reminder per planned event in the default Reminders list: title `<what>: <event title>`,
     /// due the day before the event at 9:00, the event's notes as its notes. A reminder already
     /// there with the same title and due day is left alone, so pressing twice adds nothing twice.
     func addReminders(_ plan: [(event: WeekEvent, bin: WeekBin)]) async throws -> (added: Int, existing: Int) {
-        let list = try remindersList()
+        guard let list = store.defaultCalendarForNewReminders() else { throw CalendarStoreError.noList }
+        listSource = Self.describe(list.source)
         let existing = await openReminders(in: list)
         var added = 0, skipped = 0
         for (event, bin) in plan {
@@ -215,15 +143,6 @@ final class CalendarStore {
         c.hour = 9
         c.minute = 0
         return c
-    }
-
-    /// The Before your week list, under the same rule as the calendar: local only, unless
-    /// `-syncedStore 1`.
-    private func remindersList() throws -> EKCalendar {
-        let list = try store.calendars(for: .reminder).first(where: { $0.title == Self.listTitle && writable($0.source) })
-            ?? create(.reminder, title: Self.listTitle, in: sources(default: store.defaultCalendarForNewReminders()?.source))
-        listSource = Self.describe(list.source)
-        return list
     }
 
     /// "iCloud (calDAV)".
@@ -264,15 +183,12 @@ final class CalendarStore {
 }
 
 enum CalendarStoreError: LocalizedError {
-    /// The device has no local source, and `-syncedStore 1` was not given.
-    case noLocalSource
-    /// Every source the app may write into refused the new calendar or list.
-    case saveFailed(title: String, reason: String)
+    /// No Reminders list to add to (no Reminders account on the device).
+    case noList
 
     var errorDescription: String? {
         switch self {
-        case .noLocalSource: return "no local source"
-        case .saveFailed(let title, let reason): return "\(title) not saved: \(reason)"
+        case .noList: return "no Reminders list to add to"
         }
     }
 }

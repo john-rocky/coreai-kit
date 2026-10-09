@@ -1,8 +1,8 @@
-// WeekModel — the screen's state: the week, the planner, and the run as its answers arrive, then
-// the reminders. The week is read from the app's own Demo week calendar (written there from the
-// generator when it holds no event this week), or with `-store 0` taken straight from the
-// generator. The planning loop runs on WeekPlanner's actor; every number on the screen is computed
-// here from the run's own measurements.
+// WeekModel — the screen's state: where the week comes from (your calendar, pasted lines or a
+// file, the sample week), the planner, the run as its answers arrive, then the reminders. The
+// model loads once at launch whatever the source; the week can be switched before Plan and again
+// after DONE. The planning loop runs on WeekPlanner's actor; every number on the screen is
+// computed here from the run's own measurements.
 
 import CoreAIKit
 import Foundation
@@ -13,14 +13,57 @@ import Observation
 final class WeekModel {
     enum Phase: Equatable { case loading, ready, planning, done, failed }
 
-    let seed: UInt64
-    /// The week on screen, in time order: the calendar's once it is read, the generator's before.
-    private(set) var events: [WeekEvent]
+    /// Where the week comes from.
+    enum Source: String, CaseIterable, Sendable {
+        case calendar, paste, sample
+
+        /// The picker's words.
+        var title: String {
+            switch self {
+            case .calendar: return "Your calendar"
+            case .paste: return "Paste"
+            case .sample: return "Sample week"
+            }
+        }
+
+        /// What the footer and the DONE line call the week.
+        var weekName: String {
+            switch self {
+            case .calendar: return "your calendar"
+            case .paste: return "pasted week"
+            case .sample: return "sample week"
+            }
+        }
+    }
+
+    /// The sample week: the generator's 20 events from seed 7, the week `week-cli run` plans
+    /// when it is given no file.
+    static let sampleCount = 20
+    static let sampleSeed: UInt64 = 7
+
+    private(set) var source: Source
+    /// The week on screen, in time order.
+    private(set) var events: [WeekEvent] = []
     private(set) var phase = Phase.loading
-    /// LOADING: what is loading ("calendar", the download percent, "model"); FAILED: the error.
+    /// LOADING: what is loading (the download percent, "model"); FAILED: the error.
     private(set) var detail = ""
+    /// One line about the week: why there is nothing to plan, or how many pasted lines were skipped.
+    private(set) var note: String?
+    /// Pasted lines that were not read as events, for the week on screen.
+    private(set) var skippedLines = 0
+    /// True from launch until the first week is read, and while the calendar is asked or read.
+    private(set) var readingWeek = true
+    /// Calendar and Reminders access as EventKit reports it ("fullAccess", "denied", …), once asked.
+    private(set) var access: (events: String, reminders: String) = ("", "")
+
+    // The Paste sheet: its text is kept between openings.
+    var showingPaste = false
+    var pasteText = ""
+    /// Why the sheet's last Plan or file was refused, until the text changes.
+    private(set) var pasteRefusal: String?
+
     /// By event index; nil until the event is planned.
-    private(set) var results: [PlannedEvent?]
+    private(set) var results: [PlannedEvent?] = []
     private(set) var done = 0
     /// Median per-event time (ms) and events per second, over the events planned so far.
     private(set) var medianMs: Double?
@@ -29,51 +72,35 @@ final class WeekModel {
     /// When Plan was pressed; the clock runs from here.
     private(set) var startedAt: ContinuousClock.Instant?
     private(set) var run: PlanRun?
+    /// Loading the bundle (a first launch includes the download), then the throwaway decision.
     private(set) var loadSeconds: Double?
     private(set) var warmSeconds: Double?
     private(set) var bundlePath = ""
     /// "bundle" (-bundle), "sideload" (Documents/decider-0.8b) or "catalog" (downloaded).
-    private(set) var source = ""
+    private(set) var modelSource = ""
     private(set) var bundleRevision: String?
     private(set) var bundleCompiled: String?
     private(set) var thermalBefore: ProcessInfo.ThermalState?
     private(set) var thermalAfter: ProcessInfo.ThermalState?
-    /// True when the week came from the Demo week calendar; false for the in-app sample week.
-    private(set) var fromCalendar = false
-    /// Why the week is the in-app one ("-store 0", "calendar access denied", an error).
-    private(set) var storeNote = ""
-    /// Events written into the Demo week calendar at this launch.
-    private(set) var inserted = 0
-    /// Where the Demo week calendar and the Before your week list live (`CalendarStore.describe`),
-    /// or "none (<why>; in-app sample week)" when the week is the in-app one.
-    private(set) var calendarSource = ""
-    private(set) var remindersSource = ""
-    private(set) var access: (events: String, reminders: String) = ("", "")
     /// nil until Add reminders was pressed; then how many were added and how many were there already.
     private(set) var remindersAdded: Int?
     private(set) var remindersExisting = 0
     private(set) var addingReminders = false
     private(set) var remindersError: String?
+    /// The account of the list the reminders went to.
+    private(set) var remindersSource = ""
 
-    private let useStore: Bool
-    /// `-syncedStore 1`: the calendar and the list may go to a synced source (iCloud, CalDAV,
-    /// Exchange) when there is no local one.
-    let syncedStore: Bool
-    private var calendar: CalendarStore?
+    private let store = CalendarStore()
     private var planner: WeekPlanner?
     private var loadStarted = false
+    private var begun = false
+    /// The last week a paste or a file gave, shown again when Paste is picked.
+    private var pasted: (events: [WeekEvent], skipped: Int)?
     private var milliseconds: [Double] = []
     private var runTask: Task<Void, Never>?
 
-    init(count: Int, seed: UInt64, store: Bool, synced: Bool) {
-        self.seed = seed
-        useStore = store
-        syncedStore = synced
-        let week = Week.generate(count: count, seed: seed)
-        events = week
-        results = Array(repeating: nil, count: week.count)
-        storeNote = store ? "" : "-store 0"
-        calendarSource = store ? "" : "none (-store 0; in-app sample week)"
+    init(source: Source) {
+        self.source = source
     }
 
     var count: Int { events.count }
@@ -81,9 +108,15 @@ final class WeekModel {
     /// The planned events that need something before them, in time order.
     var plan: [(event: WeekEvent, bin: WeekBin)] {
         events.compactMap { e in
-            guard let r = results[e.id], r.bin != .nothing else { return nil }
+            guard e.id < results.count, let r = results[e.id], r.bin != .nothing else { return nil }
             return (e, r.bin)
         }
+    }
+
+    /// What Add reminders adds: the planned events that need something and have not started yet.
+    var upcoming: [(event: WeekEvent, bin: WeekBin)] {
+        let now = Date()
+        return plan.filter { store.startDate(of: $0.event) > now }
     }
 
     /// The event the spotlight card shows: the one whose answer arrived last, with that answer;
@@ -96,14 +129,138 @@ final class WeekModel {
         return events.first.map { ($0, nil) }
     }
 
+    // MARK: - the week
+
+    /// The week the app opens on: the calendar's (asking for access first), the sample week, or
+    /// for Paste the sheet.
+    func begin() async {
+        guard !begun else { return }  // once, whichever window asks
+        begun = true
+        await select(source)
+    }
+
+    /// Switches where the week comes from (Paste opens the sheet, even when already picked). Not
+    /// while planning.
+    func select(_ source: Source) async {
+        guard phase != .planning else { return }
+        self.source = source
+        switch source {
+        case .calendar:
+            await readCalendar()
+        case .paste:
+            if let pasted {
+                setWeek(pasted.events, skipped: pasted.skipped)
+            } else {
+                setWeek([], note: "Nothing pasted yet")
+            }
+            showingPaste = true
+            readingWeek = false
+        case .sample:
+            setWeek(Week.generate(count: Self.sampleCount, seed: Self.sampleSeed))
+            readingWeek = false
+        }
+    }
+
+    /// Asks for Calendar access (the system asks once) and reads this week from every calendar.
+    private func readCalendar() async {
+        readingWeek = true
+        defer { readingWeek = false }
+        setWeek([])
+        _ = await store.requestCalendarAccess()
+        access.events = CalendarStore.status(.event)
+        guard source == .calendar else { return }  // the source changed while the alert was up
+        guard access.events == "fullAccess" else {
+            setWeek([], note: Self.calendarRefusal(access.events))
+            return
+        }
+        let reading = WeekInput.checked(store.readThisWeek())
+        if let problem = reading.problem {
+            setWeek([], note: problem.message)
+        } else {
+            setWeek(reading.events, note: reading.events.isEmpty ? "No events this week" : nil)
+        }
+    }
+
+    /// The one line shown when the calendar cannot be read.
+    static func calendarRefusal(_ status: String) -> String {
+        #if os(macOS)
+        let fix = "Turn it on in System Settings › Privacy & Security › Calendars, or paste your week."
+        #else
+        let fix = "Turn it on in Settings, or paste your week."
+        #endif
+        switch status {
+        case "writeOnly": return "Week can only add to your calendar, not read it. " + fix
+        case "restricted": return "Calendar access is restricted on this device. Paste your week instead."
+        default: return "Calendar access is off. " + fix
+        }
+    }
+
+    private func setWeek(_ week: [WeekEvent], skipped: Int = 0, note: String? = nil) {
+        events = week
+        skippedLines = skipped
+        self.note = note ?? (skipped > 0 ? WeekInput.skippedNote(skipped) : nil)
+        reset()
+        if phase == .done { phase = .ready }
+    }
+
+    // MARK: - the Paste sheet
+
+    /// The sheet's text as it would be read.
+    var pasteReading: WeekInput.Reading { WeekInput.read(lines: pasteText) }
+
+    /// The sheet's line under the text: "20 events", "8 events · 2 lines skipped", or why nothing
+    /// can be planned.
+    var pasteStatus: String {
+        if let pasteRefusal { return pasteRefusal }
+        let reading = pasteReading
+        if let problem = reading.problem { return problem.message }
+        let n = reading.events.count
+        var line = "\(n) event\(n == 1 ? "" : "s")"
+        if reading.skipped > 0 { line += " · " + WeekInput.skippedNote(reading.skipped) }
+        return line
+    }
+
+    /// The sheet's Plan button: a readable week goes on screen and, once the model is ready, is
+    /// planned at once; a refusal stays in the sheet. Returns whether the sheet closed.
+    @discardableResult
+    func submitPaste() -> Bool {
+        guard phase != .planning else { return false }
+        let reading = pasteReading
+        guard reading.problem == nil else {
+            pasteRefusal = reading.note
+            return false
+        }
+        pasteRefusal = nil
+        pasted = (reading.events, reading.skipped)
+        source = .paste
+        setWeek(reading.events, skipped: reading.skipped)
+        showingPaste = false
+        if phase == .ready { planWeek() }
+        return true
+    }
+
+    /// Import .json (or a text file): the file's events become the sheet's lines, read as pasted
+    /// lines are.
+    func importFile(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            pasteText = try WeekInput.text(contentsOf: url)
+            pasteRefusal = nil
+        } catch {
+            pasteRefusal = WeekInput.Problem.unreadable(error.localizedDescription).message
+        }
+    }
+
+    /// The text changed: an earlier refusal no longer applies.
+    func pasteEdited() { pasteRefusal = nil }
+
     // MARK: - loading
 
-    /// Asks for Calendar and Reminders access and reads the week, then finds the bundle, loads it
-    /// and runs one throwaway decision.
+    /// Finds the bundle, loads it and runs one throwaway decision.
     func load(bundle: String?) async {
         guard !loadStarted else { return }  // once, whichever window asks
         loadStarted = true
-        if useStore { await readWeek() }
         let t0 = ContinuousClock.now
         do {
             let url = try await resolveBundle(bundle)
@@ -116,10 +273,10 @@ final class WeekModel {
                     }
                 }
             }
+            loadSeconds = t0.duration(to: .now).inSeconds
             let planner = WeekPlanner(decider: decider)
             warmSeconds = try await planner.warm()
             self.planner = planner
-            loadSeconds = t0.duration(to: .now).inSeconds
             detail = ""
             phase = .ready
         } catch {
@@ -128,45 +285,11 @@ final class WeekModel {
         }
     }
 
-    /// The Demo week calendar's week; the generator's when access is refused, when there is no
-    /// local source to keep the calendar in (and no `-syncedStore 1`), or when EventKit fails.
-    private func readWeek() async {
-        detail = "calendar"
-        let store = CalendarStore(synced: syncedStore)
-        _ = await store.requestAccess()
-        access = (CalendarStore.status(.event), CalendarStore.status(.reminder))
-        guard access.events == "fullAccess" else {
-            storeNote = "calendar access \(access.events)"
-            calendarSource = "none (calendar access \(access.events); in-app sample week)"
-            return
-        }
-        do {
-            let (week, inserted) = try store.prepareWeek(events)
-            guard !week.isEmpty else {
-                storeNote = "the Demo week calendar has no event this week"
-                calendarSource = "none (\(storeNote); in-app sample week)"
-                return
-            }
-            events = week
-            results = Array(repeating: nil, count: week.count)
-            self.inserted = inserted
-            calendarSource = store.calendarSource
-            calendar = store
-            fromCalendar = true
-        } catch CalendarStoreError.noLocalSource {
-            storeNote = "no local source"
-            calendarSource = CalendarStore.noLocalSource
-        } catch {
-            storeNote = "calendar: \(error.localizedDescription)"
-            calendarSource = "none (\(error.localizedDescription); in-app sample week)"
-        }
-    }
-
     /// `-bundle <dir>`; else, on an iPhone, a copy sideloaded into Documents/decider-0.8b; else nil:
     /// the catalog's decider-0.8b at its pinned revision, downloaded once and cached.
     private func resolveBundle(_ explicit: String?) async throws -> URL? {
         if let explicit {
-            source = "bundle"
+            modelSource = "bundle"
             let url = URL(fileURLWithPath: (explicit as NSString).expandingTildeInPath, isDirectory: true)
             bundlePath = url.path
             bundleCompiled = Device.compiled(url)
@@ -175,13 +298,13 @@ final class WeekModel {
         #if os(iOS)
         let sideload = URL.documentsDirectory.appending(path: "decider-0.8b", directoryHint: .isDirectory)
         if FileManager.default.fileExists(atPath: sideload.appending(path: "metadata.json").path) {
-            source = "sideload"
+            modelSource = "sideload"
             bundlePath = sideload.path
             bundleCompiled = Device.compiled(sideload)
             return sideload
         }
         #endif
-        source = "catalog"
+        modelSource = "catalog"
         bundlePath = "catalog"
         bundleRevision = try? await ModelCatalog.entry(forID: WeekQuestion.catalogID).revision
         return nil
@@ -191,7 +314,7 @@ final class WeekModel {
 
     /// Plans the whole week in time order; DONE starts it over with the answers cleared.
     func planWeek() {
-        guard let planner, phase == .ready || phase == .done else { return }
+        guard let planner, phase == .ready || phase == .done, !events.isEmpty else { return }
         reset()
         let start = ContinuousClock.now
         startedAt = start
@@ -222,10 +345,12 @@ final class WeekModel {
         rate = nil
         counts = [:]
         run = nil
+        startedAt = nil
         thermalAfter = nil
         remindersAdded = nil
         remindersExisting = 0
         remindersError = nil
+        remindersSource = ""
     }
 
     private func apply(_ r: PlannedEvent) {
@@ -247,26 +372,33 @@ final class WeekModel {
 
     // MARK: - reminders
 
-    /// Whether the DONE screen offers Add reminders: the week came from the calendar, Reminders
-    /// access is full, something needs doing, and the reminders have not been added yet.
+    /// Whether the DONE screen offers Add reminders: a week of your own (not the sample), something
+    /// still ahead that needs doing, and the reminders not added yet.
     var canAddReminders: Bool {
-        phase == .done && fromCalendar && access.reminders == "fullAccess" && !plan.isEmpty
-            && remindersAdded == nil && !addingReminders
+        phase == .done && source != .sample && remindersAdded == nil && !addingReminders && !upcoming.isEmpty
     }
 
-    /// One reminder per event that needs something, in the Before your week list.
+    /// Asks for Reminders access (only now, when pressed), then adds one reminder per upcoming
+    /// event that needs something to the default Reminders list.
     func addReminders() async {
-        guard canAddReminders, let calendar else { return }
+        guard canAddReminders else { return }
         addingReminders = true
         defer { addingReminders = false }
+        let items = upcoming
+        _ = await store.requestRemindersAccess()
+        access.reminders = CalendarStore.status(.reminder)
+        guard access.reminders == "fullAccess" else {
+            remindersError = "Reminders access is off, so nothing was added"
+            remindersAdded = 0
+            return
+        }
         do {
-            let (added, existing) = try await calendar.addReminders(plan)
-            remindersSource = calendar.listSource
+            let (added, existing) = try await store.addReminders(items)
+            remindersSource = store.listSource
             remindersExisting = existing
             remindersAdded = added
         } catch {
             remindersError = error.localizedDescription
-            remindersSource = "none (\(error.localizedDescription))"
             remindersAdded = 0
         }
     }
@@ -282,29 +414,31 @@ final class WeekModel {
         }
     }
 
-    /// "Demo week calendar" or "in-app sample week".
-    var weekSource: String { fromCalendar ? "Demo week calendar" : "in-app sample week" }
-
-    /// The screen's state as one line, for the autoplay log.
+    /// The screen's state as one line, for the autoplay log. It never holds an event's text.
     var statusLine: String {
+        var line: String
         switch phase {
         case .loading: return "LOADING \(detail)"
         case .ready:
-            return String(format: "READY %d events · %@ · calendar_source %@ · load %.2f s", count, weekSource,
-                          calendarSource, loadSeconds ?? 0)
+            line = String(format: "READY %d events · source %@ · skipped_lines %d · load %.2f s · warm %.2f s",
+                          count, source.rawValue, skippedLines, loadSeconds ?? 0, warmSeconds ?? 0)
+            if readingWeek { line += " · reading the week" }
         case .planning:
             return "PLANNING \(done)/\(count) · " + Self.ms(medianMs) + " per event · " + Self.rate(rate)
         case .done:
             let ms = run?.milliseconds ?? []
-            var line = String(format: "DONE %d/%d · %.2f s · median %@ · p90 %@ · %@", done, count, run?.totalSeconds ?? 0,
-                              Self.ms(Stats.percentile(ms, 0.5)), Self.ms(Stats.percentile(ms, 0.9)), Self.rate(rate))
+            line = String(format: "DONE %d/%d · %.2f s · median %@ · p90 %@ · %@ · source %@", done, count,
+                          run?.totalSeconds ?? 0, Self.ms(Stats.percentile(ms, 0.5)), Self.ms(Stats.percentile(ms, 0.9)),
+                          Self.rate(rate), source.rawValue)
             if let added = remindersAdded {
                 line += " · reminders added \(added)" + (remindersExisting > 0 ? ", \(remindersExisting) already there" : "")
                 if let remindersError { line += " · \(remindersError)" }
             }
-            return line
         case .failed: return "FAILED \(detail)"
         }
+        if let note { line += " · note: \(note)" }
+        if showingPaste { line += " · paste sheet: " + pasteStatus }
+        return line
     }
 
     static func ms(_ v: Double?) -> String {
@@ -317,14 +451,25 @@ final class WeekModel {
         return String(format: "%.2f events/s", v)
     }
 
-    /// The finished run as the result file's JSON: the CLI's fields plus where it ran.
+    /// The finished run as the result file's JSON: the CLI's fields plus where the week came from
+    /// and where it ran. For your calendar's week each answer's event is "calendar event <n>": the
+    /// file keeps the answers and the times, never an event's text.
     func resultJSON() -> JSONValue? {
         guard let run else { return nil }
         var out = run.summary(events: events)
-        out["seed"] = .int(Int(seed))
+        if source == .calendar, case .array(let rows)? = out["answers"] {
+            out["answers"] = .array(rows.enumerated().map { i, row in
+                guard case .object(var fields) = row else { return row }
+                fields["event"] = .string("calendar event \(i + 1)")
+                return .object(fields)
+            })
+        }
+        out["source"] = .string(source.rawValue)
+        out["skipped_lines"] = .int(skippedLines)
+        out["seed"] = source == .sample ? .int(Int(Self.sampleSeed)) : .null
         out["model"] = .string(WeekQuestion.catalogID)
         out["bundle"] = .string(bundlePath)
-        out["source"] = .string(source)
+        out["model_source"] = .string(modelSource)
         out["bundle_revision"] = bundleRevision.map { .string($0) } ?? .null
         out["bundle_compiled"] = bundleCompiled.map { .string($0) } ?? .null
         out["format"] = .string(planner?.decider.format.rawValue ?? "")
@@ -336,14 +481,10 @@ final class WeekModel {
         out["compute_units"] = .string("gpu")
         out["load_s"] = .rounded(loadSeconds ?? 0, 3)
         out["warm_s"] = .rounded(warmSeconds ?? 0, 3)
-        out["store"] = .string(weekSource + (storeNote.isEmpty ? "" : " (\(storeNote))"))
-        out["calendar_events_inserted"] = .int(inserted)
-        out["calendar_source"] = .string(calendarSource)
-        out["reminders_source"] = .string(remindersSource)
-        out["synced_store"] = .bool(syncedStore)
         out["access"] = .object(["events": .string(access.events), "reminders": .string(access.reminders)])
         out["reminders_added"] = .int(remindersAdded ?? 0)
         out["reminders_existing"] = .int(remindersExisting)
+        out["reminders_source"] = .string(remindersSource)
         if let remindersError { out["reminders_error"] = .string(remindersError) }
         out["thermal_before"] = .string(Device.name(thermalBefore))
         out["thermal_after"] = .string(Device.name(thermalAfter))

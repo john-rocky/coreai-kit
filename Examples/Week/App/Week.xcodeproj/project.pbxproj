@@ -12,6 +12,7 @@
 		6BF06BE1A3B8935320174968 /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = 79D1D5B371114ECC667BA718 /* CoreAIKit */; };
 		76819E01FA752820551C9821 /* Device.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE95F99DF296253EFC54DAF9 /* Device.swift */; };
 		770F0757DDBAD564EB54D7A7 /* WeekModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36093C05F2AEFF77D33D5719 /* WeekModel.swift */; };
+		8480D466E05D7C83CC78BD05 /* WeekInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F632576AAC3FA5A105E38D /* WeekInput.swift */; };
 		9F5DF7786F72579E491A9C4A /* Week.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A43BF9D5EC001FA2FD4874 /* Week.swift */; };
 		A4C5CF6BBBFA32DCC830ED25 /* WeekApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F828400DD2C7E2FA8C8E178 /* WeekApp.swift */; };
 		DE066A8620C4F6BC1E6A3FBF /* CalendarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF6DB245049923D183D1AF19 /* CalendarStore.swift */; };
@@ -37,6 +38,7 @@
 		6529170C60F2201F244E8AC3 /* WeekScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekScreen.swift; sourceTree = "<group>"; };
 		6F828400DD2C7E2FA8C8E178 /* WeekApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekApp.swift; sourceTree = "<group>"; };
 		98FA434D6D058B2B4F55CE0E /* WeekUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekUITests.swift; sourceTree = "<group>"; };
+		A3F632576AAC3FA5A105E38D /* WeekInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekInput.swift; sourceTree = "<group>"; };
 		B0A9EC27DCAFC0D3EC09EE3E /* Autoplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Autoplay.swift; sourceTree = "<group>"; };
 		CF6DB245049923D183D1AF19 /* CalendarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarStore.swift; sourceTree = "<group>"; };
 		D3DDC7827AD4339590EB9BE7 /* WeekPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekPlanner.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 			children = (
 				FE95F99DF296253EFC54DAF9 /* Device.swift */,
 				17A43BF9D5EC001FA2FD4874 /* Week.swift */,
+				A3F632576AAC3FA5A105E38D /* WeekInput.swift */,
 				D3DDC7827AD4339590EB9BE7 /* WeekPlanner.swift */,
 			);
 			path = WeekCore;
@@ -224,6 +227,7 @@
 				76819E01FA752820551C9821 /* Device.swift in Sources */,
 				9F5DF7786F72579E491A9C4A /* Week.swift in Sources */,
 				A4C5CF6BBBFA32DCC830ED25 /* WeekApp.swift in Sources */,
+				8480D466E05D7C83CC78BD05 /* WeekInput.swift in Sources */,
 				770F0757DDBAD564EB54D7A7 /* WeekModel.swift in Sources */,
 				F3D7658FCD6A0C6FFAC03E25 /* WeekPlanner.swift in Sources */,
 				F3B7F7E7CD94E7E48F38802D /* WeekScreen.swift in Sources */,
@@ -401,8 +405,8 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Week keeps a synthetic week in its own Demo week calendar and reads only that calendar, to plan on device what each event needs before it.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Week adds a reminder for each event that needs something done before it, in its own Before your week list.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Week reads this week's events from your calendars to tell you what each needs before it. Nothing is written to your calendar and nothing leaves the device.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "When you press Add reminders, Week adds a reminder for each event that needs something done before it.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
@@ -434,8 +438,8 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Week keeps a synthetic week in its own Demo week calendar and reads only that calendar, to plan on device what each event needs before it.";
-				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Week adds a reminder for each event that needs something done before it, in its own Before your week list.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Week reads this week's events from your calendars to tell you what each needs before it. Nothing is written to your calendar and nothing leaves the device.";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "When you press Add reminders, Week adds a reminder for each event that needs something done before it.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;

@@ -1,6 +1,6 @@
-// Week — a calendar week planned on device: one tap, and every event gets "what does it need
-// before it?" from decider-0.8b on Core AI, then the events that need something become reminders.
-// The week is synthetic (../Sources/WeekCore), written into the app's own Demo week calendar, the
+// Week — your week planned on device: every event gets "what does it need before it?" from
+// decider-0.8b on Core AI, and the events that need something are listed first. The week is read
+// from your calendar (never written), pasted as lines, or the sample week (../Sources/WeekCore), the
 // same one `week-cli run` plans headless.
 
 import SwiftUI
@@ -17,8 +17,7 @@ struct WeekApp: App {
     init() {
         let autoplay = Autoplay()
         self.autoplay = autoplay
-        _model = State(initialValue: WeekModel(
-            count: autoplay.count, seed: autoplay.seed, store: autoplay.store, synced: autoplay.syncedStore))
+        _model = State(initialValue: WeekModel(source: autoplay.source))
     }
 
     var body: some Scene {
@@ -26,13 +25,15 @@ struct WeekApp: App {
             Group {
                 if autoplay.grantOnly {
                     GrantScreen(model: grant)
-                        .task { await grant.run(synced: autoplay.syncedStore, log: autoplay.write) }
+                        .task { await grant.run(out: autoplay.out, log: autoplay.write) }
                 } else {
                     WeekScreen(model: model)
                         .task { await model.load(bundle: autoplay.bundle) }
+                        .task { await model.begin() }
                         .task { await autoplay.run(model) }
                 }
             }
+            .preferredColorScheme(.dark)
             #if os(iOS)
             .statusBarHidden(true)
             .persistentSystemOverlays(.hidden)
@@ -51,31 +52,29 @@ struct WeekApp: App {
 }
 
 /// `-grantOnly 1`: asks for Calendar then Reminders access, shows the answer (the UI test reads it)
-/// and writes Documents/access.json (`devicectl device copy from` reads it), with the source the
-/// calendar would go to; loads no model and writes no calendar.
+/// and writes access.json to the output directory (`devicectl device copy from` reads Documents);
+/// loads no model, reads no event, writes nothing else.
 @MainActor
 @Observable
 final class GrantModel {
     private(set) var line = "access: asking"
 
-    func run(synced: Bool, log: @MainActor (String) -> Void) async {
-        let store = CalendarStore(synced: synced)
-        let granted = await store.requestAccess()
-        let events = CalendarStore.status(.event), reminders = CalendarStore.status(.reminder)
-        line = "events=\(events) reminders=\(reminders)"
-        let source = events == "fullAccess" ? store.plannedCalendarSource : "none (calendar access \(events); in-app sample week)"
-        log("grantOnly: \(line) · calendar_source \(source)")
+    func run(out: URL, log: @MainActor (String) -> Void) async {
+        let store = CalendarStore()
+        let events = await store.requestCalendarAccess()
+        let reminders = await store.requestRemindersAccess()
+        let eventsStatus = CalendarStore.status(.event), remindersStatus = CalendarStore.status(.reminder)
+        line = "events=\(eventsStatus) reminders=\(remindersStatus)"
+        log("grantOnly: \(line)")
         let json = JSONValue.object([
-            "events": .string(events),
-            "reminders": .string(reminders),
-            "granted": .object(["events": .bool(granted.events), "reminders": .bool(granted.reminders)]),
-            "calendar_source": .string(source),
-            "synced_store": .bool(synced),
+            "events": .string(eventsStatus),
+            "reminders": .string(remindersStatus),
+            "granted": .object(["events": .bool(events), "reminders": .bool(reminders)]),
             "device": .string(Device.model),
             "os": .string(Device.os),
             "timestamp": .string(ISO8601DateFormatter().string(from: Date())),
         ])
-        let url = URL.documentsDirectory.appending(path: "access.json")
+        let url = out.appending(path: "access.json")
         do {
             try Data((json.json(pretty: true) + "\n").utf8).write(to: url)
             log("access \(url.path)")

@@ -44,7 +44,7 @@ let answer = try await chat.respond(to: "What is the capital of Japan?")
   not in the iOS Simulator SDK.
 - Memory, not throughput, is the shipping constraint on a phone. A 4B-class model is tight.
 
-## Example apps (32, each buildable on its own)
+## Example apps (33, each buildable on its own)
 
 - [ActionCamera](https://john-rocky.github.io/coreai-kit/Examples/ActionCamera/): ActionCamera — Live action recognition from the camera, fully on-device: CameraFeed streams frames, a rolling 16-frame clip goes through ActionRecognizer (V-JEPA 2 ViT-L, SSv2 head — Meta's video world model) and the top actions come back with confidences
 - [AskVLM](https://john-rocky.github.io/coreai-kit/Examples/AskVLM/): Qwen3-VL (AskVLM) — your VLM as its own Visual Intelligence tab
@@ -78,6 +78,7 @@ let answer = try await chat.respond(to: "What is the capital of Japan?")
 - [UpscaleDemo](https://john-rocky.github.io/coreai-kit/Examples/UpscaleDemo/): UpscaleDemo — Minimal CoreAIKit example: AdcSR ×4 super-resolution on-device
 - [VLChat](https://john-rocky.github.io/coreai-kit/Examples/VLChat/): VLChat — the vision-language runner (GUI + CLI, any vlm catalog id)
 - [VisualIntel](https://john-rocky.github.io/coreai-kit/Examples/VisualIntel/): VisualIntel — your own models behind system Visual Intelligence
+- [Week](https://john-rocky.github.io/coreai-kit/Examples/Week/): Week — your week, planned on device
 
 ## Beyond this package
 

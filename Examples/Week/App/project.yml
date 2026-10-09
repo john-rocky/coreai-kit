@@ -50,14 +50,14 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
-        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Week keeps a synthetic week in its own Demo week calendar and reads only that calendar, to plan on device what each event needs before it."
-        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "Week adds a reminder for each event that needs something done before it, in its own Before your week list."
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Week reads this week's events from your calendars to tell you what each needs before it. Nothing is written to your calendar and nothing leaves the device."
+        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "When you press Add reminders, Week adds a reminder for each event that needs something done before it."
         # The week is a portrait screen on iPhone.
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_APPROACHABLE_CONCURRENCY: "YES"
-        # macOS: `-bundle <dir>` reads a model directory anywhere on disk, and EventKit needs only
-        # the usage strings above outside the sandbox.
+        # macOS: `-bundle <dir>`, `-events <file>` and `-out <dir>` reach anywhere on disk, and
+        # EventKit needs only the usage strings above outside the sandbox.
         ENABLE_APP_SANDBOX: "NO"
         ENABLE_HARDENED_RUNTIME: "NO"
 

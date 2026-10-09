@@ -9,11 +9,14 @@ policy.
 
 ### Added
 
-- **Examples/Week** — a week of 20 calendar events planned on one tap: every event is one `decider-0.8b`
-  decision (what it needs before it, seven options), the events that need something become reminders.
-  A synthetic week (fictional names, seeded) written to the device's local Calendar source only, or kept
-  in the app (`-store 0`); `week-cli run` gives the same loop and JSON on a Mac. Measured on an
-  iPhone 18 Pro (20 events in 22.2 s, 1,119 ms median) and an M4 Max (12.3 s, 619 ms).
+- **Examples/Week** — your own week planned on one tap: every event is one `decider-0.8b` decision (what it
+  needs before it, seven options), and the events that need something are gathered under Before your week, in
+  time order. The week comes from your calendar (this week, read only: nothing is ever written to a calendar),
+  from pasted lines (`Mon 11:00 Title · Place · Notes: …`, or a `week-cli dump --out` JSON file; unreadable
+  lines are counted and skipped, at most 200 events), or from a seeded sample week of fictional events. Add
+  reminders asks for Reminders access only when pressed. `week-cli run` gives the same loop and JSON on a Mac
+  and gives the app's 20 answers back, event by event. Measured on an M4 Max (macOS 27.0, 2026-10-09): 20
+  events in 12.90 to 13.01 s, 627 to 651 ms median per event.
 - **d1-3B** — catalog id `d1-3b` (the new `kind: tokenDecision`, `format: optionRows`), driven by the new `KitD1Decider`
   (`Sources/CoreAIKit/D1/`): Liquid AI's decision model from LFM2.5-VL-3B (LFM Open License v1.0; a SigLIP2 vision tower
   and the LFM2 hybrid decoder). A state (text or JSON), pictures and typed questions (noul, choice, score) go in; every
