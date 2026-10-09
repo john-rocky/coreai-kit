@@ -41,7 +41,7 @@ Every other example app in one place, on two shelves:
 | [Decide](Decide/) | typed decisions | Any `chat` catalog model as a decision model (MiniCPM5 2B default): a speech gate (yes/no per utterance), a clipboard check with Shortcuts actions, and a passage reranker — probabilities and milliseconds per decision, nothing generated. GUI + `swift run decide-cli`. |
 | [Week](Week/) | typed decisions | Your own week (Calendar read-only, pasted lines or JSON) or a sample week: every event asked one question on `decider-0.8b` (what it needs before it), the events that need something gathered in one list, reminders when you ask. GUI (iPhone + Mac) + `swift run week-cli`. |
 | [DocSearch](DocSearch/) | visual doc retrieval | Any `retrieval` catalog model (ColModernVBERT): query + page images → MaxSim ranking, no OCR. GUI (iPhone) + `swift run docsearch-cli`. |
-| [TextClassify](TextClassify/) | zero-shot text classification | GLiNER2.5-Decide: labels you name at call time, several questions about one text in a single forward. A support inbox sorted on one tap (intent, urgency, sentiment per message, times measured on screen). GUI + `swift run textclassify-cli`. |
+| [TextClassify](TextClassify/) | zero-shot text classification | GLiNER2.5-Decide: labels you name at call time, several questions about one text in a single forward. Your own messages (pasted, or a .txt / .md / .csv file) or a sample inbox, sorted into categories you name, each with an urgency and a sentiment; By category puts the most urgent first. GUI (iPhone + Mac) + `swift run textclassify-cli`. |
 
 ## SDK-feature demos
 

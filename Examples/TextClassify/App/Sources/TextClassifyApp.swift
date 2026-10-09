@@ -1,6 +1,7 @@
-// TextClassify — a support inbox sorted on device: one tap, and every message gets an intent, an
-// urgency and a sentiment from GLiNER2.5-Decide on Core AI. The inbox is synthetic
-// (../Sources/InboxCore), the same one `textclassify-cli --inbox` sorts headless.
+// TextClassify — your messages sorted on device: every message gets one of the categories you name,
+// an urgency and a sentiment from GLiNER2.5-Decide on Core AI, and By category lists each category
+// with its most urgent messages first. The inbox is pasted, imported from a file, or the sample
+// inbox (../Sources/InboxCore), the same one `textclassify-cli --inbox` sorts headless.
 
 import SwiftUI
 #if os(iOS)
@@ -15,14 +16,18 @@ struct TextClassifyApp: App {
     init() {
         let autoplay = Autoplay()
         self.autoplay = autoplay
-        _model = State(initialValue: InboxModel(count: autoplay.count, seed: autoplay.seed))
+        _model = State(initialValue: InboxModel(
+            source: autoplay.source, sampleCount: autoplay.count, seed: autoplay.seed,
+            categories: autoplay.categories, showing: autoplay.showing))
     }
 
     var body: some Scene {
         WindowGroup {
             InboxScreen(model: model)
                 .task { await model.load(bundle: autoplay.bundle) }
+                .task { model.begin() }
                 .task { await autoplay.run(model) }
+                .preferredColorScheme(.dark)
                 #if os(iOS)
                 .statusBarHidden(true)
                 .persistentSystemOverlays(.hidden)

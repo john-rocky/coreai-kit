@@ -10,6 +10,7 @@
 		39C284ACB2382C4BFAC1EA03 /* InboxModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E996E015B22957E49430ECD4 /* InboxModel.swift */; };
 		73998B15A84ABD4CA64CB2CF /* CoreAIKitEmbeddings in Frameworks */ = {isa = PBXBuildFile; productRef = 68C4733DCEBBDFBC46016EE3 /* CoreAIKitEmbeddings */; };
 		87FBD68907B2F472AFD4F02C /* Autoplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E7D30E7F88F0FDBF5455E72 /* Autoplay.swift */; };
+		A7CE46857DDB2621523ED29E /* InboxInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = D33DCD5A8D8F39FFB8701F90 /* InboxInput.swift */; };
 		B25C78664543E27FCD2F540C /* InboxSorter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89D6516E42895CE37B0408D1 /* InboxSorter.swift */; };
 		B5015151C0E2C030A4763499 /* InboxScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 879208EE6A27859185929533 /* InboxScreen.swift */; };
 		BC3F866342B034B320B6BCE1 /* Inbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A79AE49B1DFAA15235BCF6 /* Inbox.swift */; };
@@ -24,6 +25,7 @@
 		8E7D30E7F88F0FDBF5455E72 /* Autoplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Autoplay.swift; sourceTree = "<group>"; };
 		9D6567FF44D59CB5D0964BAB /* TextClassifyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextClassifyApp.swift; sourceTree = "<group>"; };
 		B9A79AE49B1DFAA15235BCF6 /* Inbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Inbox.swift; sourceTree = "<group>"; };
+		D33DCD5A8D8F39FFB8701F90 /* InboxInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxInput.swift; sourceTree = "<group>"; };
 		E996E015B22957E49430ECD4 /* InboxModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -76,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				B9A79AE49B1DFAA15235BCF6 /* Inbox.swift */,
+				D33DCD5A8D8F39FFB8701F90 /* InboxInput.swift */,
 				89D6516E42895CE37B0408D1 /* InboxSorter.swift */,
 			);
 			path = InboxCore;
@@ -168,6 +171,7 @@
 			files = (
 				87FBD68907B2F472AFD4F02C /* Autoplay.swift in Sources */,
 				BC3F866342B034B320B6BCE1 /* Inbox.swift in Sources */,
+				A7CE46857DDB2621523ED29E /* InboxInput.swift in Sources */,
 				39C284ACB2382C4BFAC1EA03 /* InboxModel.swift in Sources */,
 				B5015151C0E2C030A4763499 /* InboxScreen.swift in Sources */,
 				B25C78664543E27FCD2F540C /* InboxSorter.swift in Sources */,

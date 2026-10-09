@@ -5,9 +5,11 @@ import PackageDescription
 // collator and decisions against the zoo's gliner2 oracle fixtures on macOS with no Xcode and no
 // device — the agent-verifiable door. It drives the same kit class an app would ship.
 //
-// `InboxCore` is the inbox demo's core — the synthetic support inbox and the sorter that asks every
-// message three questions. `swift run textclassify-cli --inbox <count>` runs it headless; the SwiftUI
-// app in App/ compiles the same sources into itself, so both report numbers from one code path.
+// `InboxCore` is the inbox demo's core — the synthetic support inbox, the reading of a pasted or
+// imported inbox and of the categories field, and the sorter that asks every message three
+// questions. `swift run textclassify-cli --inbox <count>` runs it headless; the SwiftUI app in App/
+// compiles the same sources into itself, so both report numbers from one code path. `swift test`
+// checks the reading of a paste, a file and the categories (no model is loaded).
 let package = Package(
     name: "TextClassify",
     platforms: [.macOS("27.0")],
@@ -23,6 +25,10 @@ let package = Package(
             name: "textclassify-cli",
             dependencies: ["InboxCore", .product(name: "CoreAIKitEmbeddings", package: "coreai-kit")],
             path: "CLI"
+        ),
+        .testTarget(
+            name: "InboxCoreTests",
+            dependencies: ["InboxCore"]
         ),
     ]
 )
