@@ -261,6 +261,10 @@ final class WeekModel {
     func load(bundle: String?) async {
         guard !loadStarted else { return }  // once, whichever window asks
         loadStarted = true
+        // The download, the load and the warm-up are work a person asked for. Without this, macOS App Naps a
+        // window that is hidden or behind others: a first download fell to 0.13 MB/s on a Mac whose curl got 5 MB/s.
+        let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: "Loading the model")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
         let t0 = ContinuousClock.now
         do {
             let url = try await resolveBundle(bundle)
@@ -320,8 +324,10 @@ final class WeekModel {
         startedAt = start
         thermalBefore = ProcessInfo.processInfo.thermalState
         phase = .planning
+        let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: "Planning the week")
         let events = self.events
         runTask = Task {
+            defer { ProcessInfo.processInfo.endActivity(activity) }
             let (answers, sink) = AsyncStream.makeStream(of: PlannedEvent.self)
             let loop = Task.detached(priority: .userInitiated) { () async throws -> PlanRun in
                 defer { sink.finish() }
