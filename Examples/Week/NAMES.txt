@@ -1,0 +1,59 @@
+# Every proper name the Week generator (Sources/WeekCore/Week.swift) writes into an event, for an
+# exact-phrase search before a recording or a screenshot is shared. The generator uses no company,
+# brand or product names; people are given names only, never with a surname.
+
+# given names
+Ava
+Ben
+Chloe
+Dev
+Elena
+Felix
+Grace
+Hugo
+Iris
+Jonah
+Kira
+Leo
+Mina
+Noah
+Priya
+Quinn
+Rosa
+Sam
+Tara
+Victor
+Wren
+Yuki
+Marta
+Kai
+Nadia
+Ravi
+Ines
+Omar
+
+# places (generic words; the streets are common street names, not meant as a real address)
+12 Weaver St
+Civic Center
+Pine Street
+Riverside path
+Main hall
+44 Linden Avenue
+Main library
+Central Station
+Hill Road
+Mill Road
+Elm Street
+Pier 9
+Arrivals, Terminal 1
+Terminal 2
+Conference room C
+Community room
+the lake lodge
+the north warehouse
+
+# links and phone numbers (reserved for examples: the .example domain, 555-01xx)
+meet.example
+events.example
++1 555 0142
++1 555 0199

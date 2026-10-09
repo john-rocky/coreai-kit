@@ -1,0 +1,81 @@
+name: Week
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../../..
+
+# Release: the numbers on screen are measured, and Debug adds host overhead to every event.
+# `xcodebuild build -scheme Week` builds the app alone; `xcodebuild test -scheme Week` also builds
+# WeekUITests, the one test that accepts the Calendar and Reminders alerts on a phone.
+schemes:
+  Week:
+    build:
+      targets:
+        Week: all
+        WeekUITests: [test]
+    run:
+      config: Release
+    test:
+      config: Release
+      targets:
+        - WeekUITests
+
+targets:
+  Week:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+      # The week and the planner — compiled into the app and also built standalone by
+      # ../Package.swift for `swift run week-cli run`.
+      - path: ../Sources/WeekCore
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.week
+        # Resolves from your shell: `export DEVELOPMENT_TEAM=XXXXXXXXXX` before `xcodegen generate`,
+        # or leave unset and pick your team in Xcode’s Signing & Capabilities tab.
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Week reads this week's events from your calendars to tell you what each needs before it. Nothing is written to your calendar and nothing leaves the device."
+        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "When you press Add reminders, Week adds a reminder for each event that needs something done before it."
+        # The week is a portrait screen on iPhone.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        # macOS: `-bundle <dir>`, `-events <file>` and `-out <dir>` reach anywhere on disk, and
+        # EventKit needs only the usage strings above outside the sandbox.
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
+
+  WeekUITests:
+    type: bundle.ui-testing
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Week
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.week.uitests
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: Week
