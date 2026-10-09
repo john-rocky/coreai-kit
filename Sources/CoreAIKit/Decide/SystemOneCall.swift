@@ -138,7 +138,8 @@ extension TypedDecisions {
 extension SystemOne {
     /// The backend that answers for a catalog id: `KitClefDecider` for a `jointDecision` entry (clef-flash),
     /// `KitKevDecider` for a `rowDecision` entry (Kev; `configuration.sharePrefix` reaches it), `KitD1OmniDecider` for an
-    /// `omniDecision` entry (d1-omni-600m), else `TypedDecisions`. What `systemone` and the MCP server load.
+    /// `omniDecision` entry (d1-omni-600m), `KitD1Decider` for a `tokenDecision` entry (d1-3b; `configuration.sharePrefix`
+    /// reaches it), else `TypedDecisions`. What `systemone` and the MCP server load.
     public static func backend(
         catalog id: String, store: ModelStore = .default,
         configuration: TypedDecisions.Configuration = TypedDecisions.Configuration(),
@@ -152,6 +153,9 @@ extension SystemOne {
                 catalog: id, sharePrefix: configuration.sharePrefix, store: store, downloadProgress: downloadProgress)
         case .omniDecision:
             return try await KitD1OmniDecider(catalog: id, store: store, downloadProgress: downloadProgress)
+        case .tokenDecision:
+            return try await KitD1Decider(
+                catalog: id, sharePrefix: configuration.sharePrefix, store: store, downloadProgress: downloadProgress)
         default:
             return try await TypedDecisions(
                 catalog: id, store: store, configuration: configuration, downloadProgress: downloadProgress)
@@ -161,6 +165,6 @@ extension SystemOne {
     /// Whether `systemone` and the MCP server can load this catalog entry as a decision backend.
     public static func supports(_ entry: CatalogEntry) -> Bool {
         TypedDecisions.supports(entry) || KitClefDecider.supports(entry) || KitKevDecider.supports(entry)
-            || KitD1OmniDecider.supports(entry)
+            || KitD1OmniDecider.supports(entry) || KitD1Decider.supports(entry)
     }
 }

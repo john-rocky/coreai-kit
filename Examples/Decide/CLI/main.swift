@@ -31,6 +31,9 @@
 //   swift run -c release decide-cli ask --model d1-omni-600m --state "…" --choice "…|…|…" [--image x.png | --audio x.wav]
 //   (d1-omni-600m: a text, an image or a 16 kHz mono 16-bit WAV, every question its own row; with --image or --audio
 //    --state may be left out, the publisher's None; --bundle <the repo's macos/ folder> reads local files)
+//   swift run -c release decide-cli ask --model d1-3b --state "…" --choice "…|…|…" [--image x.png]
+//   (d1-3b: a text or a picture, every question its own row read at its last token; with --image --state may be left
+//    out, the provider's None; --bundle <decoder bundle> [--tower <tower bundle>] reads local files)
 //   (an encoder model's fixture, coreai-encoder-fixtures/1: tokens and markers, then the raw logits at T = 1;
 //    --tokens-only --tokenizer <dir> --head-max-len 256 checks the rows with no bundle at all)
 //   printf 'line\nline\n' | swift run -c release decide-cli filter --noul "Is this a bug report?"
@@ -73,6 +76,9 @@ let usage = """
            decide-cli ask   --model d1-omni-600m [--state <text>] [--image <file> | --audio <16 kHz mono WAV>] (--noul … | --choice … | --score …)…
                             (ask and serve also read a local platform folder, --bundle <the repo's macos/>; mcp takes
                              --model d1-omni-600m)
+           decide-cli ask   --model d1-3b [--state <text>] [--image <file>] (--noul … | --choice … | --score …)…
+                            (ask and serve also read a local decoder bundle, --bundle <dir> [--tower <tower bundle dir>];
+                             mcp takes --model d1-3b; --no-share runs every question's row whole)
            decide-cli filter (--noul <q> [--threshold <p>] | --choice "<q>|<opt>|<opt>…") [--all] [--model <catalog-id>]
                             (one text per line on stdin; passing lines on stdout, tab-separated with the answer)
            decide-cli serve [--model <catalog-id>] [--host 127.0.0.1] [--port 8090]
@@ -120,6 +126,7 @@ if command == "--list-models" {
     for entry in ModelCatalog.builtin.available(.chat) + ModelCatalog.builtin.available(.decision)
         + ModelCatalog.builtin.available(.visionDecision) + ModelCatalog.builtin.available(.jointDecision)
         + ModelCatalog.builtin.available(.rowDecision) + ModelCatalog.builtin.available(.omniDecision)
+        + ModelCatalog.builtin.available(.tokenDecision)
     {
         print("\(entry.id)  —  \(entry.name)  [\(entry.kind.rawValue)]")
     }
@@ -180,6 +187,8 @@ var gridGiven = false
 var towerPaths: [KitVisionDecider.Grid: String] = [:]
 /// A local clef-flash beside `--bundle` (the decoder): the head bundle directory and the lm_head table file.
 var headPath: String?
+/// A local d1-3b's vision tower bundle beside `--bundle` (the decoder bundle).
+var towerPath: String?
 var tablePath: String?
 /// `parity` on an image-decision fixture: where its images are, and how many timed passes follow the checked one.
 var imagesDir: String?
@@ -313,6 +322,7 @@ while let arg = args.popFirst() {
     case "--table": tablePath = args.popFirst()
     case "--tower-g256": towerPaths[.g256] = args.popFirst()
     case "--tower-g448": towerPaths[.g448] = args.popFirst()
+    case "--tower": towerPath = args.popFirst()
     case "--timed": timedPasses = Int(args.popFirst() ?? "") ?? timedPasses
     case "--engine-log": CLILogger.level = 1
     default: fail(usage)
@@ -358,6 +368,20 @@ let id = modelID
         return
     }
     if audioPath != nil { fail("--audio reads a clip with d1-omni-600m (--model d1-omni-600m, or --bundle <its macos/>)") }
+    if try await isTokenDecision(id) {
+        // d1-3b: every question its own row over the text and the picture; no state is the provider's None.
+        guard !questions.isEmpty, state != nil || imagePath != nil else { fail(usage) }
+        let decider = try await loadTokenDecider()
+        let asked = questions.map { (id: $0.0, question: $0.1) }
+        let images: [SystemOne.Image] = imagePath.map { [.file(URL(fileURLWithPath: $0))] } ?? []
+        stderrPrint("model: \(decider.id) (\(decider.modelName))   shared prefix: \(decider.sharePrefix)\(imagePath.map { "   image: \($0)" } ?? "")")
+        let response = try await decider.systemOne(state: state.map { .string($0) }, questions: asked, images: images)
+        for answer in response.answers { print("\(answer.id): \(describe(answer.answer))") }
+        if let tokens = response.metadata?["input_tokens"], let pictures = response.metadata?["image_tokens"] {
+            stderrPrint("input tokens \(tokens.dumps()) (the provider's count), image tokens \(pictures.dumps())")
+        }
+        return
+    }
     guard let state, !questions.isEmpty else { fail(usage) }
     if modelGiven, try await isRowDecision(id) {
         // Kev: one row per question, the state's whole calls run once (unless --no-share).
@@ -2310,6 +2334,8 @@ struct KevReferenceRecord {
     let decider: any DecisionBackend
     if try await isOmniDecision(id) {
         decider = try await loadOmniDecider()
+    } else if try await isTokenDecision(id) {
+        decider = try await loadTokenDecider()
     } else if try await isJointHead(id) {
         decider = try await KitClefDecider(catalog: id, downloadProgress: progress)
     } else if try await isRowDecision(id) {
@@ -2364,6 +2390,27 @@ struct KevReferenceRecord {
 @MainActor func loadOmniDecider() async throws -> KitD1OmniDecider {
     if let bundlePath { return try await KitD1OmniDecider(folderAt: URL(fileURLWithPath: bundlePath)) }
     return try await KitD1OmniDecider(catalog: id, downloadProgress: progress)
+}
+
+/// Whether the model is d1-3b (`KitD1Decider`): a `tokenDecision` catalog entry, or a `--bundle` decoder bundle with the
+/// option table it reads (`head/option_rows.json`).
+@MainActor func isTokenDecision(_ id: String) async throws -> Bool {
+    if let bundlePath {
+        return FileManager.default.fileExists(
+            atPath: URL(fileURLWithPath: bundlePath).appendingPathComponent("head/option_rows.json").path)
+    }
+    guard modelGiven else { return false }
+    return try await ModelCatalog.entry(forID: id).kind == .tokenDecision
+}
+
+/// d1-3b from the `--bundle` decoder bundle (and `--tower`) when given, else the catalog.
+@MainActor func loadTokenDecider() async throws -> KitD1Decider {
+    if let bundlePath {
+        return try await KitD1Decider(
+            bundleAt: URL(fileURLWithPath: bundlePath), towerAt: towerPath.map { URL(fileURLWithPath: $0) },
+            sharePrefix: !noShare)
+    }
+    return try await KitD1Decider(catalog: id, sharePrefix: !noShare, downloadProgress: progress)
 }
 
 // MARK: - mcp (the same decisions as Model Context Protocol tools — `SystemOneMCPServer` in the kit;

@@ -501,6 +501,27 @@
       "format": "markerScores"
     },
     {
+      "id": "d1-3b",
+      "name": "d1 3B",
+      "repo": "mlboydaisuke/d1-3B-CoreAI",
+      "revision": "3cf8b7ca20ee5e2acf20ff522f4ffa7201aa8fb8",
+      "kind": "tokenDecision",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/d1_3b_decode_fp16_pf64_s",
+          "sizeMB": 5598
+        },
+        "ios": {
+          "path": "gpu-pipelined/d1_3b_decode_int8mlp_pf64_s",
+          "sizeMB": 3740
+        }
+      },
+      "format": "optionRows",
+      "assets": {
+        "tower": "gpu-pipelined/d1_3b_vision_fp16w32_s"
+      }
+    },
+    {
       "id": "nanbeige4.1-3b",
       "name": "Nanbeige4.1 3B",
       "repo": "mlboydaisuke/Nanbeige4.1-3B-CoreAI",

@@ -310,7 +310,7 @@ public struct SystemOneMCP: Sendable {
                 },
                 "images": {
                   "type": "array",
-                  "description": "One image the questions are also about, for a model that reads images (clef-flash, d1-omni-600m): a data URL, base64, or an absolute file path. Other models refuse it.",
+                  "description": "One image the questions are also about, for a model that reads images (clef-flash, d1-omni-600m, d1-3b): a data URL, base64, or an absolute file path. Other models refuse it.",
                   "items": {"type": "string"},
                   "maxItems": 1
                 },

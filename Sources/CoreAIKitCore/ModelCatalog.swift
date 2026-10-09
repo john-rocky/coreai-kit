@@ -81,6 +81,13 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// this case decodes the entry as `unknown` and leaves it out of `available(_:)`, where `decision` would list it
         /// in `systemone models` and download 6.5 GB for a `TypedDecisions` that cannot read it.
         case omniDecision
+        /// Typed decisions about a text, a JSON value or pictures, every option read at the last position of its question's
+        /// row (d1-3B): state + questions (+ pictures) → a probability per option, one row per question in the provider's
+        /// chat form, the decoder's hidden state at the row's last token against the tied embedding rows of each option's
+        /// tokens, read on the host (`format: optionRows`, `assets` naming the vision tower), driven by `KitD1Decider`;
+        /// not `decision`, which a kit built before this case would list in `systemone models` and hand, after
+        /// downloading the decoder, to a `TypedDecisions` that cannot read it.
+        case tokenDecision
         /// Forward-compat: a kind this build doesn't know (e.g. a newer catalog.json entry).
         /// Such entries decode cleanly and are simply filtered out of `available(_:)`.
         case unknown
@@ -134,8 +141,9 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// once by a head graph over the decoder's hidden states, with `assets` naming the other parts;
     /// `KitClefDecider`). A `rowDecision` entry says `pointerHead` (one row per question, read by a pointer head over
     /// the decoder's hidden states; `KitKevDecider`). An `omniDecision` entry says `markerScores` (one row per question,
-    /// every option read at its marker from the decision graph's scores; `KitD1OmniDecider`). nil = the kind's default
-    /// (`decider` for a decision entry).
+    /// every option read at its marker from the decision graph's scores; `KitD1OmniDecider`). A `tokenDecision` entry says
+    /// `optionRows` (one row per question, read at its last position against the option tokens' embedding rows the bundle
+    /// ships in `head/`; `KitD1Decider`). nil = the kind's default (`decider` for a decision entry).
     public let format: String?
     /// The weights' license when it restricts what an app may do with them — the SPDX
     /// identifier, `CC-BY-NC-4.0` for a non-commercial model. nil for the permissive ones
@@ -147,8 +155,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// the model's own temperature — its bundle's declaration, or its prompt form's default.
     public let calibration: Calibration?
     /// The parts a loader downloads beside the variant path, by role, as repo paths at the entry's
-    /// revision, for a model whose parts the kit does not name in code (clef-flash). nil for the
-    /// others. A kit built before the field ignores it.
+    /// revision, for a model whose parts the kit does not name in code (clef-flash, d1-3b). nil for
+    /// the others. A kit built before the field ignores it.
     public let assets: Assets?
 
     public init(
@@ -222,15 +230,19 @@ extension CatalogEntry {
     /// A joint-head model's parts beside its decoder (`format: jointHead`, clef-flash): the head bundle, the
     /// host table file — the Hub lists folders, so the folder holding it is what downloads — and a vision tower
     /// per grid name (`g256`, `g448`), each downloaded the first time a decision asks for its grid.
+    /// An option-row model (`format: optionRows`, d1-3b) names its one vision tower, which reads a picture at the
+    /// provider's own crops and downloads when a request carries a picture.
     public struct Assets: Sendable, Codable, Hashable {
         public let head: String?
         public let table: String?
         public let towers: [String: String]?
+        public let tower: String?
 
-        public init(head: String? = nil, table: String? = nil, towers: [String: String]? = nil) {
+        public init(head: String? = nil, table: String? = nil, towers: [String: String]? = nil, tower: String? = nil) {
             self.head = head
             self.table = table
             self.towers = towers
+            self.tower = tower
         }
     }
 }
@@ -615,6 +627,26 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(path: "ios", sizeMB: 6458),
                 ],
                 format: "markerScores"),
+            // ── d1-3B (Liquid AI, LFM Open License v1.0: LFM2.5-VL-3B post-trained as a decision model, a SigLIP2 vision
+            //    tower and the LFM2 hybrid decoder): typed decisions about a text, a JSON value or pictures. One row per
+            //    question in the provider's chat form; the decoder (no vocabulary head, 64 tokens a call) returns the
+            //    hidden state at every position, and the host reads the row's last one against the tied embedding rows
+            //    of the options' tokens (`head/option_rows`, 2,134 ids) in float64, each option's highest logit, a
+            //    softmax over the options. `format: optionRows`, driven by `KitD1Decider`. Its own kind,
+            //    `tokenDecision`: a kit built before it decodes the entry as `unknown` and leaves it out of
+            //    `available(_:)`. Two decoders: the Mac's fp16 (its `.aimodel` specializes to the AOT asset's rows bit
+            //    for bit), the iPhone's int8 per block of 32 in the MLP linears (the one form that passed the zoo's bar
+            //    and loaded on the iPhone 18 Pro, with increased-memory-limit). The tower (`assets.tower`, 854 MB)
+            //    downloads when a request carries a picture, so `sizeMB` is the decoder bundle alone. ──
+            CatalogEntry(
+                id: "d1-3b", name: "d1 3B",
+                repo: "mlboydaisuke/d1-3B-CoreAI", kind: .tokenDecision,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/d1_3b_decode_fp16_pf64_s", sizeMB: 5598),
+                    "ios": .init(path: "gpu-pipelined/d1_3b_decode_int8mlp_pf64_s", sizeMB: 3740),
+                ],
+                format: "optionRows",
+                assets: .init(tower: "gpu-pipelined/d1_3b_vision_fp16w32_s")),
             CatalogEntry(
                 id: "nanbeige4.1-3b", name: "Nanbeige4.1 3B",
                 repo: "mlboydaisuke/Nanbeige4.1-3B-CoreAI", kind: .chat,

@@ -67,12 +67,13 @@ A choice lists up to the hosted API's 255 options where the model reads that man
 sends 22 requests in those forms and checks every answer's shape, against this server or any
 other that speaks the route.
 
-A request can carry one image for a model that reads images, `clef-flash` and `d1-omni-600m`: `images` is an
+A request can carry one image for a model that reads images, `clef-flash`, `d1-omni-600m` and `d1-3b`: `images` is an
 array holding it as a data URL (`"data:image/png;base64,…"`), plain base64, or a path on the
 server's machine, which `SystemOneServer` reads only when it listens on 127.0.0.1; `grid` picks
 clef-flash's vision tower tile, 448 (the default) or 256. Any other model answers such a request with a 422
 that names it, and a request without the field reads as before
-([every question at once](#every-question-at-once-clef-flash)). A request for `d1-omni-600m` can carry one clip
+([every question at once](#every-question-at-once-clef-flash),
+[pictures and text](#pictures-and-text-one-row-per-question-d1-3b)). A request for `d1-omni-600m` can carry one clip
 instead: `audio`, a 16 kHz mono 16-bit WAV in the same three forms, with `state` optional
 ([text, images or audio](#text-images-or-audio-d1-omni)); every other model answers it with a 422.
 
@@ -136,7 +137,9 @@ Name a model with `options: .model("apus-decision-v1-4b")` in Swift, or
 `systemone serve --model apus-decision-v1-4b` for the server. A question about an image goes to
 `decider-2b-vision` through `CoreAI.decide(image:…)` ([below](#decisions-about-an-image)), or to
 `clef-flash` with the request's `images` ([below](#every-question-at-once-clef-flash)); a question about an image or a
-voice clip to `d1-omni-600m` ([below](#text-images-or-audio-d1-omni)); the tables here are text only.
+voice clip to `d1-omni-600m` ([below](#text-images-or-audio-d1-omni)); a question about pictures and a text to `d1-3b`,
+a 3B model read at each row's last token ([below](#pictures-and-text-one-row-per-question-d1-3b)); the tables here are
+text only.
 
 JevBench's 231 public items (48 easy, 72 standard, 111 hard), sent one question per request to
 `decide-cli serve` by the benchmark's own harness, which also scored them; M4 Max, macOS 27.0,
@@ -283,6 +286,7 @@ count, and the server answers a longer list with a 422 that names it.
 | `clef-flash` | a joint head over every option of every question in one pass, 16 questions and 128 options a request ([every question at once](#every-question-at-once-clef-flash)) | 128 |
 | `kev-0.8b`, `kev-4b` | a pointer head at each option's closing token, one row per question ([one row per question](#one-row-per-question-kev)) | 255 |
 | `d1-omni-600m` | the score at a mask marker before each option, one row per question at the smallest of seven graph lengths that holds it ([text, images or audio](#text-images-or-audio-d1-omni)) | 255 |
+| `d1-3b` | the tied embedding rows of each option's code tokens at its row's last position, one row per question; the provider's own codes reach 1,639 ([pictures and text](#pictures-and-text-one-row-per-question-d1-3b)) | 255 |
 
 A chat model is read at numbers past 26 because it answers a two-letter label with one of its
 letters (`AZ` → `Z`). The numbers need a tokenizer that writes 1–255 as single tokens, as
@@ -514,6 +518,83 @@ rows need loaded. The iPhone has not been run through the kit; the zoo's gate ap
 Pro (78 fixture rows within the gate), and the memory of several decision lengths loaded in one process there was not
 measured.
 
+## Pictures and text, one row per question: d1-3B
+
+`d1-3b` (Liquid AI, LFM Open License v1.0: LFM2.5-VL-3B post-trained as a decision model, a SigLIP2 vision tower and the
+LFM2 hybrid decoder) reads each question as its own row in the provider's chat form: the pictures, the state (a text, or
+JSON written as `json.dumps(state, indent=2)`), the question with its options as codes, then the assistant turn. The
+decoder runs the row 64 tokens a call and returns the hidden state at every position; the host reads the last one
+against the tied embedding rows of each option's tokens (a 2,134-row table that ships in the bundle), keeps each option's
+highest logit and takes a softmax over the options, in float64. Nothing is generated. A choice lists up to 255 options on
+the wire (the provider's own codes reach 1,639), a score up to 10 levels. A row holds at most 4,032 tokens and a
+request's pictures at most 2,816 image tokens (one picture needs at most 2,810); a longer request is refused before any
+graph call, in the provider's words. Two decoders ship with one contract: the Mac runs the fp16 one (5.6 GB), the iPhone
+the one whose MLP linears are int8 per block of 32 (3.7 GB), and the catalog entry gives each platform its own. The
+vision tower (854 MB) downloads when a request carries a picture. The catalog kind is `tokenDecision`:
+`TypedDecisions(catalog:)` refuses it by name, so `CoreAI.decide` does too, and a kit released before it (0.7.3 and
+earlier) decodes the kind as `unknown` and lists it nowhere. The weights' licence allows commercial use below 10 million
+US dollars in annual revenue (its Section 5).
+
+```swift
+let decider = try await KitD1Decider(catalog: "d1-3b")                   // 5.6 GB to download on a Mac
+let r = try await decider.systemOne(try SystemOne.request(from: body))    // a text or JSON state, `images`
+let seen = try await decider.systemOne(
+    state: nil, questions: [(id: "circle", question: .noul("Is there a circle in the picture?"))],
+    images: [.file(picture)])                                             // nil: the provider's form without a state
+let prepared = try await decider.prepare(state: ticket)                  // the state's whole calls, once
+let later = try await decider.decide(prepared: prepared, questionsJSON: questions)
+```
+
+On the server it is `systemone serve --model d1-3b`. A picture goes in `images` (a data URL, base64, or a path on the
+server's machine, read only on 127.0.0.1); `grid` is refused, since the picture is read at the provider's own crops, and
+`audio` gets a 422 that names the model. The wire's `state` is required, as for every model; the provider's form
+without a state block is `state: nil` in Swift, and a JSON `null` in `readout(requestJSON:)`. The provider's code takes
+instructions, levels and descriptions as text only; on the wire one given as a JSON value reads as its JSON text, the
+kit's rule for every model, while `readout(requestJSON:)` refuses it as the provider does. The host is the model
+zoo's `apps/D1` library with every numeric path unchanged: the provider's rows with the checkpoint's tokenizer
+(swift-transformers, plus the three steps it does differently on this tokenizer: the added tokens cut out before the regex, the Split regex
+on code points, `ignore_merges`), a picture decoded with ImageIO, capped at one megapixel and cut into the processor's
+crops by torch's uint8 bicubic kernel written out, the tower once per crop, the decoder from zeroed states, and the
+readout's products through the BLAS calls NumPy makes (`CoreAIKitD1BLAS`, a C target). By default a request's state
+runs once and each question continues from a copy of the decoder's states; on this graph that gives the direct run's
+hidden rows bit for bit. A JPEG decodes with ImageIO here and with libjpeg in the provider's Python path, and the pixels
+can differ (by up to 57 levels with 4:2:0 chroma, the zoo found); a PNG gives the same pixels.
+
+The zoo measured one decision (the picture's tower call and image rows, the decoder's calls, the readout; not building
+the rows or decoding the picture) on the shipped bundles:
+
+| | Mac (M4 Max, macOS 27.0) | iPhone 18 Pro (iOS 27.2) |
+|---|---:|---:|
+| One question on the card's refund request (39 tokens) | 34.3 ms | 48.3 ms |
+| Three questions on that state, shared | 102.2 ms | 147.1 ms |
+| One question on a 3,470-token state | 1,888.0 ms | 2,795.9 ms |
+| One question on a 384 × 384 picture (144 image tokens) | 202.3 ms | 569.3 ms |
+
+The Mac column is the zoo's Swift host with the fp16 `.aimodel` specialized in its process, the kit's path; the iPhone
+column is the zoo's gate app with the int8mlp `.aimodel` specialized on the phone, on USB power
+(`models/d1-3b/README.md` in the zoo). The kit was not timed. A load with a cold cache specializes the decoder: 10.2 s and
+10,368,248 KiB of the runtime's cache on the Mac, 31.8 s and 4,779 MB on the phone; with the cache warm a load took
+0.7 s and 3.7 s. Against the provider's fp32 code the zoo's gates give max |Δp| 0.0039 for the Mac's decoder and 0.0197
+for the iPhone's on 393 fixture questions; the iPhone's gives 0.0140 on 120 held-out ones, 0.0024 on 24 about pictures
+and 0.0186 on the phone, with every argmax equal where the provider's top two are more than 0.02 apart.
+
+An iPhone app needs `com.apple.developer.kernel.increased-memory-limit` in its entitlements: without it the decoder does
+not load (the zoo saw its on-device specialization die with `std::bad_alloc`). The kit cannot add it; the app does.
+
+Through `D13BTests` (M4 Max, macOS 27.0 26A428, 2026-10-09), with the Mac's decoder and the tower at the catalog pin (the
+zoo's staged copy of the repo, checked file by file against the Hub): the zoo's 393 fixture rows rebuilt by the kit with
+its swift-transformers 1.3.3 are host.py's ids, text and readout groups, and the request the provider refuses is refused
+in its words; 28 questions (16 records of text, 2 pictures) through `KitD1Decider(catalog:)` give the Python reference's
+hidden rows, logits and probabilities of the same bundle bit for bit, and the provider's response text on all 18
+records; the shared prefix and a prepared state give the same bits (3 records of several questions, up to 3,424 tokens
+of state); max |Δp| against the provider's fp32 oracle 0.0022, every argmax equal. The five refusals come before any
+graph call: a row past 4,032 tokens and a label outside the option table in the provider's words on the wire too, a
+score of eleven levels and a question without instructions in the provider's words through `readout(requestJSON:)` and
+in the wire's own on the wire, pictures past 2,816 image tokens through the Swift API (the wire carries one picture).
+`systemone serve --model d1-3b` passes `conformance/check.py`, 22 of 22 requests and the three routes, and a picture
+sent in `images` as base64 and as a path gets the same answers. The iPhone has not run through the kit; the zoo's gate
+app ran the same int8mlp bundle on an iPhone 18 Pro.
+
 ## What runs
 
 Ten whole uses, one action and the complete result, from the same sources on the Mac and the
@@ -573,6 +654,11 @@ Clips of each on the Mac and on the iPhone are in
   and audio; `readout` gives each row, its graph length and the marker logits, and the response in the publisher's
   form), and the model zoo's `apps/D1Omni` host beside it, ported with every numeric path unchanged (`D1Prompt`,
   `D1Readout`, `D1DecisionGraph`, `D1MediaGraphs`, `D1ImagePreprocess`, `D1AudioPreprocess`, `D1OmniPipeline`).
+- `Sources/CoreAIKit/D1/` — d1-3B: `KitD1Decider` (the model-level API and a `DecisionBackend` that reads pictures;
+  `prepare(state:)` keeps a state for later questions; `readout` gives each row's ids, hidden digest, logits and p, and
+  the response in the provider's form), and the model zoo's `apps/D1` host beside it, ported with every numeric path
+  unchanged (`D13BRequest`, `D13BEncoder`, `D13BVision`, `D13BImagePixels`, `D13BTower`, `D13BDecoder`, `D13BReadout`,
+  `D13BPipeline`); `Sources/CoreAIKitD1BLAS` — the readout's float64 products in C, through the BLAS calls NumPy makes.
 - `Sources/CoreAIOps/CoreAI+Decide.swift` — `CoreAI.decide`, the one-call op (`decide(image:…)` for an image);
   `CoreAI+SystemOne.swift` — `CoreAI.systemOne`, the same op in the hosted request and
   response forms (the model from `options`, else the request's `model`, else the default).

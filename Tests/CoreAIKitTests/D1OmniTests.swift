@@ -133,7 +133,7 @@ struct D1OmniTests {
         let text = try Self.request(#""state": "s", "#)
         #expect(TextOnly().imageRefusal(clip) == nil && TextOnly().mediaRefusal(text) == nil)
         let image = try Self.request(#""state": "s", "images": ["/tmp/x.png"], "#)
-        #expect(TextOnly().mediaRefusal(image)?.message.contains("(clef-flash, d1-omni-600m)") == true)
+        #expect(TextOnly().mediaRefusal(image)?.message.contains("(clef-flash, d1-omni-600m, d1-3b)") == true)
     }
 
     @Test func aServerOffLoopbackReadsNoClipPath() async throws {
