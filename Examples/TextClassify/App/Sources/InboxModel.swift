@@ -1,24 +1,86 @@
-// InboxModel — the screen's state: the inbox, the classifier, and the run as its answers arrive.
-// The sort loop runs on InboxSorter's actor; answers reach the main actor in batches, at most 20 a
-// second, so drawing never slows the loop. Every number on the screen is computed here from the
-// run's own measurements.
+// InboxModel — the screen's state: where the inbox comes from (pasted text, a file, the sample
+// inbox), the categories it is sorted into, the classifier, and the run as its answers arrive. The
+// model loads once at launch whatever the source; the inbox and the categories can be changed
+// before Sort and again after DONE (a change clears the answers). The sort loop runs on
+// InboxSorter's actor; answers reach the main actor in batches, at most 20 a second, so drawing
+// never slows the loop. Every number on the screen is computed here from the run's own measurements.
 
 import CoreAIKitEmbeddings
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
 final class InboxModel {
     enum Phase: Equatable { case loading, ready, sorting, done, failed }
 
-    let messages: [Message]
+    /// Where the inbox comes from.
+    enum Source: String, CaseIterable, Sendable {
+        case paste, file, sample
+
+        /// The picker's words.
+        var title: String {
+            switch self {
+            case .paste: return "Paste"
+            case .file: return "Import file"
+            case .sample: return "Sample inbox"
+            }
+        }
+
+        /// What the footer and the DONE line call the inbox.
+        var inboxName: String {
+            switch self {
+            case .paste: return "pasted messages"
+            case .file: return "your file"
+            case .sample: return "sample inbox"
+            }
+        }
+    }
+
+    /// The two ways the answers are shown.
+    enum Showing: String, CaseIterable, Sendable {
+        case inbox, category
+
+        var title: String { self == .inbox ? "Inbox" : "By category" }
+    }
+
+    /// The files Import file offers: plain text, CSV and Markdown.
+    static let fileTypes: [UTType] = [.plainText, .commaSeparatedText, UTType("net.daringfireball.markdown"), .text]
+        .compactMap { $0 }
+
+    /// The sample inbox: the generator's messages from `seed`, the inbox `textclassify-cli --inbox`
+    /// sorts.
+    let sampleCount: Int
     let seed: UInt64
+    private(set) var source: Source
+    /// The inbox on screen, in order.
+    private(set) var messages: [Message] = []
+    /// Why there is nothing to sort, or how many pieces were skipped.
+    private(set) var note: String?
+    /// Pasted or imported pieces with no letter or digit, for the inbox on screen.
+    private(set) var skipped = 0
+    var showing: Showing
     private(set) var phase = Phase.loading
     /// LOADING: the download percent or "graphs"; FAILED: the error.
     private(set) var detail = ""
+
+    /// The categories field, and what it reads as.
+    var categoriesText: String
+    private(set) var categories: InboxCategories.Parsed
+    /// The categories of the answers on screen (the run's).
+    private(set) var sortedCategories: [String] = []
+
+    // The Paste sheet: its text is kept between openings.
+    var showingPaste = false
+    var pasteText = ""
+    /// Why the sheet's last Sort was refused, until the text changes.
+    private(set) var pasteRefusal: String?
+    /// The file picker of Import file.
+    var importing = false
+
     /// By message index; nil until the message is sorted.
-    private(set) var results: [SortedMessage?]
+    private(set) var results: [SortedMessage?] = []
     private(set) var done = 0
     /// Median per-message time (ms) and messages per second, over the messages sorted so far.
     private(set) var medianMs: Double?
@@ -28,29 +90,160 @@ final class InboxModel {
     /// When Sort was pressed; the clock runs from here.
     private(set) var startedAt: ContinuousClock.Instant?
     private(set) var run: SortRun?
+    /// From launch to READY: finding (or downloading) the bundle, loading it, and one run through
+    /// each graph.
     private(set) var loadSeconds: Double?
     private(set) var warmSeconds: [Int: Double] = [:]
     private(set) var sequenceLengths: [Int] = []
     private(set) var bundlePath = ""
     /// "bundle" (-bundle), "sideload" (Documents/gliner25-decide) or "catalog" (downloaded).
-    private(set) var source = ""
+    private(set) var modelSource = ""
     /// The graphs' precision, from classifier.json ("float16" -> "fp16").
     private(set) var precision = "fp16"
     private(set) var thermalBefore: ProcessInfo.ThermalState?
     private(set) var thermalAfter: ProcessInfo.ThermalState?
 
-    private var sorter: InboxSorter?
+    private var classifier: TextClassifier?
     private var loadStarted = false
+    private var begun = false
     private var milliseconds: [Double] = []
     private var runTask: Task<Void, Never>?
+    /// Held from Sort to DONE (see `load`).
+    private var sortActivity: (any NSObjectProtocol)?
 
-    init(count: Int, seed: UInt64) {
+    init(source: Source, sampleCount: Int, seed: UInt64, categories: String?, showing: Showing) {
+        self.source = source
+        self.sampleCount = sampleCount
         self.seed = seed
-        messages = Inbox.generate(count: count, seed: seed)
-        results = Array(repeating: nil, count: messages.count)
+        self.showing = showing
+        let text = categories ?? InboxCategories.defaultText
+        categoriesText = text
+        self.categories = InboxCategories.parse(text)
     }
 
     var count: Int { messages.count }
+
+    /// The categories the bars and By category show: the run's once Sort was pressed, else the
+    /// field's (none while the field cannot be read).
+    var shownCategories: [String] {
+        run != nil || phase == .sorting ? sortedCategories : categories.labels
+    }
+
+    /// Whether Sort can be pressed now, and if not, why (nil when it can or when it is not offered).
+    var sortRefusal: String? {
+        if let problem = categories.problem { return problem.message }
+        if messages.isEmpty { return note ?? InboxInput.Problem.empty.message }
+        return nil
+    }
+
+    var canSort: Bool {
+        classifier != nil && (phase == .ready || phase == .done) && sortRefusal == nil
+    }
+
+    // MARK: - the inbox
+
+    /// The inbox the app opens on: the sample inbox, the Paste sheet, or for a file the empty card.
+    func begin() {
+        guard !begun else { return }  // once, whichever window asks
+        begun = true
+        switch source {
+        case .sample: setInbox(Inbox.generate(count: sampleCount, seed: seed))
+        case .paste:
+            setInbox([], note: "Nothing pasted yet")
+            showingPaste = true
+        case .file: setInbox([], note: "No file picked yet")
+        }
+    }
+
+    /// Paste opens the sheet and Import file the file picker (the inbox on screen stays until they
+    /// give a new one); Sample inbox puts the sample on screen. Not while sorting.
+    func select(_ source: Source) {
+        guard phase != .sorting else { return }
+        switch source {
+        case .paste: showingPaste = true
+        case .file: importing = true
+        case .sample:
+            self.source = .sample
+            setInbox(Inbox.generate(count: sampleCount, seed: seed))
+        }
+    }
+
+    private func setInbox(_ inbox: [Message], skipped: Int = 0, note: String? = nil) {
+        messages = inbox
+        self.skipped = skipped
+        self.note = note ?? (skipped > 0 ? InboxInput.skippedNote(skipped) : nil)
+        clearAnswers()
+    }
+
+    /// The answers on screen no longer match the inbox or the categories: back to READY.
+    private func clearAnswers() {
+        reset()
+        run = nil
+        sortedCategories = []
+        if phase == .done { phase = .ready }
+    }
+
+    // MARK: - the Paste sheet
+
+    /// The sheet's text as it would be read.
+    var pasteReading: InboxInput.Reading { InboxInput.read(text: pasteText) }
+
+    /// The sheet's line under the text: "100 messages", "98 messages · 2 skipped (…)", or why
+    /// nothing can be sorted.
+    var pasteStatus: String {
+        if let pasteRefusal { return pasteRefusal }
+        let reading = pasteReading
+        if let problem = reading.problem { return problem.message }
+        var line = Self.messagesLabel(reading.messages.count)
+        if reading.skipped > 0 { line += " · " + InboxInput.skippedNote(reading.skipped) }
+        return line
+    }
+
+    /// The sheet's Sort: a readable paste goes on screen and, once the model is ready and the
+    /// categories read, is sorted at once; a refusal stays in the sheet. Returns whether the sheet
+    /// closed.
+    @discardableResult
+    func submitPaste() -> Bool {
+        guard phase != .sorting else { return false }
+        let reading = pasteReading
+        guard reading.problem == nil else {
+            pasteRefusal = reading.note
+            return false
+        }
+        pasteRefusal = nil
+        source = .paste
+        setInbox(InboxInput.messages(reading.messages), skipped: reading.skipped)
+        showingPaste = false
+        if canSort { sort() }
+        return true
+    }
+
+    /// The text changed: an earlier refusal no longer applies.
+    func pasteEdited() { pasteRefusal = nil }
+
+    /// Import file: the file's messages go on screen, or the reason they cannot.
+    func importFile(_ url: URL) {
+        guard phase != .sorting else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let reading = InboxInput.read(contentsOf: url)
+        source = .file
+        if let problem = reading.problem {
+            setInbox([], skipped: reading.skipped, note: problem.message)
+        } else {
+            setInbox(InboxInput.messages(reading.messages), skipped: reading.skipped)
+        }
+    }
+
+    // MARK: - the categories
+
+    /// The field changed: read it again, and clear answers given under other categories.
+    func categoriesEdited() {
+        let parsed = InboxCategories.parse(categoriesText)
+        guard parsed != categories else { return }
+        categories = parsed
+        if phase == .done { clearAnswers() }
+    }
 
     // MARK: - loading
 
@@ -58,6 +251,10 @@ final class InboxModel {
     func load(bundle: String?) async {
         guard !loadStarted else { return }  // once, whichever window asks first
         loadStarted = true
+        // The download, the load and a sort are work a person asked for. Without this, macOS App Naps a window
+        // that is hidden or behind others: a first download fell to 0.13 MB/s on a Mac whose curl got 5 MB/s.
+        let activity = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: "Loading the model")
+        defer { ProcessInfo.processInfo.endActivity(activity) }
         let t0 = ContinuousClock.now
         do {
             let url = try await resolveBundle(bundle)
@@ -66,9 +263,8 @@ final class InboxModel {
             detail = "graphs"
             let classifier = try await TextClassifier(bundleAt: url)
             sequenceLengths = classifier.sequenceLengths
-            let sorter = InboxSorter(classifier: classifier)
-            warmSeconds = try await sorter.warm()
-            self.sorter = sorter
+            warmSeconds = try await InboxSorter(classifier: classifier).warm()
+            self.classifier = classifier
             loadSeconds = t0.duration(to: .now).inSeconds
             detail = ""
             phase = .ready
@@ -82,17 +278,17 @@ final class InboxModel {
     /// the catalog's gliner2.5-decide at its pinned revision, downloaded once and cached.
     private func resolveBundle(_ explicit: String?) async throws -> URL {
         if let explicit {
-            source = "bundle"
+            modelSource = "bundle"
             return URL(fileURLWithPath: (explicit as NSString).expandingTildeInPath, isDirectory: true)
         }
         #if os(iOS)
         let sideload = URL.documentsDirectory.appending(path: "gliner25-decide", directoryHint: .isDirectory)
         if FileManager.default.fileExists(atPath: sideload.appending(path: "classifier.json").path) {
-            source = "sideload"
+            modelSource = "sideload"
             return sideload
         }
         #endif
-        source = "catalog"
+        modelSource = "catalog"
         detail = "0%"
         let entry = try await ModelCatalog.entry(forID: "gliner2.5-decide", expecting: .textClassification)
         guard let id = entry.modelID else { throw CoreAIKitError.modelNotAvailableOnPlatform(id: entry.id) }
@@ -119,14 +315,18 @@ final class InboxModel {
 
     // MARK: - sorting
 
-    /// Sorts the whole inbox from the first message; DONE starts it over with the labels cleared.
+    /// Sorts the whole inbox from the first message into the field's categories; DONE starts it
+    /// over with the answers cleared.
     func sort() {
-        guard let sorter, phase == .ready || phase == .done else { return }
+        guard canSort, let classifier else { return }
         reset()
+        sortedCategories = categories.labels
+        let sorter = InboxSorter(classifier: classifier, tasks: InboxCategories.tasks(sortedCategories))
         let start = ContinuousClock.now
         startedAt = start
         thermalBefore = ProcessInfo.processInfo.thermalState
         phase = .sorting
+        sortActivity = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: "Sorting the inbox")
         let messages = self.messages
         runTask = Task {
             let (batches, sink) = AsyncStream.makeStream(of: [SortedMessage].self)
@@ -141,6 +341,8 @@ final class InboxModel {
                 detail = error.localizedDescription
                 phase = .failed
             }
+            if let sortActivity { ProcessInfo.processInfo.endActivity(sortActivity) }
+            sortActivity = nil
         }
     }
 
@@ -152,6 +354,7 @@ final class InboxModel {
         rate = nil
         counts = [:]
         sequenceLengthCounts = [:]
+        startedAt = nil
         run = nil
         thermalAfter = nil
     }
@@ -181,6 +384,28 @@ final class InboxModel {
         phase = .done
     }
 
+    // MARK: - By category
+
+    /// Urgency from the heaviest: critical, high, normal, low.
+    static let urgencyOrder = ["critical", "high", "normal", "low"]
+
+    /// Every category with its sorted messages, the heaviest urgency first, then in inbox order.
+    var byCategory: [(category: String, items: [(message: Message, result: SortedMessage)])] {
+        let rank = Dictionary(uniqueKeysWithValues: Self.urgencyOrder.enumerated().map { ($0.element, $0.offset) })
+        var groups: [String: [(message: Message, result: SortedMessage)]] = [:]
+        for m in messages {
+            guard m.id < results.count, let r = results[m.id], let c = r.labels["intent"] else { continue }
+            groups[c, default: []].append((m, r))
+        }
+        return shownCategories.map { c in
+            let items = (groups[c] ?? []).sorted {
+                let a = rank[$0.result.labels["urgency"] ?? ""] ?? 4, b = rank[$1.result.labels["urgency"] ?? ""] ?? 4
+                return a != b ? a < b : $0.message.id < $1.message.id
+            }
+            return (c, items)
+        }
+    }
+
     // MARK: - what the screen and the log read
 
     /// Seconds on the clock: from Sort to now while sorting, the run's total once done.
@@ -192,20 +417,35 @@ final class InboxModel {
         }
     }
 
-    /// The screen's state as one line, for the autoplay log.
+    /// The screen's state as one line, for the autoplay log. It never holds a message's text.
     var statusLine: String {
+        var line: String
         switch phase {
         case .loading: return "LOADING \(detail)"
-        case .ready: return String(format: "READY %d messages · load %.2f s", count, loadSeconds ?? 0)
+        case .ready:
+            line = String(format: "READY %d messages · source %@ · categories %d · skipped %d · load %.2f s · warm %@",
+                          count, source.rawValue, categories.labels.count, skipped, loadSeconds ?? 0, warmLine)
         case .sorting:
             return "SORTING \(done)/\(count) · " + Self.ms(medianMs) + " per message · " + Self.rate(rate)
         case .done:
             let ms = run?.milliseconds ?? []
-            return String(format: "DONE %d/%d · %.2f s · median %@ · p90 %@ · %@", done, count, run?.totalSeconds ?? 0,
-                          Self.ms(Stats.percentile(ms, 0.5)), Self.ms(Stats.percentile(ms, 0.9)), Self.rate(rate))
+            line = String(format: "DONE %d/%d · %.2f s · median %@ · p90 %@ · %@ · source %@ · %@", done, count,
+                          run?.totalSeconds ?? 0, Self.ms(Stats.percentile(ms, 0.5)), Self.ms(Stats.percentile(ms, 0.9)),
+                          Self.rate(rate), source.rawValue, showing == .inbox ? "Inbox" : "By category")
         case .failed: return "FAILED \(detail)"
         }
+        if let note { line += " · note: \(note)" }
+        if let problem = categories.problem { line += " · categories: \(problem.message)" }
+        if showingPaste { line += " · paste sheet: " + pasteStatus }
+        return line
     }
+
+    /// "S=256 0.12 s, S=512 0.20 s".
+    var warmLine: String {
+        warmSeconds.keys.sorted().map { String(format: "S=%d %.2f s", $0, warmSeconds[$0]!) }.joined(separator: ", ")
+    }
+
+    static func messagesLabel(_ n: Int) -> String { "\(grouped(n)) message\(n == 1 ? "" : "s")" }
 
     static func ms(_ v: Double?) -> String {
         guard let v else { return "– ms" }
@@ -217,26 +457,45 @@ final class InboxModel {
         return String(format: "%.1f msg/s", v)
     }
 
-    /// The finished run as the result file's JSON: the CLI's summary plus where it ran.
+    /// The finished run as the result file's JSON: the CLI's summary plus where the inbox came from,
+    /// the categories, every message's answers (never its text) and where it ran.
     func resultJSON() -> JSONValue? {
         guard let run else { return nil }
         var out = run.summary()
+        out["source"] = .string(source.rawValue)
+        out["categories"] = .array(sortedCategories.map { .string($0) })
+        out["messages_skipped"] = .int(skipped)
         out["device"] = .string(Device.model)
         out["machine"] = .string(Device.machine)
         out["os"] = .string(Device.os)
         out["os_build"] = .string(ProcessInfo.processInfo.operatingSystemVersionString)
         out["bundle"] = .string(bundlePath)
-        out["source"] = .string(source)
+        out["model_source"] = .string(modelSource)
         out["precision"] = .string(precision)
         out["compute_units"] = .string("gpu")
-        out["seed"] = .int(Int(seed))
-        out["tasks"] = .object(Dictionary(uniqueKeysWithValues: InboxTasks.all.map {
+        if source == .sample { out["seed"] = .int(Int(seed)) }
+        out["tasks"] = .object(Dictionary(uniqueKeysWithValues: run.tasks.map {
             ($0.name, JSONValue.array($0.labels.map { .string($0) }))
         }))
         out["load_s"] = .rounded(loadSeconds ?? 0, 3)
         out["warm_s"] = .object(Dictionary(uniqueKeysWithValues: warmSeconds.map { ("\($0.key)", .rounded($0.value, 3)) }))
         out["duplicates"] = .int(count - Set(messages.map(\.text)).count)
-        out["agree_with_written"] = .object(run.agreement(with: messages).mapValues { .rounded($0, 3) })
+        // The generator's own labels exist only for the sample inbox, and only the default
+        // categories are the labels it wrote.
+        if source == .sample, sortedCategories == InboxCategories.defaults {
+            out["agree_with_written"] = .object(run.agreement(with: messages).mapValues { .rounded($0, 3) })
+        }
+        // Every message's answers and their probabilities, in inbox order: what the parity of two
+        // runs is read from.
+        out["answers"] = .array(run.results.map { r in
+            var a: [String: JSONValue] = ["i": .int(r.index)]
+            for t in run.tasks {
+                a[t.name] = .string(r.labels[t.name] ?? "")
+                a["p_" + t.name] = .rounded(Double(r.confidence[t.name] ?? 0), 4)
+            }
+            if r.truncated { a["truncated"] = .bool(true) }
+            return .object(a)
+        })
         // Every message's [seconds after Sort, milliseconds, sequence length], in inbox order: the
         // raw series behind the medians, so a reader can recompute them and see the rate over time.
         out["series"] = .array(run.results.map {

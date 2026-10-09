@@ -9,6 +9,14 @@ policy.
 
 ### Added
 
+- **Examples/TextClassify** — your own messages, sorted into categories you name. Paste them (one a line, or blocks
+  separated by a blank line), import a .txt, .md or .csv file (UTF-8; anything else is refused with the reason), or
+  take the sample inbox; at most 2,000 messages. Name 2 to 12 categories in place of the eight support intents.
+  Every message still gets an urgency and a sentiment from the same forward, and By category lists each category
+  with its most urgent messages first. On a Mac, the download, the load and a sort hold a user-initiated activity,
+  so App Nap no longer slows a download in a background window to 0.1–0.2 MB/s. Measured 2026-10-10: 100 pasted
+  messages at 30.0 to 31.0 ms median each on an M4 Max and 38.4 to 38.6 ms on an iPhone 18 Pro, every message with
+  the same three answers as the sample inbox.
 - **Examples/Week** — your own week planned on one tap: every event is one `decider-0.8b` decision (what it
   needs before it, seven options), and the events that need something are gathered under Before your week, in
   time order. The week comes from your calendar (this week, read only: nothing is ever written to a calendar),

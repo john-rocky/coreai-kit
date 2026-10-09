@@ -72,7 +72,7 @@ let answer = try await chat.respond(to: "What is the capital of Japan?")
 - [Speak](https://john-rocky.github.io/coreai-kit/Examples/Speak/): Speak — the text-to-speech runner (GUI + CLI, any tts catalog id)
 - [SpotlightApp](https://john-rocky.github.io/coreai-kit/Examples/SpotlightApp/): SpotlightApp — ask your own files, with your own local model
 - [SpotlightChat](https://john-rocky.github.io/coreai-kit/Examples/SpotlightChat/): SpotlightChat — Local RAG with Apple's SpotlightSearchTool (WWDC26) driven by your own model
-- [TextClassify](https://john-rocky.github.io/coreai-kit/Examples/TextClassify/): TextClassify — zero-shot text classification on device
+- [TextClassify](https://john-rocky.github.io/coreai-kit/Examples/TextClassify/): TextClassify — your messages, sorted into categories you name
 - [Tidy](https://john-rocky.github.io/coreai-kit/Examples/Tidy/): Tidy — Raw dictation in, written text out — S1-mini by Superwhisper on device
 - [Transcribe](https://john-rocky.github.io/coreai-kit/Examples/Transcribe/): Transcribe — on-device speech-to-text, any ASR model in the catalog
 - [UpscaleDemo](https://john-rocky.github.io/coreai-kit/Examples/UpscaleDemo/): UpscaleDemo — Minimal CoreAIKit example: AdcSR ×4 super-resolution on-device
