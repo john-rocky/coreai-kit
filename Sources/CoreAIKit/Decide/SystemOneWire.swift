@@ -12,8 +12,8 @@
 // model's own option count (`TypedDecisions.maxOptions`) to `request(from:maxOptions:)`, so a
 // list the model cannot read is refused with that count; 255 stays the ceiling either way.
 //
-// One addition for a model that reads images (`KitClefDecider`, `KitD1OmniDecider`): `images`, an array of one image
-// as a data URL, plain base64 or a file path on this machine, and `grid`, the vision tower's tile
+// One addition for a model that reads images (`KitClefDecider`, `KitD1OmniDecider`, `KitD1Decider`): `images`, an
+// array of one image as a data URL, plain base64 or a file path on this machine, and `grid`, the vision tower's tile
 // side (256 or 448). A backend that reads no images refuses a request that carries one.
 // One for a model that reads a clip (`KitD1OmniDecider`): `audio`, one 16 kHz mono 16-bit PCM WAV in the same three
 // forms; such a request may leave `state` out, the publisher's `state=None` for a clip. A backend that reads no audio

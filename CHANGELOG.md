@@ -9,6 +9,39 @@ policy.
 
 ### Added
 
+- **d1-3B** — catalog id `d1-3b` (the new `kind: tokenDecision`, `format: optionRows`), driven by the new `KitD1Decider`
+  (`Sources/CoreAIKit/D1/`): Liquid AI's decision model from LFM2.5-VL-3B (LFM Open License v1.0; a SigLIP2 vision tower
+  and the LFM2 hybrid decoder). A state (text or JSON), pictures and typed questions (noul, choice, score) go in; every
+  option of every question comes back with a probability; nothing is generated. Each question is its own row in the
+  provider's chat form; the decoder (no vocabulary head, a static 64 tokens a call from zeroed states) returns the hidden
+  state at every position, and the host reads the row's last one against the tied embedding rows of each option's tokens
+  (`head/option_rows`, 2,134 ids) in float64, each option's highest logit, a softmax over the options. A picture is
+  capped at one megapixel, cut into the processor's crops and read by the vision tower once per crop. The host is the
+  model zoo's `apps/D1` library (e36ad15) with every numeric path unchanged: across its eleven files only names
+  (prefixed `D13B`; the zoo's `D1Decider` is `D13BPipeline`), access, `@available(macOS 27, iOS 27, *)`, the Intel-Mac
+  guard on the three files that hold Float16 and a provenance line differ, and undoing those gives the zoo's files back
+  byte for byte. Its readout's products go through the BLAS calls NumPy makes, in a new C target, `CoreAIKitD1BLAS`
+  (defines only, no unsafe flags; the zoo's `D1BLAS` with its function named `coreaikit_d13b_matvec`). Two decoders,
+  one contract: 5,598 MB for the Mac (fp16) and 3,740 MB for the iPhone (MLP linears int8 per block of 32); the vision
+  tower (854 MB), named in a new `assets.tower` field that a kit built before it ignores, downloads when a request
+  carries a picture. An iPhone app needs `com.apple.developer.kernel.increased-memory-limit` (without it the
+  decoder does not load; the kit cannot add it). A row holds at most 4,032 tokens and a request's pictures at most 2,816
+  image tokens, refused before any graph call in the provider's words. The kind is new: kits 0.1.0–0.7.3 decode an
+  unknown kind as `unknown` and leave the entry out of `available(_:)`; the bundle's metadata says `kind:
+  decision-backbone` with no `decision.head`, which `TypedDecisions` cannot read, and `TypedDecisions` refuses it by its
+  kind before downloading anything (so `CoreAI.decide` and `CoreAI.systemOne` do too). `systemone serve`, `systemone
+  mcp` and `SystemOne.backend(catalog:)` load `KitD1Decider` for the kind (`configuration.sharePrefix` reaches it), and so
+  do `decide-cli ask` (`--image`) and `serve` (`--bundle <decoder> [--tower <tower>]`). `prepare(state:)` and
+  `decide(prepared:questionsJSON:)` answer later questions on a kept state; `readout(requestJSON:images:shared:)` gives
+  each row's ids, hidden digest, logits and p and the provider's response. `D13BTests` (the catalog entry and the
+  `assets.tower` field, the refusals before a download, the request in the provider's form, the option order, 24 rows'
+  text and readout against the Python reference without files; with a tokenizer, the zoo's 393 fixture rows against
+  host.py; with the bundles, 28 questions — 16 records of text and 2 pictures — bit for bit against the Python
+  reference's run of the same bundle, the shared prefix, a prepared state, the wire and the five refusals, measured on an
+  M4 Max: 28 of 28 rows and 18 of 18 responses). On the wire, instructions, levels and descriptions given as JSON values
+  read as their JSON text, the kit's rule for every model (the provider's code takes text only;
+  `readout(requestJSON:)` refuses them as it does). `systemone serve --model d1-3b` passes `conformance/check.py` (22
+  requests and the three routes).
 - **d1-omni-600M** — catalog id `d1-omni-600m` (the new `kind: omniDecision`, `format: markerScores`), driven by the new
   `KitD1OmniDecider` (`Sources/CoreAIKit/D1Omni/`): Liquid AI's decision model (LFM Open License v1.0; an
   LFM2.5-Encoder-350M trunk with a typed decision head, a SigLIP2 vision tower and a FastConformer audio tower). A state

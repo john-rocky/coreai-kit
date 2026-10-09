@@ -76,10 +76,19 @@ let package = Package(
             name: "CoreAIKitCore",
             dependencies: [.product(name: "HuggingFace", package: "swift-huggingface")]
         ),
+        // d1-3B's readout products in float64 through the BLAS calls NumPy makes for `E @ h` (Accelerate's new
+        // interface, 64-bit integers), so the kit's logits equal the Python reference's bit for bit. A C target so the
+        // two defines reach the Accelerate headers without unsafe flags, which a remote dependency may not carry.
+        .target(
+            name: "CoreAIKitD1BLAS",
+            cSettings: [.define("ACCELERATE_NEW_LAPACK"), .define("ACCELERATE_LAPACK_ILP64")],
+            linkerSettings: [.linkedFramework("Accelerate")]
+        ),
         .target(
             name: "CoreAIKit",
             dependencies: [
                 "CoreAIKitCore",
+                "CoreAIKitD1BLAS",
                 // The VL executor runs the paired vision tower through CoreAIKitVision's
                 // GraphModel (stateless .aimodel runner); it also brings the CoreAI framework
                 // link the vision path needs.
