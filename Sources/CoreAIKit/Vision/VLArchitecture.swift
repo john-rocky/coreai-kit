@@ -54,7 +54,8 @@ public struct VLArchitecture: Sendable, Hashable {
     public let vocab: Int32
     /// Merged vision tokens spliced into the prompt (14×14 = 196 for the 448px grid).
     public let mergedTokens: Int
-    /// Merged-grid side length (14); the rope-shift amount is `mergedTokens - grid`.
+    /// Merged-grid side length (14); the rope-shift amount is
+    /// `mergedTokens - grid + ropeShiftFrameTail`.
     public let grid: Int
     /// Decoder hidden width and ViT output width (2B 2048 / 4B 2560 / 8B 4096).
     public let hidden: Int
@@ -104,9 +105,17 @@ public struct VLArchitecture: Sendable, Hashable {
     /// MiniCPM-V).
     public let visionOutput: String
     /// Whether the decoder graph declares the interleaved-M-RoPE shift inputs
-    /// (`rope_shift_start`/`rope_shift_amount`). MiniCPM-V uses plain 1D positions — no
+    /// (`rope_shift_start`/`rope_shift_amount`). MiniCPM-V 4.6 uses plain 1D positions — no
     /// shift inputs exist on its graph, so nothing is bound.
     public let ropeShifted: Bool
+    /// Tokens of the vision block after the last image pad that still sit on the image's
+    /// canvas, so the shifted text starts after them: 0 for the Qwen-style shift, 2 for
+    /// MiniCPM-V 4.7 (`</image>` and the newline after it).
+    public let ropeShiftFrameTail: Int
+    /// Written after the role separator at the start of every assistant turn, history and
+    /// generation alike. MiniCPM-V 4.7's chat template with thinking off writes an empty
+    /// think block there.
+    public let assistantPrefix: String
 
     public init(
         vocab: Int32, mergedTokens: Int, grid: Int, hidden: Int, patches: Int, patchDim: Int,
@@ -119,7 +128,7 @@ public struct VLArchitecture: Sendable, Hashable {
         visionStart: String = "<|vision_start|>", visionEnd: String = "<|vision_end|>",
         imagePad: String = "<|image_pad|>",
         visionInput: VisionInput = .patches, visionOutput: String = "image_embeds",
-        ropeShifted: Bool = true
+        ropeShifted: Bool = true, ropeShiftFrameTail: Int = 0, assistantPrefix: String = ""
     ) {
         self.vocab = vocab
         self.mergedTokens = mergedTokens
@@ -147,6 +156,8 @@ public struct VLArchitecture: Sendable, Hashable {
         self.visionInput = visionInput
         self.visionOutput = visionOutput
         self.ropeShifted = ropeShifted
+        self.ropeShiftFrameTail = ropeShiftFrameTail
+        self.assistantPrefix = assistantPrefix
     }
 
     /// Canvas height (== `imageSide`).
@@ -155,9 +166,15 @@ public struct VLArchitecture: Sendable, Hashable {
     public var imageEmbedCount: Int { mergedTokens * hidden }
     /// `deepstack_embeds` element count (`deepstackPerToken · mergedTokens · hidden`).
     public var deepstackEmbedCount: Int { deepstackPerToken * mergedTokens * hidden }
-    /// The rope-shift amount for an attached image (`mergedTokens - grid`; for a non-square
-    /// grid `grid` is set to `max(gridTall, gridWide)`, matching the decoder's baked geometry).
-    public var ropeShiftAmount: Int32 { Int32(mergedTokens - grid) }
+    /// The rope-shift amount for an attached image (`mergedTokens - grid + ropeShiftFrameTail`;
+    /// for a non-square grid `grid` is set to `max(gridTall, gridWide)`, matching the decoder's
+    /// baked geometry).
+    public var ropeShiftAmount: Int32 { Int32(mergedTokens - grid + ropeShiftFrameTail) }
+    /// The first position the rope shift moves, for an image whose first pad sits at
+    /// `imageStart`: the index right after the pads and the frame's tail.
+    public func ropeShiftStart(imageStart: Int) -> Int32 {
+        Int32(imageStart + mergedTokens + ropeShiftFrameTail)
+    }
 
     /// The Qwen3-VL 448px grid shared by every published size. `hidden` selects the variant.
     private static func qwen3VL(hidden: Int) -> VLArchitecture {
@@ -186,6 +203,23 @@ public struct VLArchitecture: Sendable, Hashable {
         visionStart: "", visionEnd: "\n",
         visionInput: .pixels, visionOutput: "image_features",
         ropeShifted: false)
+
+    /// MiniCPM-V 4.7: 4.6's tower and geometry in front of a decoder that places the image on a
+    /// canvas (M-RoPE over T/H/W), so its graph takes the two rope-shift inputs. The block is the
+    /// processor's own — `<image_id>0</image_id><image>`, 64 pads, `</image>` — and the newline
+    /// the chat template joins it to the question with. Both trailing tokens ride the canvas
+    /// (`ropeShiftFrameTail` 2): with the image at `imageStart` the shift starts at
+    /// `imageStart + 66` and moves the text by 58. Thinking is off: every assistant turn opens
+    /// with the empty think block the template writes for `enable_thinking=False`.
+    public static let miniCPMV47 = VLArchitecture(
+        vocab: 248_094, mergedTokens: 64, grid: 8, hidden: 1024,
+        patches: 0, patchDim: 0, deepstackPerToken: 0,
+        imageSide: 448, patchSize: 14, temporalPatchSize: 1,
+        visionStart: "<image_id>0</image_id><image>", visionEnd: "</image>\n",
+        imagePad: "<|image_pad|>",
+        visionInput: .pixels, visionOutput: "image_features",
+        ropeShifted: true, ropeShiftFrameTail: 2,
+        assistantPrefix: "<think>\n\n</think>\n\n")
 
     /// LFM2.5-VL-450M: a SigLIP2-**NaFlex** tower fed FLATTENED patches (the host patchifies)
     /// at a baked 32x32 grid — one 512x512 tile → 2x pixel-unshuffle → 256 tokens, which is the

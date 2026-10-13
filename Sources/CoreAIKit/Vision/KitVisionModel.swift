@@ -88,6 +88,19 @@ public struct VLModelID: Sendable, Hashable {
             path: "gpu-pipelined/minicpmv46_vision"),
         arch: .miniCPMV46)
 
+    /// MiniCPM-V 4.7 1B (OpenBMB). 4.6's single-slice 448px tower in front of a decoder with
+    /// canvas M-RoPE (the rope-shift inputs) and an untied head; answers with thinking off.
+    /// The device-gated pair: int8lin tower + int8hu decoder — on an iPhone 18 Pro the zoo's
+    /// bench decodes 98.0 tok/s and encodes an image in 68 ms.
+    public static let miniCPMV47 = VLModelID(
+        decoder: ModelID(
+            "mlboydaisuke/MiniCPM-V-4.7-1B-CoreAI",
+            path: "gpu-pipelined/minicpmv47_vlm_decode_int8hu"),
+        vision: ModelID(
+            "mlboydaisuke/MiniCPM-V-4.7-1B-CoreAI",
+            path: "gpu-pipelined/minicpmv47_vision_int8lin"),
+        arch: .miniCPMV47)
+
     /// LFM2.5-VL-450M: a SigLIP2-NaFlex tower (host-patchified 512x512 → `image_embeds`
     /// [256, 1024]) + the LFM2 hybrid decoder. The zoo's smallest VLM: 690 MB for the pair,
     /// device-gated on an iPhone 17 Pro — 112 tok/s decode with the image bound, 33.6 ms per
@@ -156,6 +169,7 @@ public struct VLModelID: Sendable, Hashable {
         "qwen3-vl-8b": .qwen3VL8B,
         "holo2-4b": .holo2_4B,
         "minicpm-v-4.6": .miniCPMV46,
+        "minicpm-v-4.7-1b": .miniCPMV47,
         "lfm2.5-vl-450m": .lfm2VL450M,
         "lfm2.5-vl-3b": .lfm2VL3B,
         "north-micro-vision": .northMicroVision,
