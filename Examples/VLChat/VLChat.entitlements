@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- KitVisionModel loads the decoder engine, then specializes the vision tower in the same
+	     process. Without the increased memory limit even MiniCPM-V 4.7 1B (1.9 GB of bundles)
+	     died on an iPhone 18 Pro with std::bad_alloc inside that first tower specialization
+	     (same entitlement as ChatDemo / AudioChat / LiveCamera / OpsGallery). -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>
