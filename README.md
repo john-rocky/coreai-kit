@@ -293,8 +293,8 @@ let answer = try await session.respond(to: "What's the weather in Tokyo?")
 let vlm = try await KitVisionModel(catalog: "qwen3-vl-2b")   // decoder + vision tower
 let session = LanguageModelSession(model: vlm)
 let answer = try await session.respond(to: Prompt {
-    "What is in this photo?"
     Attachment(cgImage)
+    "What is in this photo?"
 })
 ```
 

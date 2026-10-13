@@ -24,8 +24,8 @@ func ask(
     let session = LanguageModelSession(model: vlm)
     let image = try ImageFile.load(imageURL)  // any image file → CGImage + EXIF orientation
     let reply = try await session.respond(to: Prompt {
+        Attachment(image.cgImage, orientation: image.orientation)  // the image, then the question
         prompt
-        Attachment(image.cgImage, orientation: image.orientation)
     })
     // CARD-SNIPPET-END
     return reply.content

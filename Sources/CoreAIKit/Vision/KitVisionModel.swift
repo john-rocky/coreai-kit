@@ -6,8 +6,8 @@
 // let model = try await KitVisionModel(model: .qwen3VL2B)
 // let session = LanguageModelSession(model: model)
 // let answer = try await session.respond(to: Prompt {
-//     "What is in this photo?"
 //     Attachment(cgImage)
+//     "What is in this photo?"
 // })
 // ```
 //

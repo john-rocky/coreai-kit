@@ -401,8 +401,8 @@ VLM behind the same FoundationModels API — attach the image to the prompt:
 let vlm = try await KitVisionModel(catalog: "qwen3-vl-2b")
 let session = LanguageModelSession(model: vlm)
 let answer = try await session.respond(to: Prompt {
-    "How many people are in this photo, and what are they doing?"
     Attachment(cgImage)
+    "How many people are in this photo, and what are they doing?"
 })
 ```
 

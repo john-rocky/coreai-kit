@@ -12,8 +12,8 @@ let vlm = try await KitVisionModel(catalog: "qwen3-vl-2b")   // downloads decode
 let session = LanguageModelSession(model: vlm)
 let image = try ImageFile.load(imageURL)  // any image file → CGImage + EXIF orientation
 let answer = try await session.respond(to: Prompt {
-    "What is in this photo?"
     Attachment(image.cgImage, orientation: image.orientation)
+    "What is in this photo?"
 })
 ```
 

@@ -60,8 +60,8 @@ final class VLEngine: @unchecked Sendable {
         var text = ""
         let stream = session.streamResponse(
             to: Prompt {
-                prompt
                 Attachment(cgImage)
+                prompt
             },
             options: GenerationOptions(maximumResponseTokens: maximumResponseTokens))
         for try await snapshot in stream { text = snapshot.content }
