@@ -1,0 +1,4 @@
+# The example photos are downloaded, not committed (README: Run it). The folder itself stays,
+# so the project's folder reference builds before they are there.
+/Examples/*
+!/Examples/.gitkeep
