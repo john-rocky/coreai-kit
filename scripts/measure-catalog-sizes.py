@@ -70,6 +70,7 @@ ALSO: dict[str, list[str] | dict[str, list[str]]] = {
     "qwen3-vl-8b": ["gpu-pipelined/qwen3_vl_8b_instruct_vision"],
     "holo2-4b": ["gpu-pipelined/holo2_4b_vision"],
     "minicpm-v-4.6": ["gpu-pipelined/minicpmv46_vision"],
+    "minicpm-v-4.7-1b": ["gpu-pipelined/minicpmv47_vision_int8lin"],
     "lfm2.5-vl-450m": {"macos": ["gpu-pipelined/lfm2_5_vl_450m_vision_fp16"],
                        "ios": ["ios-h18p/lfm2_5_vl_450m_vision_fp16"]},
     "lfm2.5-vl-3b": {"macos": ["gpu-pipelined/lfm2_5_vl_3b_vision_fp16"],

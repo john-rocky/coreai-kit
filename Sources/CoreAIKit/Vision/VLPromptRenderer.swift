@@ -53,7 +53,8 @@ enum VLPromptRenderer {
                     + arch.imEnd + arch.roleSeparator
             case .response(let response):
                 body += arch.imStart + arch.assistantRole + arch.roleSeparator
-                    + plainText(response.segments) + arch.imEnd + arch.roleSeparator
+                    + arch.assistantPrefix + plainText(response.segments) + arch.imEnd
+                    + arch.roleSeparator
             default:
                 continue  // reasoning/tool entries are not part of the VL chat path
             }
@@ -63,6 +64,7 @@ enum VLPromptRenderer {
             arch.imStart + arch.systemRole + arch.roleSeparator + system
             + arch.imEnd + arch.roleSeparator
         let text = head + body + arch.imStart + arch.assistantRole + arch.roleSeparator
+            + arch.assistantPrefix
 
         var tokens = tokenizer.encode(text: text).map(Int32.init)
         // The chat template these checkpoints ship starts with `bos_token`, but whether

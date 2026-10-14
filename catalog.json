@@ -802,6 +802,23 @@
       }
     },
     {
+      "id": "minicpm-v-4.7-1b",
+      "name": "MiniCPM-V 4.7 1B",
+      "repo": "mlboydaisuke/MiniCPM-V-4.7-1B-CoreAI",
+      "revision": "51278afd084da67603fb732c87553d89d4ee0680",
+      "kind": "vlm",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/minicpmv47_vlm_decode_int8hu",
+          "sizeMB": 1942
+        },
+        "ios": {
+          "path": "gpu-pipelined/minicpmv47_vlm_decode_int8hu",
+          "sizeMB": 1942
+        }
+      }
+    },
+    {
       "id": "lfm2.5-vl-450m",
       "name": "LFM2.5-VL 450M",
       "repo": "mlboydaisuke/LFM2.5-VL-450M-CoreAI",

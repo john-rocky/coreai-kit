@@ -131,8 +131,8 @@ final class VLChatModel {
         status = .generating
 
         let prompt = Prompt {
-            question
             Attachment(picked.cgImage, orientation: picked.orientation)
+            question
         }
         generationTask = Task {
             do {

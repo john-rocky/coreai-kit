@@ -12,8 +12,8 @@ let vlm = try await KitVisionModel(catalog: "qwen3-vl-2b")   // downloads decode
 let session = LanguageModelSession(model: vlm)
 let image = try ImageFile.load(imageURL)  // any image file → CGImage + EXIF orientation
 let answer = try await session.respond(to: Prompt {
-    "What is in this photo?"
     Attachment(image.cgImage, orientation: image.orientation)
+    "What is in this photo?"
 })
 ```
 
@@ -47,6 +47,9 @@ Run the GUI in **Release** — the engine's per-token host work is ~3× slower u
 
 ## Notes
 
+- Entitlements (iOS): `com.apple.developer.kernel.increased-memory-limit` (`VLChat.entitlements`).
+  Even MiniCPM-V 4.7 1B needs it: without it, an iPhone 18 Pro run died with `std::bad_alloc`
+  while the vision tower specialized beside the loaded decoder.
 - One image per conversation (the latest photo you pick). Picking a new photo starts a fresh
   chat about it.
 - The VL path streams the answer; Qwen3-VL is a thinking model, but the Instruct weights

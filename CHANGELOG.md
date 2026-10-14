@@ -9,6 +9,15 @@ policy.
 
 ### Added
 
+- **MiniCPM-V 4.7 1B** — catalog id `minicpm-v-4.7-1b` (`kind: vlm`), loaded by `KitVisionModel` through the new
+  `VLModelID.miniCPMV47` / `VLArchitecture.miniCPMV47`: OpenBMB's 4.6 vision tower (448 px, 64 image tokens) in front
+  of a decoder that places the image on a canvas (M-RoPE over T, H and W) with an untied head, answering with
+  thinking off. The prompt is the reference processor's — `<image_id>0</image_id><image>`, the 64 pads, `</image>` —
+  and two new `VLArchitecture` fields, both defaulting to the old behaviour, carry the rest: `ropeShiftFrameTail`
+  (`</image>` and the newline after it sit on the canvas, so the rope shift starts after them) and `assistantPrefix`
+  (the empty think block the chat template writes at the start of every assistant turn). The int8hu decoder and the
+  int8lin tower are the pair the zoo gated on an iPhone 18 Pro (iOS 27.2): 98.0 tok/s decode and 68.2 ms per image
+  in its bench.
 - **Examples/TextClassify** — your own messages, sorted into categories you name. Paste them (one a line, or blocks
   separated by a blank line), import a .txt, .md or .csv file (UTF-8; anything else is refused with the reason), or
   take the sample inbox; at most 2,000 messages. Name 2 to 12 categories in place of the eight support intents.

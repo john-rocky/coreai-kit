@@ -211,12 +211,12 @@ public final class VLRuntime: @unchecked Sendable {
     // MARK: - Rope shift
 
     /// Binds the rope shift for an image whose first vision token sits at `imageStart`
-    /// (start = imageStart + mergedTokens; amount = mergedTokens - grid). No-op on
-    /// plain-1D-position archs (no shift inputs on the graph).
+    /// (start = imageStart + mergedTokens + ropeShiftFrameTail; amount = mergedTokens - grid
+    /// + ropeShiftFrameTail). No-op on plain-1D-position archs (no shift inputs on the graph).
     func setImageShift(imageStart: Int) {
         guard let shiftStartBuffer, let shiftAmountBuffer else { return }
         shiftStartBuffer.contents().assumingMemoryBound(to: Int32.self)[0] =
-            Int32(imageStart + arch.mergedTokens)
+            arch.ropeShiftStart(imageStart: imageStart)
         shiftAmountBuffer.contents().assumingMemoryBound(to: Int32.self)[0] = arch.ropeShiftAmount
     }
 

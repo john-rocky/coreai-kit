@@ -808,6 +808,18 @@ public struct ModelCatalog: Sendable, Codable {
                     "ios": .init(
                         path: "gpu-pipelined/minicpmv46_vlm_decode_int8lin", sizeMB: 2146),
                 ]),
+            // MiniCPM-V 4.7 1B: 4.6's tower in front of a canvas M-RoPE decoder (the rope-shift
+            // inputs), thinking off. The iPhone path is the JIT bundle the zoo's bench gated on
+            // an iPhone 18 Pro; sizeMB is the decoder + the int8lin tower.
+            CatalogEntry(
+                id: "minicpm-v-4.7-1b", name: "MiniCPM-V 4.7 1B",
+                repo: "mlboydaisuke/MiniCPM-V-4.7-1B-CoreAI", kind: .vlm,
+                variants: [
+                    "macos": .init(
+                        path: "gpu-pipelined/minicpmv47_vlm_decode_int8hu", sizeMB: 1942),
+                    "ios": .init(
+                        path: "gpu-pipelined/minicpmv47_vlm_decode_int8hu", sizeMB: 1942),
+                ]),
             // LFM2.5-VL-450M: the smallest VLM in the catalog (690 MB for the pair). A
             // SigLIP2-NaFlex tower fed host-flattened patches + the LFM2 hybrid decoder with
             // one image_embeds static input. iPhone-gated (112 tok/s, image bound) via the
