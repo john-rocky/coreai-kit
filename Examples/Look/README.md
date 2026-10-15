@@ -30,9 +30,12 @@ open Look.xcodeproj                  # choose your iPhone (iOS 27) and Run; the 
    type your own; Ask.
 3. On an iPhone 18 Pro (iOS 27.2), the first launch after the install reached READY 33 s after it
    started (the model is specialized for the phone once, after the download) and its first question
-   showed the first token 3.5 s after Ask. From the next launch on, READY came 2.9 s after the start
-   and the first token 0.99 s after Ask. These numbers were measured on 2026-10-15 with the previous
-   build of this sample; the layout of this build is still to be checked on a phone.
+   showed the first token 3.5 s after Ask. From the next launch on, READY came 0.9–2.9 s after the
+   start and the first token 1.0 s after Ask. Measured on 2026-10-15: the previous build gave READY
+   2.9 s and the first token 0.99 s; this build, on the recorded take (a new process, the first
+   question), gave READY 0.9 s after the start, the first token 1.01 s and 98.8 tok/s for the sign
+   example's 42-token answer. On that phone the sign answer fits its box (202 of 234 pt) and the
+   221-token how-to answer scrolls to follow its tail.
 
 The app needs the entitlement `com.apple.developer.kernel.increased-memory-limit`
 (`Look.entitlements`): the vision tower specializes beside the loaded decoder, and without the
@@ -79,8 +82,8 @@ new session with the photo before it: one turn, no history.
 ## The numbers line
 
 ```
-first token 0.99 s · 101 tok/s
-GPU · on-device, offline
+first token 1.01 s · 98.8 tok/s
+GPU · on-device
 ```
 
 - first token: from the Ask tap to the first streamed snapshot that carries text. The model loads
@@ -89,8 +92,8 @@ GPU · on-device, offline
   count, `session.usage.output.totalTokenCount`.
 - snapshots are not tokens: the stream delivers text snapshots, and the record keeps their count
   (`snapshots`, and `text_updates` for those that changed the text) beside `output_tokens`. For the
-  sign example's answer they were 44 and 41 against 42 tokens (the previous build, 2026-10-15); the
-  line always uses the tokens.
+  sign example's answer they were 44 and 41 against 42 tokens (the previous build, 2026-10-15; the
+  recorded take of this build: 44 snapshots, 42 tokens); the line always uses the tokens.
 - GPU: the bundle the catalog row names lives under `gpu-pipelined/`.
 - offline: shown only while the device has no network path at all (`NWPathMonitor` reports none
   satisfied); with Wi-Fi or cellular on, the line says `on-device` only.
