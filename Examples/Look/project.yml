@@ -7,15 +7,20 @@ packages:
   coreai-kit:
     path: ../..
 
-# Run config Release: the engine's per-token host work is ~3x slower unoptimized, and the
-# numbers line on screen reports what this build measures.
+# Run and Test config Release: the engine's per-token host work is ~3x slower unoptimized, and the
+# numbers line on screen reports what this build measures. The UI test drives the same Release app.
 schemes:
   Look:
     build:
       targets:
         Look: all
+        LookUITests: [test]
     run:
       config: Release
+    test:
+      config: Release
+      targets:
+        - LookUITests
 
 targets:
   Look:
@@ -27,7 +32,8 @@ targets:
     sources:
       - path: Sources
       # The three example photos, as a folder in the app bundle (Look.app/Examples/). They are
-      # not in the repository (README: Run it); the folder is, so the project builds without them.
+      # not in the repository: tools/fetch_examples.sh downloads them here (README: Run it). The
+      # folder is, so the project builds without them.
       - path: Examples
         type: folder
         buildPhase: resources
@@ -54,3 +60,21 @@ targets:
         SWIFT_APPROACHABLE_CONCURRENCY: "YES"
         ENABLE_APP_SANDBOX: "NO"
         ENABLE_HARDENED_RUNTIME: "NO"
+
+  # The screen driven through its own controls on an iPhone (UITests/LookUITests.swift).
+  LookUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "27.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Look
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.look.uitests
+        TEST_TARGET_NAME: Look
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: "YES"

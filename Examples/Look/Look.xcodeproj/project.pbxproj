@@ -7,8 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2B819051665FBD1475B357C7 /* AnswerText.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC7E5397D05D8F8E71F238AD /* AnswerText.swift */; };
 		5D239198ADD148D99FE78CED /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = FD7273C497DB648CA431CCA7 /* CoreAIKit */; };
 		6DBBE44D4C02FE11EE510DE8 /* Examples in Resources */ = {isa = PBXBuildFile; fileRef = 1FCF2725A875E9BDB6BBBFD7 /* Examples */; };
+		7853EFE927686EF08DD4F418 /* LookUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B1CF3381C8218298148ADC6 /* LookUITests.swift */; };
 		923A74C140ED73BE1F5432AD /* LookModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6F76D8996C581BCA7C0374 /* LookModel.swift */; };
 		99B3996768BEC8C4BC3FF8C8 /* Autoplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8DA250F009C519D50BCF165 /* Autoplay.swift */; };
 		D1EAC30502E528FA7D015010 /* LookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84C734A216D9B06206A527C /* LookView.swift */; };
@@ -16,14 +18,27 @@
 		F3DF9C822918B2C5C5102351 /* LookApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2DBB0E9A3704346FDBABC3 /* LookApp.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		D782B9290585645ECCBA7A2D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E04944E21454FCAB82159ABD /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 737061B1344CCD7273DA4A86;
+			remoteInfo = Look;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		1FCF2725A875E9BDB6BBBFD7 /* Examples */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Examples; sourceTree = SOURCE_ROOT; };
 		395A667B2AB72E9797F90242 /* coreai-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "coreai-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
 		3C3F9C28F2FCD3E0A745FD19 /* Look.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Look.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4B1CF3381C8218298148ADC6 /* LookUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookUITests.swift; sourceTree = "<group>"; };
 		4DEE6B9DC6F93657015AEB93 /* QuickStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickStart.swift; sourceTree = "<group>"; };
+		9A3022FAF8893B3B14CB219B /* LookUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LookUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA2DBB0E9A3704346FDBABC3 /* LookApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookApp.swift; sourceTree = "<group>"; };
 		D8DA250F009C519D50BCF165 /* Autoplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Autoplay.swift; sourceTree = "<group>"; };
 		F84C734A216D9B06206A527C /* LookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookView.swift; sourceTree = "<group>"; };
+		FC7E5397D05D8F8E71F238AD /* AnswerText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnswerText.swift; sourceTree = "<group>"; };
 		FF6F76D8996C581BCA7C0374 /* LookModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -53,6 +68,7 @@
 				1FCF2725A875E9BDB6BBBFD7 /* Examples */,
 				5577CB07A767285A1ACF192C /* Packages */,
 				C37234D1264CAB1B2DEB3306 /* Sources */,
+				A73736FF93D065F195635DC2 /* UITests */,
 				91F20FEC6E6ECC16DABF893D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,13 +77,23 @@
 			isa = PBXGroup;
 			children = (
 				3C3F9C28F2FCD3E0A745FD19 /* Look.app */,
+				9A3022FAF8893B3B14CB219B /* LookUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A73736FF93D065F195635DC2 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				4B1CF3381C8218298148ADC6 /* LookUITests.swift */,
+			);
+			path = UITests;
 			sourceTree = "<group>";
 		};
 		C37234D1264CAB1B2DEB3306 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				FC7E5397D05D8F8E71F238AD /* AnswerText.swift */,
 				D8DA250F009C519D50BCF165 /* Autoplay.swift */,
 				AA2DBB0E9A3704346FDBABC3 /* LookApp.swift */,
 				FF6F76D8996C581BCA7C0374 /* LookModel.swift */,
@@ -100,6 +126,24 @@
 			productReference = 3C3F9C28F2FCD3E0A745FD19 /* Look.app */;
 			productType = "com.apple.product-type.application";
 		};
+		BF358069D54C20C6819D5A5D /* LookUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C22A464BA9B319118B895566 /* Build configuration list for PBXNativeTarget "LookUITests" */;
+			buildPhases = (
+				40FC17D16993E55D0F66E4A6 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				794555C9490210B345916D00 /* PBXTargetDependency */,
+			);
+			name = LookUITests;
+			packageProductDependencies = (
+			);
+			productName = LookUITests;
+			productReference = 9A3022FAF8893B3B14CB219B /* LookUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -112,6 +156,11 @@
 					737061B1344CCD7273DA4A86 = {
 						DevelopmentTeam = MFN25KNUGJ;
 						ProvisioningStyle = Automatic;
+					};
+					BF358069D54C20C6819D5A5D = {
+						DevelopmentTeam = MFN25KNUGJ;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 737061B1344CCD7273DA4A86;
 					};
 				};
 			};
@@ -133,6 +182,7 @@
 			projectRoot = "";
 			targets = (
 				737061B1344CCD7273DA4A86 /* Look */,
+				BF358069D54C20C6819D5A5D /* LookUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -149,10 +199,19 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		40FC17D16993E55D0F66E4A6 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7853EFE927686EF08DD4F418 /* LookUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E6A3A492A07D5D3B3FC53EF0 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2B819051665FBD1475B357C7 /* AnswerText.swift in Sources */,
 				99B3996768BEC8C4BC3FF8C8 /* Autoplay.swift in Sources */,
 				F3DF9C822918B2C5C5102351 /* LookApp.swift in Sources */,
 				923A74C140ED73BE1F5432AD /* LookModel.swift in Sources */,
@@ -163,7 +222,36 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		794555C9490210B345916D00 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 737061B1344CCD7273DA4A86 /* Look */;
+			targetProxy = D782B9290585645ECCBA7A2D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		0618CAFAC738FB5FDC9C7B10 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.coreaikit.look.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Look;
+			};
+			name = Debug;
+		};
 		3C01916CDAE629AD740B1F3D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -219,7 +307,6 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = auto;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -274,10 +361,30 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = auto;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		5FB529D24CFEA08C41591C2B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = MFN25KNUGJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.coreaikit.look.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Look;
 			};
 			name = Release;
 		};
@@ -362,6 +469,15 @@
 			buildConfigurations = (
 				3C01916CDAE629AD740B1F3D /* Debug */,
 				49F7641077ED4A57C90B29C8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C22A464BA9B319118B895566 /* Build configuration list for PBXNativeTarget "LookUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0618CAFAC738FB5FDC9C7B10 /* Debug */,
+				5FB529D24CFEA08C41591C2B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

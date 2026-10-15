@@ -27,7 +27,7 @@ Every other example app in one place, on two shelves:
 | [Tidy](Tidy/) | ASR text normalization | Any `textNormalizer` catalog model (S1-mini by Superwhisper): raw dictation → written text, steered by the model's styling / structure / context axes. GUI + `swift run tidy-cli`. |
 | [ChatDemo](ChatDemo/) | chat | Minimal multiplatform chat over `ChatSession`; pick a starter model, it downloads and streams. |
 | [VLChat](VLChat/) | vision-language | Any `vlm` catalog model (Qwen3-VL 2B/4B/8B, Holo2 GUI grounding): pick a photo, ask about it. GUI + `swift run vlchat-cli`. |
-| [Look](Look/) | vision-language | One photo + one typed question → one answer from MiniCPM-V 4.7 1B on the device, with the first-token time and tok/s the app measured. Example photos, Pick a photo, Take a photo. GUI (iPhone + Mac). |
+| [Look](Look/) | vision-language | One photo + one typed question → one answer from MiniCPM-V 4.7 1B on the device, with the first-token time and tok/s the app measured. Example photos (fetched by `tools/fetch_examples.sh`), Pick a photo, Take a photo. GUI (iPhone; builds for Mac) + an iPhone UI test. |
 | [Speak](Speak/) | text-to-speech | Any `tts` catalog model (VoxCPM / VoxCPM2 / Kokoro): type a sentence, hear it. GUI + `swift run speak-cli`. |
 | [Music](Music/) | text-to-music | Any `music` catalog model (Stable Audio): prompt → 44.1 kHz stereo. GUI + `swift run music-cli`. |
 | [AudioChat](AudioChat/) | audio understanding | Any `audio` catalog model (Qwen2.5-Omni): load a clip, ask "what do you hear?". GUI + `swift run audiochat-cli` (macOS). |

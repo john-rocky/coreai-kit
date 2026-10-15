@@ -2,8 +2,12 @@
 // a photo and Take a photo, the question box with example questions, Ask and Stop, the answer in
 // large type, the numbers line, and the model and device it ran on.
 //
-// `-take 1` lays the whole screen out in a 9:16 band under the status bar — the frame a recording
-// crops; Autoplay writes the band's pixels into the run record as `take_rect_px`.
+// Everything sits in one band, the screen's width × 16/9, from the top of the safe area: the same
+// layout whether or not a recording crops it (Autoplay writes the band's pixels into the run record
+// as `take_rect_px`). The rows have fixed heights (`Rows`); the answer box gets what is left. On an
+// iPhone 18 Pro the band is 402 × 714 pt and the box ≈ 234 pt: the answer to "What does this sign
+// say?" about the sign example (two paragraphs, 6 lines at 24 pt, ≈ 202 pt) shows whole, from its
+// first line to its last.
 
 import PhotosUI
 import SwiftUI
@@ -11,18 +15,36 @@ import SwiftUI
 import UIKit
 #endif
 
+/// The screen's rows, in points (the answer box takes the rest of the band). With the gaps between
+/// them, everything but the answer box takes ≈ 480 pt of an iPhone 18 Pro's 714 pt band.
+enum Rows {
+    static let edge: CGFloat = 4  // above the state, below the footer
+    static let status: CGFloat = 28
+    static let photoShare: CGFloat = 0.20  // of the band; the photo is fitted inside, its aspect kept
+    static let sources: CGFloat = 52
+    static let field: CGFloat = 40
+    static let chips: CGFloat = 32
+    static let ask: CGFloat = 44
+    static let answerFont: CGFloat = 24
+    static let answerPadding: CGFloat = 10
+    static let paragraphGap: CGFloat = 10
+    static let numbersFont: CGFloat = 22
+    static let footerFont: CGFloat = 11
+}
+
 struct LookView: View {
     @State private var model = LookModel()
     @State private var autoplay = Autoplay()
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
-    private let take = UserDefaults.standard.bool(forKey: "take")
+    @State private var answerScroll = ScrollPosition(edge: .top)
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         GeometryReader { geo in
-            let band = take ? min(geo.size.height, (geo.size.width * 16 / 9).rounded(.down)) : geo.size.height
+            let band = min(geo.size.height, (geo.size.width * 16 / 9).rounded(.down))
             VStack(spacing: 0) {
-                screen(height: band)
+                screen(band: band)
                     .frame(width: geo.size.width, height: band)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.bandRect = $0 }
                 Spacer(minLength: 0)
@@ -35,6 +57,7 @@ struct LookView: View {
             pickerItem = nil
             Task { await model.pick(item) }
         }
+        .onChange(of: scenePhase, initial: true) { _, phase in autoplay.scene(phase) }
         #if os(iOS)
         .fullScreenCover(isPresented: $showCamera) {
             CameraPicker { model.pick(cameraImage: $0) }.ignoresSafeArea()
@@ -43,23 +66,24 @@ struct LookView: View {
         .task { await model.load() }
         .task { await autoplay.run(model) }
         #if os(macOS)
-        .frame(minWidth: 420, minHeight: take ? 760 : 820)
+        .frame(minWidth: 420, minHeight: 760)
         #endif
     }
 
-    private func screen(height: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func screen(band: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             statusRow
-            photo(height: (height * (take ? 0.26 : 0.30)).rounded())
-            sourceRow
-            questionBox
-            askRow
-            answerBox
-            numbersLine
-            footer
+            photo(height: (band * Rows.photoShare).rounded()).padding(.top, 6)
+            sourceRow.padding(.top, 8)
+            questionField.padding(.top, 8)
+            chipRow.padding(.top, 6)
+            askRow.padding(.top, 8)
+            answerBox.padding(.top, 8)
+            numbersLine.padding(.top, 6)
+            footer.padding(.top, 4)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, Rows.edge)
     }
 
     // MARK: - ① state
@@ -70,14 +94,15 @@ struct LookView: View {
                 .font(.system(size: 15, weight: .heavy))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.vertical, 4)
                 .background(Capsule().fill(model.phase.color))
+                .accessibilityIdentifier("state.pill")
             Text(model.detail)
                 .font(.system(size: 16))
                 .foregroundStyle(Palette.secondary)
                 .lineLimit(1)
         }
-        .frame(height: 30)
+        .frame(height: Rows.status)
     }
 
     // MARK: - ② photo
@@ -106,6 +131,8 @@ struct LookView: View {
                 Button { model.pickExample(example.id) } label: { thumbnail(example) }
                     .buttonStyle(.plain)
                     .disabled(model.phase == .thinking)
+                    .accessibilityLabel("Example: \(example.id)")
+                    .accessibilityIdentifier("example.\(example.id)")
             }
             VStack(spacing: 6) {
                 PhotosPicker(selection: $pickerItem, matching: .images) {
@@ -121,7 +148,7 @@ struct LookView: View {
             .frame(width: 124)
             .disabled(model.phase == .thinking)
         }
-        .frame(height: 58)
+        .frame(height: Rows.sources)
     }
 
     private func thumbnail(_ example: LookModel.Example) -> some View {
@@ -136,7 +163,7 @@ struct LookView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 58)
+            .frame(height: Rows.sources)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Palette.accent : .clear, lineWidth: 3))
             .contentShape(Rectangle())
@@ -148,41 +175,44 @@ struct LookView: View {
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .frame(height: 26)
+            .frame(height: (Rows.sources - 6) / 2)
             .background(RoundedRectangle(cornerRadius: 8).fill(Palette.surfaceHigh))
     }
 
     // MARK: - ④ question
 
-    private var questionBox: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("Ask about the photo", text: $model.question)
-                .font(.system(size: 20))
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 14)
-                .frame(height: 46)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
-                .submitLabel(.go)
-                .onSubmit { model.ask() }
-                .disabled(model.phase == .thinking)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(LookModel.chips.indices, id: \.self) { index in
-                        Button { model.applyChip(index) } label: {
-                            Text(LookModel.chips[index])
-                                .font(.system(size: 15))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 12)
-                                .frame(height: 32)
-                                .background(Capsule().fill(Palette.surfaceHigh))
-                        }
-                        .buttonStyle(.plain)
+    private var questionField: some View {
+        TextField("Ask about the photo", text: $model.question)
+            .font(.system(size: 20))
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 14)
+            .frame(height: Rows.field)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surface))
+            .submitLabel(.go)
+            .onSubmit { model.ask() }
+            .disabled(model.phase == .thinking)
+            .accessibilityIdentifier("question.field")
+    }
+
+    private var chipRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(LookModel.chips.indices, id: \.self) { index in
+                    Button { model.applyChip(index) } label: {
+                        Text(LookModel.chips[index])
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .frame(height: Rows.chips)
+                            .background(Capsule().fill(Palette.surfaceHigh))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("chip.\(index)")
                 }
             }
-            .frame(height: 32)
-            .disabled(model.phase == .thinking)
         }
+        .frame(height: Rows.chips)
+        .disabled(model.phase == .thinking)
     }
 
     // MARK: - ⑤ Ask, Stop
@@ -194,29 +224,31 @@ struct LookView: View {
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(model.canAsk ? .white : Palette.secondary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 50)
+                    .frame(height: Rows.ask)
                     .background(
                         RoundedRectangle(cornerRadius: 12).fill(model.canAsk ? Palette.accent : Palette.surfaceHigh))
             }
             .buttonStyle(.plain)
             .disabled(!model.canAsk)
+            .accessibilityIdentifier("ask")
             Button { model.stop() } label: {
                 Text("Stop")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(model.phase == .thinking ? .white : Palette.secondary)
-                    .frame(width: 110, height: 50)
+                    .frame(width: 110, height: Rows.ask)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Palette.surfaceHigh))
             }
             .buttonStyle(.plain)
             .disabled(model.phase != .thinking)
+            .accessibilityIdentifier("stop")
         }
     }
 
     // MARK: - ⑥ answer
 
-    /// The box shows the answer from its first line; an answer taller than the box scrolls inside it.
-    /// On an iPhone 18 Pro (iOS 27.2) the bottom anchor for size changes did not move the box while a
-    /// longer answer streamed in: the first line stayed in view.
+    /// The answer in large type, paragraph by paragraph (AnswerText.swift). An answer that fits
+    /// shows from its first line; one taller than the box follows its last line as it streams, and
+    /// scrolls inside the box.
     private var answerBox: some View {
         ScrollView {
             Group {
@@ -224,22 +256,35 @@ struct LookView: View {
                     Text(model.phase == .thinking ? "…" : "The answer appears here")
                         .foregroundStyle(Palette.secondary)
                 } else {
-                    Text(LookModel.shown(model.answer)).foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: Rows.paragraphGap) {
+                        ForEach(Array(model.shownParagraphs.enumerated()), id: \.offset) { item in
+                            Text(item.element)
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(AnswerText.plain(model.answer))
+                    .accessibilityIdentifier("answer.text")
                 }
             }
-            .font(.system(size: 26))
+            .font(.system(size: Rows.answerFont))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
+            .padding(Rows.answerPadding)
         }
-        .defaultScrollAnchor(.top, for: .initialOffset)
-        .defaultScrollAnchor(.top, for: .alignment)
-        .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        .scrollPosition($answerScroll)
         .onScrollGeometryChange(for: LookModel.AnswerBox.self) { geometry in
             LookModel.AnswerBox(
                 content: geometry.contentSize.height, container: geometry.containerSize.height,
                 offset: geometry.contentOffset.y + geometry.contentInsets.top)
-        } action: { _, box in
+        } action: { old, box in
             model.answerBox = box
+            // An answer taller than the box: keep its newest line in view while it grows.
+            if box.content > box.container + 0.5, box.content > old.content + 0.5 {
+                answerScroll.scrollTo(edge: .bottom)
+            }
+        }
+        .onChange(of: model.answer.isEmpty) { _, empty in
+            if empty { answerScroll.scrollTo(edge: .top) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: 14).fill(Palette.surface))
@@ -248,24 +293,25 @@ struct LookView: View {
 
     // MARK: - ⑦ numbers, ⑧ model and device
 
-    /// One line where it fits; on a phone the measured numbers keep the first line to themselves.
+    /// Two lines: the measured numbers, then where the model ran.
     private var numbersLine: some View {
-        ViewThatFits(in: .horizontal) {
-            Text(model.numbersLine).lineLimit(1)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(model.numbersHead).lineLimit(1).minimumScaleFactor(0.85)
-                Text(model.numbersTail).lineLimit(1).minimumScaleFactor(0.85)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            Text(model.numbersHead).lineLimit(1).minimumScaleFactor(0.8)
+            Text(model.numbersTail).lineLimit(1).minimumScaleFactor(0.8)
         }
-        .font(.system(size: 22, weight: .bold))
+        .font(.system(size: Rows.numbersFont, weight: .bold))
         .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.numbersLine)
+        .accessibilityIdentifier("stats.line")
     }
 
     private var footer: some View {
         Text(model.footer)
-            .font(.system(size: 11))
+            .font(.system(size: Rows.footerFont))
             .foregroundStyle(Palette.secondary)
-            .lineLimit(2)
+            .lineLimit(2, reservesSpace: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

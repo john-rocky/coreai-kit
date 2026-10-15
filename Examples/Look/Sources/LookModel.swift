@@ -1,6 +1,7 @@
 // LookModel — one photo + one typed question → one streamed answer from a vision-language model
 // on this device, timed by the app itself. The buttons in LookView and the recording harness in
 // Autoplay call the same functions: pickExample(_:), pick(_:), applyChip(_:), ask(), stop().
+// Autoplay's record of a question asked by hand hooks onAsked / onFirstToken / onFinished.
 //
 // The model loads when the app starts (READY) through its catalog id — the id on the model's card —
 // exactly as QuickStart.swift does. Every question is a new `LanguageModelSession` (no history):
@@ -160,7 +161,9 @@ final class LookModel {
     // Read by Autoplay only; the screen does not draw from them.
     @ObservationIgnored var bandRect: CGRect = .zero
     @ObservationIgnored var answerBox = AnswerBox()
+    @ObservationIgnored var onAsked: (@MainActor () -> Void)?
     @ObservationIgnored var onFirstToken: (@MainActor () -> Void)?
+    @ObservationIgnored var onFinished: (@MainActor (Run) -> Void)?
 
     @ObservationIgnored private var model: KitVisionModel?
     @ObservationIgnored private var generationTask: Task<Void, Never>?
@@ -353,8 +356,10 @@ final class LookModel {
                 phase = .failed
                 detail = failure ?? "The answer failed"
             }
+            onFinished?(run)
         }
         generationTask = task
+        onAsked?()
         return task
     }
 
@@ -372,15 +377,17 @@ final class LookModel {
     /// Where the model runs, from that subtree: a `gpu-…` bundle runs on the GPU.
     var backend: String { subtree.hasPrefix("gpu") ? "GPU" : subtree }
 
+    /// The numbers line's first line: the two measured numbers.
     var numbersHead: String {
         let first = firstTokenSeconds.map { String(format: "%.2f s", $0) } ?? "– s"
         let rate = tokensPerSecond.map { $0 >= 100 ? String(format: "%.0f", $0) : String(format: "%.1f", $0) } ?? "–"
         return "first token \(first) · \(rate) tok/s"
     }
 
-    /// "offline" only while the phone has no network path at all.
+    /// Its second line: where it ran. "offline" only while the phone has no network path at all.
     var numbersTail: String { "\(backend) · on-device\(offline ? ", offline" : "")" }
 
+    /// Both lines as one string, for the record and for VoiceOver.
     var numbersLine: String { "\(numbersHead) · \(numbersTail)" }
 
     var footer: String {
@@ -389,26 +396,9 @@ final class LookModel {
             .joined(separator: " · ")
     }
 
-    /// The answer as the screen shows it. The model writes Markdown: `**bold**` is set in bold,
-    /// heading `#` and list `- ` marks are dropped, and a `**` still open while the answer streams
-    /// is closed so the marks never flash. The record keeps the text as written.
-    nonisolated static func shown(_ raw: String) -> AttributedString {
-        var lines: [String] = []
-        for line in raw.split(separator: "\n", omittingEmptySubsequences: false) {
-            var text = line.drop { $0 == " " }
-            if text.hasPrefix("#") {
-                text = text.drop { $0 == "#" }.drop { $0 == " " }
-            } else if text.hasPrefix("- ") || text.hasPrefix("* ") {
-                text = text.dropFirst(2)
-            }
-            lines.append(String(text))
-        }
-        var text = lines.joined(separator: "\n")
-        if text.components(separatedBy: "**").count % 2 == 0 { text += "**" }
-        let options = AttributedString.MarkdownParsingOptions(
-            interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
-    }
+    /// The answer as the screen sets it, paragraph by paragraph (AnswerText.swift: inline
+    /// Markdown, a line break inside a paragraph read as a space). The record keeps `answer`.
+    var shownParagraphs: [AttributedString] { AnswerText.paragraphs(answer) }
 
     // MARK: - Helpers
 
