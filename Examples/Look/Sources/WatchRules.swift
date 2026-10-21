@@ -147,8 +147,12 @@ enum WatchRules {
     /// The symbols the editor offers.
     static let symbols = [
         "checkerboard.rectangle", "light.beacon.max", "signpost.right", "person", "hand.raised", "cup.and.saucer",
-        "key", "cat", "dog", "car", "leaf", "star",
+        "key", "cat", "dog", "car", "leaf", "eye",
     ]
+
+    /// A new rule's symbol until its editor picks another: an eye, which stands for no thing in
+    /// particular.
+    static let newSymbol = "eye"
 
     /// The three rules a first launch starts with: one for each example photo, so Example photos
     /// fires all three.
@@ -188,11 +192,6 @@ enum WatchRules {
     static func symbol(for condition: String, at index: Int, named: [String] = []) -> String {
         if named.indices.contains(index) { return named[index] }
         return known[condition.lowercased()] ?? symbols[index % symbols.count]
-    }
-
-    /// The first of the editor's symbols no rule uses yet (a new rule's symbol).
-    static func unusedSymbol(_ rules: [WatchRule]) -> String {
-        symbols.first { name in !rules.contains { $0.symbol == name } } ?? symbols[0]
     }
 
     // MARK: - Kept between launches

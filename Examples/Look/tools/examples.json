@@ -53,5 +53,38 @@
       "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
       "creator": "Bonnie Moreland (free images)"
     }
+  ],
+  "videos_comment": "The example video of the Watch screen (README: Example video). The app does not play the URL's bytes: tools/fetch_examples.sh downloads the original into Examples/Look/Videos/src/<source_file>, checks `bytes` and `sha256` (Commons' own `sha1` matched at the first download), and cuts the clip into Examples/Look/Videos/<file> with ffmpeg: `cut_seconds` from `cut_start` of the original (-ss before -i), scaled to `cut_width` x `cut_height`, `cut_fps` fps, yuv420p, libx264 preset medium CRF `cut_crf` with 8 threads, BT.709 tags, no audio, no metadata. The same ffmpeg (`cut_ffmpeg`) writes the same bytes (`cut_sha256`); with another version the bytes can differ, and the script checks the clip's form instead (H.264, yuv420p, the size, the frame rate, the length, no audio). The folder is not bundled into the app (the photos are): put the clip on the phone and pick it (Pick a video), or copy it into the app's Documents for a script (`-file`). `rules` and `symbols` are the launch arguments of the recorded take.",
+  "videos": [
+    {
+      "id": "flyover",
+      "kind": "video",
+      "file": "flyover.mp4",
+      "shows": "a drone flight: a river with stones seen from straight above, a road bridge over it, then a white church with a tall spire and a red roof among houses and trees",
+      "rules": "a river=chime|a bridge=count|a church=say:There is a church",
+      "symbols": "water.waves|road.lanes|building.columns",
+      "source_file": "Drone_video_of_Kose_fish_ladder_and_church.webm",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/d/d1/Drone_video_of_Kose_fish_ladder_and_church.webm",
+      "format": "webm",
+      "width": 2720,
+      "height": 1530,
+      "bytes": 283686946,
+      "sha256": "e0c538647059293b91ab0dcc2f474af5a0b4753c23f206971926a1bee69ec885",
+      "sha1": "0259dfef421a067d2872f1467a1e994c2e16c07b",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Drone_video_of_Kose_fish_ladder_and_church.webm",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "creator": "Sillerkiil",
+      "cut_start": 3.0,
+      "cut_seconds": 26,
+      "cut_fps": 30,
+      "cut_crf": 20,
+      "cut_width": 1920,
+      "cut_height": 1080,
+      "cut_frames": 780,
+      "cut_bytes": 63207459,
+      "cut_sha256": "a5c1aefce5174bca79cb8e2ecd27b68082f6ceca876b369fd4f7ef1aa3653fdd",
+      "cut_ffmpeg": "9.0.1"
+    }
   ]
 }

@@ -2,3 +2,5 @@
 # so the project's folder reference builds before they are there.
 /Examples/*
 !/Examples/.gitkeep
+# The example video and its original (tools/fetch_examples.sh; README: Example video): not bundled, not committed.
+/Videos/

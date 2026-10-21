@@ -513,7 +513,7 @@ final class WatchAutoplay {
             let prefill = settings.add.flatMap { WatchRules.parse($0).first }
             if edit == "new" {
                 var rule = prefill
-                rule?.symbol = WatchRules.unusedSymbol(watch.rules)
+                rule?.symbol = WatchRules.newSymbol
                 watch.addRule(prefill: rule)
             } else if let number = Int(edit), watch.rules.indices.contains(number - 1) {
                 watch.edit(watch.rules[number - 1])
@@ -524,7 +524,7 @@ final class WatchAutoplay {
                 watch.save(rule)
             }
         } else if let add = settings.add, var rule = WatchRules.parse(add).first {
-            rule.symbol = WatchRules.unusedSymbol(watch.rules)
+            rule.symbol = WatchRules.newSymbol
             watch.save(rule)
         }
 

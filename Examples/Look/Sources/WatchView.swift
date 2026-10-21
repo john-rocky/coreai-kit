@@ -6,7 +6,7 @@
 // The rows have fixed heights and the picture gets what is left: on an iPhone 18 Pro with three rules
 // it is ≈ 275 pt tall in take mode (`-take 1`: three rules at most, no "+ Add a rule", no video
 // button) and ≈ 229 pt otherwise. A rule's words are 26 pt; a reaction shows its symbol at 64 pt and
-// its words at 44 pt for at least 2.5 s.
+// its words at 44 pt for at least 3 s.
 
 import PhotosUI
 import SwiftUI
@@ -307,7 +307,9 @@ struct WatchView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(model.phase == .watching)
+        // Not `.disabled`: a disabled Button dims its label, and the rows show the answers while a
+        // run goes on. edit(_:) ignores a tap while watching.
+        .allowsHitTesting(model.phase != .watching)
         .accessibilityIdentifier("watch.rule.\(number)")
     }
 

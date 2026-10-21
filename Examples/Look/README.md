@@ -22,7 +22,7 @@ answer out.
 
 ```sh
 cd Examples/Look
-tools/fetch_examples.sh              # the three example photos (CC0), checked by size and sha256
+tools/fetch_examples.sh              # the three example photos (CC0) and, with ffmpeg, the example video
 export DEVELOPMENT_TEAM=XXXXXXXXXX   # your team id; or pick your team in Signing & Capabilities
 xcodegen generate                    # brew install xcodegen
 open Look.xcodeproj                  # choose your iPhone (iOS 27) and Run; the scheme runs Release
@@ -47,9 +47,9 @@ The app needs the entitlement `com.apple.developer.kernel.increased-memory-limit
 higher limit that first specialization died with `std::bad_alloc` on an iPhone 18 Pro (VLChat, the
 same model). Run it in Release: the engine's per-token host work is about 3× slower unoptimized.
 The project also has a Mac destination (macOS 27, Apple silicon), with Pick a photo and the examples
-and without Take a photo or the camera source. It built for a Mac on 2026-10-15, before the Watch
-screen was added; the Watch screen has not been built for a Mac, and Look has not been run on one.
-The numbers on this page are from an iPhone.
+and without Take a photo or the camera source. This version, the Watch screen included, built for a
+Mac on 2026-10-22 (Release, arm64, unsigned); Look has not been run on one. The numbers on this page
+are from an iPhone.
 
 ## The screen
 
@@ -137,7 +137,8 @@ model stay in the app's process.
    the screen for at least 4.5 s).
 3. Tap a rule to change it, or **Add a rule** (six at most). The editor has three parts: *Look for*
    (your words; each frame the model is asked "Is there *your words*?"), *Then* (the reaction, below)
-   and *Symbol* (one of twelve SF Symbols, on the rule's row and over the picture when it fires).
+   and *Symbol* (one of twelve SF Symbols, on the rule's row and over the picture when it fires; a new
+   rule starts with the eye).
    Delete is at the bottom. Rules you edit are kept for the next launch.
 4. **Start**. Each row shows the rule's answer for the latest frame (YES, NO, or `?` when the answer
    could not be read) and its reaction; **Stop** ends the run after the frame being answered.
@@ -151,7 +152,7 @@ model stay in the app's process.
 | Count | adds one | ×N |
 | Log | the time and the rule as a line under the list (the latest three show) | log |
 
-Every rule also shows its symbol (64 pt) and its words (44 pt) over the picture for at least 2.5 s; a
+Every rule also shows its symbol (64 pt) and its words (44 pt) over the picture for at least 3 s; a
 spoken line stays until the voice is done. The sounds are the system's own (`AudioServicesPlaySystemSound`,
 no audio files in the app) and follow the ring / silent switch; the spoken line (`AVSpeechSynthesizer`)
 plays through it, mixed with other audio.
@@ -194,6 +195,17 @@ each 1.36–1.40 s after its photo came on the screen. With the camera facing a 
 answered 21 frames, a frame took 1,455 ms (median; the frame was 31 ms old when it reached the model),
 all 63 answers were no, and nothing fired. Both runs stayed at the thermal state nominal, and the memory
 footprint stayed between 335 and 383 MB. Measured on 2026-10-21.
+
+The recorded take played the [example video](#example-video) with its three rules, in a new process on the
+same phone, on 2026-10-22 (`watch-run-1792603139.json`). It answered 20 frames in 27.0 s and ended with
+the video; a frame took 1,345 ms (median; the first token came after 1,256 ms), with 117 tokens in and 11
+back. At the end the numbers lines read `first token 1.24 s · total 1.33 s` and
+`GPU · on-device · frame 20 · nominal · 344 MB` (the last frame's). Each rule fired once and nothing else
+did: the chime 1.37 s into the video, the count at 6.75 s and the spoken line at 17.53 s — 1.37, 1.75 and
+2.53 s after the seconds where the same model with the same prompt, given one frame a second on a Mac,
+first answers yes (0, 5 and 15 s). Each reaction came 1.34–1.37 s after its frame was taken: the next
+frame is taken when the answer before it is in, so a thing that comes into view waits for that frame. The
+thermal state stayed nominal and the memory footprint between 343 and 388 MB.
 
 The screen sits in the same band as the Ask screen. On an iPhone 18 Pro with three rules the picture is
 370 × 275 pt with `-take 1` (the run's record, `preview_pt`) and ≈ 229 pt tall with Add a rule under
@@ -329,6 +341,37 @@ so, writes nothing, and names the Openverse record and the source page.
 | `sign` | a white sign on a metal post in a lawn: "Please" above "KEEP OFF THE GRASS" | `sign.webp`, 1024 × 768 (the URL ends in .jpg; the server sends WebP) | [rawpixel](https://www.rawpixel.com/image/6038398/please-keep-off-the-grass-sign) |
 | `object` | light wooden chess pieces on a worn wooden chessboard, close up | `object.jpg`, 960 × 640 | [StockSnap](https://stocksnap.io/photo/chess-board-NUAITIXILP) |
 | `scene` | a white lighthouse with a red base on rocks by the sea, dune grass in front | `scene.jpg`, 1024 × 683 | [Flickr](https://www.flickr.com/photos/66741228@N05/33074457825) |
+
+## Example video
+
+One video for the Watch screen: [Drone video of Kose fish ladder and church](https://commons.wikimedia.org/wiki/File:Drone_video_of_Kose_fish_ladder_and_church.webm)
+on Wikimedia Commons, CC0 1.0 according to its file page (the license template and the file's metadata).
+A drone looks straight down at a river with stones, a road bridge crosses into view, then the drone
+climbs and turns to a white church with a tall spire among houses and trees. No face, text, brand or
+logo can be read in it.
+
+It is not in the repository, and the app does not bundle it. `tools/fetch_examples.sh` downloads the
+original (WebM, 2720 × 1530, 35 s, 283,686,946 bytes) into `Videos/src/`, checks its size and sha256,
+and cuts the clip the app plays with ffmpeg (`brew install ffmpeg`): 26 s from 3.0 s of the original,
+1920 × 1080, 30 fps, H.264, no audio, into `Videos/flyover.mp4`. The same ffmpeg (9.0.1) makes the same
+bytes (`cut_sha256` in `tools/examples.json`); with another version the bytes can differ, and the script
+checks the clip's form instead (H.264, 1920 × 1080, 30 fps, 26 s, no audio). Without ffmpeg the script
+says so and puts the photos in place only.
+
+To watch it on the phone: copy `Videos/flyover.mp4` to the iPhone (AirDrop from a Mac puts it in
+Photos), open Watch, tap **Pick a video** and choose it, write three rules — *a river* → Sound (Chime),
+*a bridge* → Count, *a church* → Say "There is a church" — and Start. The video plays once from its
+start, muted, and the run ends with it. A script does the same with launch arguments (the recorded take
+in [Watch](#watch) ran this, plus `-trigger` and `-frames 1`):
+
+```sh
+xcrun devicectl device copy to --device <udid> --domain-type appDataContainer \
+  --domain-identifier com.coreaikit.look --source Videos/flyover.mp4 --destination Documents/flyover.mp4
+xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
+  -watch 1 -source video -file Documents/flyover.mp4 -seconds 45 -delay 2 -take 1 -log 1 \
+  -rules "a river=chime|a bridge=count|a church=say:There is a church" \
+  -symbols "water.waves|road.lanes|building.columns"
+```
 
 ## When it does not answer
 

@@ -14,7 +14,7 @@
 //
 // The example photos come in turn — sign, object, scene, sign … — each on the screen for at least
 // `-hold` seconds (default 4.5): the next one comes with the first frame taken after that. That is
-// long enough for a reaction to show its 2.5 s before the picture changes. A video (picked, or
+// long enough for a reaction to show its 3 s before the picture changes. A video (picked, or
 // `-file` for a script) waits on its first frame; Start plays it from its start, muted, and the run
 // ends when the video does.
 //
@@ -637,7 +637,7 @@ final class WatchModel {
         guard phase != .watching, rules.count < WatchRules.maxCount else { return }
         let rule =
             prefill
-            ?? WatchRule(condition: "", reaction: .sound(.chime), symbol: WatchRules.unusedSymbol(rules))
+            ?? WatchRule(condition: "", reaction: .sound(.chime), symbol: WatchRules.newSymbol)
         editing = EditTarget(rule: rule, isNew: true)
     }
 
@@ -935,7 +935,7 @@ final class WatchModel {
 
     // MARK: - Reactions
 
-    /// The fired rules' reactions, and their symbols on the picture for at least 2.5 s.
+    /// The fired rules' reactions, and their symbols on the picture for at least 3 s.
     private func react(_ fired: [Int]) {
         guard !fired.isEmpty else { return }
         var title = ""
@@ -988,7 +988,7 @@ final class WatchModel {
         Task {
             let clock = ContinuousClock()
             let shown = clock.now
-            try? await Task.sleep(for: .seconds(2.5))
+            try? await Task.sleep(for: .seconds(3))
             // A spoken line stays until the voice is done (at most 8 s).
             while next.speech, self.speech.isSpeaking, clock.now - shown < .seconds(8) {
                 try? await Task.sleep(for: .milliseconds(100))
