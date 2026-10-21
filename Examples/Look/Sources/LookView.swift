@@ -1,13 +1,13 @@
-// LookView — one screen, dark, top to bottom: the state, the photo, the example photos with Pick
-// a photo and Take a photo, the question box with example questions, Ask and Stop, the answer in
-// large type, the numbers line, and the model and device it ran on.
+// LookView — the Ask screen, dark, top to bottom: the state, the photo, the example photos with
+// Pick a photo and Take a photo, the question box with example questions, Ask and Stop, the answer
+// in large type, the numbers line, and the model and device it ran on.
 //
-// Everything sits in one band, the screen's width × 16/9, from the top of the safe area: the same
-// layout whether or not a recording crops it (Autoplay writes the band's pixels into the run record
-// as `take_rect_px`). The rows have fixed heights (`Rows`); the answer box gets what is left. On an
-// iPhone 18 Pro the band is 402 × 714 pt and the box ≈ 234 pt: the answer to "What does this sign
-// say?" about the sign example (two paragraphs, 6 lines at 24 pt, ≈ 202 pt) shows whole, from its
-// first line to its last.
+// Everything sits in one band, the screen's width × 16/9 (LookApp.swift places it under the Ask |
+// Watch switch, or right under the status bar in take mode): a recording crops the same band
+// (Autoplay writes its pixels into the run record as `take_rect_px`). The rows have fixed heights
+// (`Rows`); the answer box gets what is left. On an iPhone 18 Pro the band is 402 × 714 pt and the
+// box ≈ 234 pt: the answer to "What does this sign say?" about the sign example (two paragraphs,
+// 6 lines at 24 pt, ≈ 202 pt) shows whole, from its first line to its last.
 
 import PhotosUI
 import SwiftUI
@@ -33,41 +33,25 @@ enum Rows {
 }
 
 struct LookView: View {
-    @State private var model = LookModel()
-    @State private var autoplay = Autoplay()
+    @Bindable var model: LookModel
+    /// The band's height (LookApp.swift): the rows below fill it.
+    let band: CGFloat
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var answerScroll = ScrollPosition(edge: .top)
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        GeometryReader { geo in
-            let band = min(geo.size.height, (geo.size.width * 16 / 9).rounded(.down))
-            VStack(spacing: 0) {
-                screen(band: band)
-                    .frame(width: geo.size.width, height: band)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.bandRect = $0 }
-                Spacer(minLength: 0)
+        screen(band: band)
+            .onChange(of: pickerItem) { _, item in
+                guard let item else { return }
+                pickerItem = nil
+                Task { await model.pick(item) }
             }
-        }
-        .background(Palette.background.ignoresSafeArea())
-        .preferredColorScheme(.dark)
-        .onChange(of: pickerItem) { _, item in
-            guard let item else { return }
-            pickerItem = nil
-            Task { await model.pick(item) }
-        }
-        .onChange(of: scenePhase, initial: true) { _, phase in autoplay.scene(phase) }
-        #if os(iOS)
-        .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker { model.pick(cameraImage: $0) }.ignoresSafeArea()
-        }
-        #endif
-        .task { await model.load() }
-        .task { await autoplay.run(model) }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 760)
-        #endif
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraPicker { model.pick(cameraImage: $0) }.ignoresSafeArea()
+            }
+            #endif
     }
 
     private func screen(band: CGFloat) -> some View {

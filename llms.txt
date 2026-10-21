@@ -61,7 +61,7 @@ let answer = try await chat.respond(to: "What is the capital of Japan?")
 - [GuidedDemo](https://john-rocky.github.io/coreai-kit/Examples/GuidedDemo/): GuidedDemo — Guided generation (constrained decoding): per-step logits are masked through a JSON schema's grammar (xgrammar bitmask) before sampling, so the model's output is valid JSON for the schema by construction — no retries, no parse failures
 - [InfoExtract](https://john-rocky.github.io/coreai-kit/Examples/InfoExtract/): InfoExtract — zero-shot entity extraction and PII redaction on device
 - [LiveCamera](https://john-rocky.github.io/coreai-kit/Examples/LiveCamera/): LiveCamera — Four live tasks, one per tab, each a few lines over CoreAIOps
-- [Look](https://john-rocky.github.io/coreai-kit/Examples/Look/): Look — ask about a photo, answered on the device
+- [Look](https://john-rocky.github.io/coreai-kit/Examples/Look/): Look — ask about a photo, or have the camera watch for what you name, on the device
 - [Meeting](https://john-rocky.github.io/coreai-kit/Examples/Meeting/): Meeting — who said what, fully on-device
 - [Music](https://john-rocky.github.io/coreai-kit/Examples/Music/): Music — text-to-music generation on device
 - [OpsDemo](https://john-rocky.github.io/coreai-kit/Examples/OpsDemo/): OpsDemo — The anchored ops end to end

@@ -1,4 +1,4 @@
-# Look — ask about a photo, answered on the device
+# Look — ask about a photo, or have the camera watch for what you name, on the device
 
 Take a photo, pick one or tap an example, type a question about it, and a vision-language model on
 your iPhone answers in text. Point the phone at a sign, a menu, a device or a view and ask what you
@@ -6,6 +6,11 @@ want to know: the model on the phone starts answering within seconds and answers
 read, and the photo never leaves the phone. One screen, one photo and one question in, one answer out;
 the line under the answer says when its first token came, how fast the rest followed, and where it
 ran. The photo and the question go to the model in the app's own process.
+
+The second screen, [Watch](#watch), turns the camera into rules you write in words: "a chessboard",
+"a sign with words on it" — each with one thing to do when the model sees it (a sound, a buzz, a
+spoken line, a timer, a count, a log line). Press Start and the model checks one frame at a time; a
+rule whose answer turns yes fires its reaction. Both screens use the same model, loaded once.
 
 The model is `minicpm-v-4.7-1b` from the kit's catalog: MiniCPM-V 4.7 1B, Hugging Face
 `mlboydaisuke/MiniCPM-V-4.7-1B-CoreAI` at revision `51278afd`, an int8 decoder and an int8 vision
@@ -41,9 +46,10 @@ The app needs the entitlement `com.apple.developer.kernel.increased-memory-limit
 (`Look.entitlements`): the vision tower specializes beside the loaded decoder, and without the
 higher limit that first specialization died with `std::bad_alloc` on an iPhone 18 Pro (VLChat, the
 same model). Run it in Release: the engine's per-token host work is about 3× slower unoptimized.
-The same project also builds for a Mac (macOS 27, Apple silicon), with Pick a photo and the examples
-and without Take a photo; the numbers on this page are from an iPhone, and Look has not been run on
-a Mac.
+The project also has a Mac destination (macOS 27, Apple silicon), with Pick a photo and the examples
+and without Take a photo or the camera source. It built for a Mac on 2026-10-15, before the Watch
+screen was added; the Watch screen has not been built for a Mac, and Look has not been run on one.
+The numbers on this page are from an iPhone.
 
 ## The screen
 
@@ -58,11 +64,12 @@ Top to bottom:
 7. the numbers line, in two lines;
 8. the model, its revision, the bundle, the device, the OS and the app version.
 
-Everything sits in one band: the screen's width × 16/9, from the top of the safe area (402 × 714 pt
-on an iPhone 18 Pro, under the status bar). The rows have fixed heights and the answer box gets the
-rest: ≈ 234 pt on that phone by the rows' heights (not yet measured there); the photo's row is a
-fifth of the band. A recording crops the same band, so the screen you use is the screen a recording
-shows.
+Everything sits in one band: the screen's width × 16/9 (402 × 714 pt on an iPhone 18 Pro), under the
+Ask | Watch switch at the top — or right under the status bar with `-take 1`, which hides the switch
+for a recording. The rows have fixed heights and the answer box gets the rest: 234 pt on that phone
+(the record's `answer_box_pt`, 2026-10-21); the photo's row is a fifth of the band. A recording
+crops the same band, so the screen you use is the screen a recording shows. The switch is off while
+an answer streams or a watch runs: the two screens share the model.
 
 The model writes Markdown, and the screen renders inline markdown: `**bold**` in bold, a `#` heading
 as a bold line, a `- ` item as `• `; line breaks inside a paragraph are shown as spaces, and a blank
@@ -113,6 +120,86 @@ on a phone: as one line it is 537 pt wide (laid out on a Mac), and an iPhone 18 
    (`VLImagePreprocessor`), the vision tower's input.
 4. Greedy decoding (no temperature), at most 256 answer tokens (`GenerationOptions(maximumResponseTokens: 256)`).
 
+## Watch
+
+Watch turns the camera into rules you write in words. A rule is a thing to look for — "a chessboard",
+"a sign with words on it", "a coffee mug" — and one thing to do when the model sees it. Press Start
+and the app shows the model one frame at a time; when a rule's answer turns yes, its reaction fires
+and its symbol shows over the picture, so nobody has to keep watching. The frames, the rules and the
+model stay in the app's process.
+
+1. Tap **Watch** at the top. A first launch has three rules, one for each example photo: a chessboard
+   → a chime; a lighthouse → the line "There is the lighthouse"; a sign with words on it → a count.
+2. Choose where the frames come from: **Camera** (the back camera; it asks for the camera permission
+   the first time), **Pick a video** (the system picker, no permission needed; the video waits on its
+   first frame, Start plays it from the start, muted, and the run ends with the video; a play / pause
+   button lets you look through it before), or **Example photos** (the three examples in turn, each on
+   the screen for at least 4.5 s).
+3. Tap a rule to change it, or **Add a rule** (six at most). The editor has three parts: *Look for*
+   (your words; each frame the model is asked "Is there *your words*?"), *Then* (the reaction, below)
+   and *Symbol* (one of twelve SF Symbols, on the rule's row and over the picture when it fires).
+   Delete is at the bottom. Rules you edit are kept for the next launch.
+4. **Start**. Each row shows the rule's answer for the latest frame (YES, NO, or `?` when the answer
+   could not be read) and its reaction; **Stop** ends the run after the frame being answered.
+
+| reaction | when the rule fires | the rule's row shows |
+|---|---|---|
+| Sound | one of three system sounds: Chime, Glass or Bell | the sound's name |
+| Haptic | a short buzz | buzz |
+| Say | your line, spoken by the system voice in English, and shown in a bubble over the picture | say |
+| Timer | a countdown of the minutes you typed; at its end, the chime and "Time's up" | the time left |
+| Count | adds one | ×N |
+| Log | the time and the rule as a line under the list (the latest three show) | log |
+
+Every rule also shows its symbol (64 pt) and its words (44 pt) over the picture for at least 2.5 s; a
+spoken line stays until the voice is done. The sounds are the system's own (`AudioServicesPlaySystemSound`,
+no audio files in the app) and follow the ring / silent switch; the spoken line (`AVSpeechSynthesizer`)
+plays through it, mixed with other audio.
+
+A rule fires when its answer is yes on this frame, was not yes on the frame before, and the rule has
+not fired in the last 3 s. A thing that stays in view fires once; one that leaves and comes back fires
+again. A count does not count a fire held back by those 3 s.
+
+What one frame sends:
+
+1. The frame: the newest camera frame (1280 × 720 from the back wide-angle camera; the frames that came
+   while the model was answering are dropped), the video's frame on the screen at that moment, or the
+   example photo on the screen. A camera or video frame is cropped to what the preview shows — the
+   preview fills its box, so the model gets the same middle part of the picture; an example photo goes
+   whole, as on the Ask screen.
+2. A new session (no history, greedy, at most 32 answer tokens) with the frame and one prompt: the line
+   "Answer each line with yes or no, nothing else." and a line `<i>. Is there <condition>?` per rule.
+3. The answer is read one line per rule: a line that starts with a number answers that rule, its first
+   word "yes" or "no" is the answer, and a rule no line answers is `?`.
+4. The next frame is taken when the answer is in. At the thermal state fair a frame starts at most every
+   2 s, at serious every 4 s, and the second numbers line says so (`every 2.0 s`).
+
+The numbers lines under Start (as the screen showed them at the 18th frame of the Example photos run below):
+
+```
+first token 1.27 s · total 1.37 s
+GPU · on-device · frame 18 · nominal · 349 MB
+```
+
+- first token: from the frame's call to the model to its first streamed text.
+- total: from taking the frame to its answer read — one turn of the loop.
+- GPU · on-device: where the model ran, as on the Ask screen; then the frames answered since Start, the
+  thermal state (`ProcessInfo.thermalState`) and the app's memory footprint (`phys_footprint`).
+
+On an iPhone 18 Pro (iOS 27.2) with the three first-launch rules, every frame sent 123 tokens in and got
+11 back, one numbered line per rule (`1. No`, `2. No`, `3. Yes`). With Example photos, a 40 s run answered
+30 frames, a frame took 1,366 ms (median; the first token came after 1,276 ms), all 90 answers matched
+the photos, and the rules fired 8 times — the chime 3 times, the spoken line twice, the count 3 times —
+each 1.36–1.40 s after its photo came on the screen. With the camera facing a dark desk, a 30 s run
+answered 21 frames, a frame took 1,455 ms (median; the frame was 31 ms old when it reached the model),
+all 63 answers were no, and nothing fired. Both runs stayed at the thermal state nominal, and the memory
+footprint stayed between 335 and 383 MB. Measured on 2026-10-21.
+
+The screen sits in the same band as the Ask screen. On an iPhone 18 Pro with three rules the picture is
+370 × 275 pt with `-take 1` (the run's record, `preview_pt`) and ≈ 229 pt tall with Add a rule under
+the rules (by the rows' heights); with more than three rules the list scrolls (a take shows the first
+three).
+
 ## Autoplay and the record
 
 For recordings and checks from a script, the app taps its own controls — the same functions the
@@ -135,7 +222,7 @@ xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
 | `-frames 1` | write the screen as PNGs to `Documents/frames/<epoch>/`: READY, the pick, the question, the first token, DONE (by hand: the first token and DONE) |
 | `-quit 1` | exit after the record |
 | `-probe 1` | log only START (the thermal state, the free bytes) and DONE; with `-quit 1`, exit |
-| `-take 1` | kept in the record as `take`; the layout is the same without it |
+| `-take 1` | hide the Ask \| Watch switch, so the band starts right under the status bar (kept in the record as `take`) |
 
 The log has one line per step: START, READY, PICK, CHIP (or QUESTION), ASK, FIRST, DONE, or ERROR
 with the reason, and INACTIVE / ACTIVE when the app stops and starts being the active app. The record
@@ -151,6 +238,71 @@ An alert that is already on the screen when the app starts keeps it from ever be
 that case the record also holds `scene_first_active_s` (when the app first became active, null if it
 never did) and `scene_at_record` (the phase when the record was written).
 
+### The watch screen
+
+`-watch 1` opens the app on the Watch screen. With `-seconds`, the app also runs a watch by itself: it
+waits for READY (and the camera, or the `-file` video), then for `-trigger`, then presses Start, watches
+for `-seconds` (a run over a video ends sooner when the video does) and presses Stop — `start()` and
+`stop()`, the functions the Start / Stop button calls. Without `-seconds` it presses nothing and the
+screen waits for a finger.
+
+```sh
+xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
+  -watch 1 -source photos -seconds 40 -take 1 -frames 1 -log 1 \
+  -rules "a chessboard=chime|a lighthouse=say:There is the lighthouse|a sign with words on it=count"
+```
+
+| argument | meaning |
+|---|---|
+| `-watch 1` | open on the Watch screen |
+| `-source camera` | `camera` (the default on an iPhone), `video` (with `-file`) or `photos` |
+| `-rules "a=b\|…"` | this launch's rules (not kept): `condition=reaction`, the reaction one of `chime`, `glass`, `bell`, `haptic`, `say:<line>`, `timer:<minutes>`, `count`, `log` |
+| `-conditions "a\|b\|…"` | the first version's form: conditions only, each with the chime |
+| `-symbols "a\|b\|…"` | the rules' SF Symbols, by place |
+| `-seconds 40` | press Start, watch this long (a frame being answered is finished), press Stop |
+| `-trigger <file>` | wait until this file exists in Documents before Start |
+| `-delay 1` | seconds between READY (or the trigger) and Start |
+| `-file <path>` | a video file opened as the video source, as a picked video is: `Documents/<name>` in the app's container (where `devicectl device copy to` puts it), a name in Documents, or an absolute path (`-video <name>` does the same) |
+| `-hold 4.5` | seconds each example photo stays on the screen; `0` = the next photo every frame |
+| `-tokens 32` | the answer's token cap |
+| `-truth "sign:no,no,yes;…"` | what each example photo shows, rule by rule (built in when every condition is one the app knows: a chessboard, a lighthouse, a sign with words on it, a person) |
+| `-permwait 600` | how long the first camera run waits for the answer to the camera permission request |
+| `-edit new`, `-edit <n>` | open the rule editor at READY, for a new rule or for rule n |
+| `-add "cond=reaction"` | with `-edit new`: fill the new rule, then save it `-gap` seconds later (what Done calls); alone: add it at READY |
+| `-take 1` | hide the Ask \| Watch switch; at most three rules show, and the video's play / pause button is hidden |
+| `-frames 1` | write the screen as PNGs to `Documents/frames/watch-<epoch>/`: READY, Start, each reaction (0.3 s after it) and the end |
+| `-log 1` | the lines and the record below, for every run (Start to Stop), by hand or not |
+| `-quit 1` | exit after the record; without it the app stays on the screen as the run left it |
+
+The log (`Documents/look-autoplay.log`) has START and READY, CAMERA / VIDEO when the source opens,
+TRIGGER, PRESS start / PRESS stop (VIDEO ended when the video ends the run), one WATCH line per frame
+(its times, tokens, answers, the rules that fired), one FIRE line per reaction (the rule, the reaction,
+the frame, the time), TIMER when a timer ends, EDIT and RULES for the editor, and DONE (or ERROR) with
+the record's name. The record
+(`Documents/watch-run-<epoch>.json`, schema `watch-run/2`) holds the rules and the prompt; per frame
+the times (capture, grab, done), the crop, the tokens in and out, the answers and the raw text, the
+rules fired and held back, the thermal state and the memory footprint, and with Example photos what
+the photo shows and when it came on the screen; `fires` (each reaction: the rule, the frame, the time
+from the frame's capture — and with Example photos from the photo's change — to the reaction,
+`sound_ms` until the system reported the sound played, `speech_start_ms` / `speech_end_ms` for a
+spoken line), `suppressed` (a yes within 3 s of the rule's last fire), `timers`, `presses`; the band in
+pixels (`take_rect_px`), `screen_px`, the picture's size (`preview_pt`), the numbers lines, the thermal
+state and the free bytes at the start and the end, the stretches when the app was not active
+(`inactive_*`), and `frames_png`. The summary holds the frame count, the median and range of the
+times, the yes count per rule, the unread answers, the fires by rule and by reaction, and the thermal
+states seen.
+
+The first version of this mode (`-conditions` with four conditions — a chessboard, a lighthouse, a sign
+with words on it, a person — and the next example photo every frame, as `-hold 0` does now) was
+measured on an iPhone 18 Pro (iOS 27.2) on 2026-10-21: every frame sent 131 tokens in and got 15 back,
+one numbered line per condition (`1. No`, `2. No`, `3. Yes`, `4. No`). With the example photos the loop
+answered 41 frames in 61 s, a frame took 1,485 ms (median; the first token came after 1,355 ms), and
+all 164 answers matched the photos. With the camera facing a dark desk it answered 39 frames in 62 s,
+a frame took 1,576 ms (median; the frame was 32 ms old when it reached the model, and the first token
+came 1,443 ms later), and all 156 answers were no. The memory footprint stayed between 334 and 353 MB.
+Both runs started at the thermal state nominal and ended at fair (the photos run in its last frame, the
+camera run from 47 s on).
+
 ## The UI test
 
 `UITests/LookUITests.swift` drives the screen through its own controls on an iPhone: it waits for
@@ -163,65 +315,6 @@ xcodebuild test -project Look.xcodeproj -scheme Look -destination 'platform=iOS,
 ```
 
 The first UI test on a phone asks for the phone's passcode on the phone.
-
-## Watch mode
-
-Started with `-watch 1`, the app shows another screen and runs a loop for a check from a script:
-frames from the back camera go to the model one at a time, each with a list of conditions typed at
-launch, and the model answers yes or no for every condition. A condition that turns yes fires its
-reaction: a system sound, its SF Symbol over the picture for 1.5 s, and a haptic.
-
-```sh
-xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
-  -watch 1 -source camera -seconds 60 \
-  -conditions "a chessboard|a lighthouse|a sign with words on it|a person" -log 1 -quit 1
-```
-
-1. When an answer is in, the newest camera frame is taken (1280 × 720 from the back wide-angle camera;
-   the frames that came while the model was answering are dropped) and turned upright for a phone held
-   upright.
-2. The frame and one prompt go to a new session (no history, greedy, at most 32 answer tokens): the
-   line "Answer each line with yes or no, nothing else." and a line `<i>. Is there <condition>?` per
-   condition. `-form single` asks one session per condition instead ("Is there <condition>? Answer
-   yes or no.").
-3. The answer is read one line per condition: a line that starts with a number answers that
-   condition, its first word "yes" or "no" is the answer, and a condition no line answers is `?`.
-4. A condition that is yes now and was not on the frame before fires its reaction.
-
-The screen shows the live camera (or the example photo last answered), one row per condition with
-its answer, the latest frame's times — capture to the model's input, the first token, and the whole
-frame — and the frame count, the thermal state and the memory footprint.
-
-| argument | meaning |
-|---|---|
-| `-watch 1` | the watch mode instead of the Look screen |
-| `-source camera` | `camera` (the default on an iPhone), or `photos`: the three examples in turn (sign, object, scene, sign …), each read as a tap on its thumbnail reads it |
-| `-seconds 60` | how long the loop runs; a frame it started is finished |
-| `-conditions "a|b|…"` | the conditions, separated by `|` (default: a chessboard, a lighthouse, a sign with words on it, a person) |
-| `-symbols "a|b|…"` | the SF Symbol of each condition (default for the four: `checkerboard.rectangle`, `light.beacon.max`, `signpost.right`, `person`) |
-| `-form batch` | `batch` (one prompt for all the conditions) or `single` (one session per condition) |
-| `-tokens 32` | the answer's token cap |
-| `-truth "sign:no,no,yes,no;…"` | what each example photo shows, condition by condition, for `-source photos` (built in for the four default conditions) |
-| `-permwait 600` | how long the first camera run waits for the answer to the camera permission request |
-| `-log 1` | the lines START, READY, CAMERA, WATCH (one per frame), DONE (or ERROR) in `Documents/look-autoplay.log`, and the record `Documents/watch-run-<epoch>.json` |
-| `-quit 1` | exit after the record |
-
-The record (`watch-run/1`) holds the conditions, the prompt and, per frame: when it was captured and
-taken, how old it was, the time to make its image, the first token, the model's time and the whole
-frame's time, the tokens in and out, the answers, the raw answer, the reactions, the thermal state and
-the memory footprint (`phys_footprint`); with `-source photos`, also what the photo shows and how
-many answers matched it. The summary holds the frame count, the mean, median and maximum of the
-times, the yes count per condition, the unread answers (`?`) and the thermal states seen. The first
-camera run asks for the camera permission on the phone.
-
-On an iPhone 18 Pro (iOS 27.2) with the four default conditions, every frame sent 131 tokens in and
-got 15 back, one numbered line per condition (`1. No`, `2. No`, `3. Yes`, `4. No`). With `-source
-photos`, the loop answered 41 frames in 61 s, a frame took 1,485 ms (median; the first token came
-after 1,355 ms), and all 164 answers matched the photos. With the camera facing a dark desk, it
-answered 39 frames in 62 s, a frame took 1,576 ms (median; the frame was 32 ms old when it reached the
-model, and the first token came 1,443 ms later), and all 156 answers were no. The memory footprint
-stayed between 334 and 353 MB. Both runs started at the thermal state nominal and ended at fair (the
-photos run in its last frame, the camera run from 47 s on). Measured on 2026-10-21.
 
 ## Example photos
 
@@ -249,8 +342,14 @@ so, writes nothing, and names the Openverse record and the source page.
 | a photo stored sideways with an EXIF orientation | nothing: the screen shows it upright and the model gets it upright |
 | a build without the example photos | The example photos are not in this build: see the README (the tiles show their names) |
 | Stop during an answer | STOPPED, with the answer so far; the record says `stop: stopped` |
+| Watch: the camera permission refused (or turned off later) | Camera access is off: Settings › Privacy › Camera |
+| Watch: the first camera use, before the answer to the permission request | Allow the camera to start watching |
+| Watch: Pick a video before a video is picked | Pick a video, then Start |
+| Watch: a picked video the app cannot open | Could not read that video / Could not open that video, and the reason |
+| Watch: every rule deleted | Add a rule first (Start stays off) |
+| Watch: Stop during a frame | Stopping after this frame…, then PAUSED · Stopped · N frames · M reactions |
 
-These are the app's own sentences, from `LookModel.swift`.
+These are the app's own sentences, from `LookModel.swift` and `Watch.swift`.
 
 ## Models
 

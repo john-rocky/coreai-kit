@@ -4,8 +4,9 @@
 // Autoplay's record of a question asked by hand hooks onAsked / onFirstToken / onFinished.
 //
 // The model loads when the app starts (READY) through its catalog id — the id on the model's card —
-// exactly as QuickStart.swift does. Every question is a new `LanguageModelSession` (no history):
-// the photo, then the question, in one turn, greedy, at most 256 answer tokens.
+// exactly as QuickStart.swift does; the watch screen uses the same loaded model (`loadedModel`).
+// Every question is a new `LanguageModelSession` (no history): the photo, then the question, in one
+// turn, greedy, at most 256 answer tokens.
 
 import CoreAIKit
 import Foundation
@@ -174,6 +175,9 @@ final class LookModel {
     }
 
     var canAsk: Bool { model != nil && phase != .thinking && phase != .loading }
+
+    /// The loaded model, which the watch screen (Watch.swift) uses too: one load per launch.
+    var loadedModel: KitVisionModel? { model }
 
     // MARK: - Model
 

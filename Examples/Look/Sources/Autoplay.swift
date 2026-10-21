@@ -23,7 +23,13 @@
 // app in front: INACTIVE / ACTIVE lines, and `inactive_count`, `inactive_s`, `inactive_at` in the
 // record. `-quit 1` exits after the autoplay record; `-probe 1` logs START (the thermal state, the
 // free bytes) and DONE, nothing else. Nothing else changes: the screen is the same code with the
-// same buttons, and the layout is the same with or without `-take 1` (kept in the record as `take`).
+// same buttons. `-take 1` hides the Ask | Watch switch above the band, so the band starts right
+// under the status bar; the band itself is the same (kept in the record as `take`).
+//
+// The watch screen has its own driver below (WatchAutoplay): `-watch 1 … -seconds 40` waits for
+// READY (and `-trigger`), presses Start, watches for `-seconds`, presses Stop — start() and stop(),
+// what the Start / Stop button calls — and with `-frames 1` writes the screen at READY, Start, each
+// reaction and the end.
 
 import CoreAIKit
 import Foundation
@@ -82,8 +88,8 @@ final class Autoplay {
         fired = true
         if enabled {
             await sequence(screen)
-        } else if log {
-            followHands(screen)
+        } else if log, !UserDefaults.standard.bool(forKey: "watch") {
+            followHands(screen)  // a launch on the watch screen keeps the watch screen's log
         }
     }
 
@@ -359,7 +365,7 @@ final class Autoplay {
         pendingWrites.append(Task.detached { Autoplay.writePNG(image, to: url) })
     }
 
-    nonisolated private static func writePNG(_ image: CGImage, to url: URL) {
+    nonisolated static func writePNG(_ image: CGImage, to url: URL) {
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard let file = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) else { return }
@@ -367,7 +373,7 @@ final class Autoplay {
         CGImageDestinationFinalize(file)
     }
 
-    private static func captureWindow() -> CGImage? {
+    static func captureWindow() -> CGImage? {
         #if os(iOS)
         guard let window = keyWindow else { return nil }
         let format = UIGraphicsImageRendererFormat()
@@ -385,7 +391,7 @@ final class Autoplay {
     }
 
     /// The screen in pixels and its scale (1206 × 2622 at 3 on an iPhone 18 Pro).
-    private static func screenFacts() -> ([Int], Double) {
+    static func screenFacts() -> ([Int], Double) {
         #if os(iOS)
         guard let window = keyWindow else { return ([], 0) }
         let scale = window.traitCollection.displayScale
@@ -428,7 +434,7 @@ final class Autoplay {
         return formatter
     }()
 
-    private static func inDocuments(_ path: String) -> String {
+    static func inDocuments(_ path: String) -> String {
         path.hasPrefix("/") ? path : URL.documentsDirectory.appending(path: path).path
     }
 
@@ -453,6 +459,129 @@ final class Autoplay {
     static func freeBytes() -> Int64? {
         (try? URL.documentsDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage
+    }
+}
+
+/// Drives the watch screen hands-off (`-watch 1`), for a recording or a check from a script:
+///
+///   xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
+///     -watch 1 -source photos -seconds 40 -take 1 -frames 1 -log 1 \
+///     -rules "a chessboard=chime|a lighthouse=say:There is the lighthouse|a sign with words on it=count"
+///
+/// It waits for READY (and the camera, or the `-file` video), then — once `-trigger <file>` exists and
+/// `-delay` seconds (default 1) have passed — presses Start, watches for `-seconds` (a video's run
+/// may end sooner, with the video), and presses Stop:
+/// start() and stop(), the functions the Start / Stop button calls. The run's record and its DONE
+/// line come from the watch screen itself (Watch.swift). Without `-seconds` it presses nothing: the
+/// screen waits for a finger. `-edit new` (or a rule's number) opens the rule editor at READY;
+/// `-add "cond=reaction"` fills the new rule, and `-gap` seconds later saves it — save(_:), what the
+/// editor's Done calls. `-frames 1` writes the screen as PNGs to Documents/frames/watch-<epoch>/: READY,
+/// Start, each reaction (0.3 s after it, when the reaction is on the screen) and the end; the record
+/// lists them (`frames_png`). `-quit 1` exits after the record; without it the app stays on the
+/// screen as the run left it.
+@MainActor
+final class WatchAutoplay {
+    private var fired = false
+    private var frameFiles: [String] = []
+    private var frameMillis: [String: Int] = [:]
+    private var pendingWrites: [Task<Void, Never>] = []
+    private var folder = ""
+
+    func run(_ watch: WatchModel) async {
+        guard !fired else { return }
+        fired = true
+        let settings = watch.settings
+        guard settings.opened else { return }
+        // The model, then the source (the camera's permission, the -video file).
+        while watch.phase == .loading { try? await Task.sleep(for: .milliseconds(50)) }
+        try? await Task.sleep(for: .milliseconds(200))
+        while watch.opening { try? await Task.sleep(for: .milliseconds(50)) }
+        if settings.frames {
+            folder = "frames/watch-\(watch.launchEpoch)"
+            watch.onFire = { [weak self] number in self?.fireFrame(number) }
+            watch.beforeRecord = { [weak self] in await self?.finishFrames() ?? [:] }
+        }
+        guard watch.phase == .ready else {
+            if settings.quit { exit(1) }
+            return
+        }
+        await Task.yield()
+        frame("ready")
+
+        if let edit = settings.edit {
+            try? await Task.sleep(for: .seconds(settings.delay))
+            let prefill = settings.add.flatMap { WatchRules.parse($0).first }
+            if edit == "new" {
+                var rule = prefill
+                rule?.symbol = WatchRules.unusedSymbol(watch.rules)
+                watch.addRule(prefill: rule)
+            } else if let number = Int(edit), watch.rules.indices.contains(number - 1) {
+                watch.edit(watch.rules[number - 1])
+            }
+            watch.note("EDIT open \(edit)\(prefill.map { " prefill=\($0.condition)=\($0.reaction.token)" } ?? "")")
+            if edit == "new", let rule = watch.editing?.rule, prefill != nil {
+                try? await Task.sleep(for: .seconds(settings.gap))
+                watch.save(rule)
+            }
+        } else if let add = settings.add, var rule = WatchRules.parse(add).first {
+            rule.symbol = WatchRules.unusedSymbol(watch.rules)
+            watch.save(rule)
+        }
+
+        guard let seconds = settings.seconds else { return }  // no -seconds: a finger presses Start
+        if let trigger = settings.trigger {
+            let path = Autoplay.inDocuments(trigger)
+            while !FileManager.default.fileExists(atPath: path) {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            watch.note("TRIGGER \(path)")
+        }
+        try? await Task.sleep(for: .seconds(settings.delay))
+        guard watch.start() else {
+            watch.note("ERROR start: \(watch.detail) json=-")
+            if settings.quit { exit(1) }
+            return
+        }
+        let clock = ContinuousClock()
+        let started = clock.now
+        await Task.yield()
+        frame("start")
+        // `-seconds`, or less: a run over a video ends with the video.
+        let end = started + .seconds(seconds)
+        while clock.now < end, watch.phase == .watching {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        watch.stop()
+        await watch.finished()
+        if settings.quit { exit(watch.lastFailure == nil ? 0 : 1) }
+    }
+
+    /// The screen 0.3 s after the n-th reaction (the overlay has faded in by then).
+    private func fireFrame(_ number: Int) {
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            self.frame(String(format: "fire%02d", number))
+        }
+    }
+
+    /// The end frame, then every PNG on disk: what the record lists.
+    private func finishFrames() async -> [String: Any] {
+        await Task.yield()
+        frame("done")
+        for write in pendingWrites { await write.value }
+        return ["frames_png": frameFiles, "frame_ms": frameMillis]
+    }
+
+    private func frame(_ name: String) {
+        guard !folder.isEmpty else { return }
+        let clock = ContinuousClock()
+        let start = clock.now
+        guard let image = Autoplay.captureWindow() else { return }
+        frameMillis[name] = Int((LookModel.seconds(clock.now - start) * 1000).rounded())
+        let path = "\(folder)/\(name).png"
+        frameFiles.append(path)
+        let url = URL.documentsDirectory.appending(path: path)
+        pendingWrites.append(Task.detached { Autoplay.writePNG(image, to: url) })
     }
 }
 

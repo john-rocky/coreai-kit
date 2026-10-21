@@ -55,7 +55,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Look sends a photo you choose to a vision-language model that runs fully on-device. Nothing leaves your device."
-        INFOPLIST_KEY_NSCameraUsageDescription: "Look takes a photo for a vision-language model that runs fully on-device. Nothing leaves your device."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Look shows what the camera sees to a vision-language model that runs fully on-device: a photo you take, or the frames the Watch screen checks. Nothing leaves your device."
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
         SWIFT_APPROACHABLE_CONCURRENCY: "YES"
         ENABLE_APP_SANDBOX: "NO"
