@@ -4,7 +4,12 @@ import SwiftUI
 struct LookApp: App {
     var body: some Scene {
         WindowGroup {
-            LookView()
+            // `-watch 1`: the watch mode (Watch.swift), for a check from a script; otherwise the screen.
+            if UserDefaults.standard.bool(forKey: "watch") {
+                WatchView()
+            } else {
+                LookView()
+            }
         }
     }
 }

@@ -164,6 +164,65 @@ xcodebuild test -project Look.xcodeproj -scheme Look -destination 'platform=iOS,
 
 The first UI test on a phone asks for the phone's passcode on the phone.
 
+## Watch mode
+
+Started with `-watch 1`, the app shows another screen and runs a loop for a check from a script:
+frames from the back camera go to the model one at a time, each with a list of conditions typed at
+launch, and the model answers yes or no for every condition. A condition that turns yes fires its
+reaction: a system sound, its SF Symbol over the picture for 1.5 s, and a haptic.
+
+```sh
+xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
+  -watch 1 -source camera -seconds 60 \
+  -conditions "a chessboard|a lighthouse|a sign with words on it|a person" -log 1 -quit 1
+```
+
+1. When an answer is in, the newest camera frame is taken (1280 × 720 from the back wide-angle camera;
+   the frames that came while the model was answering are dropped) and turned upright for a phone held
+   upright.
+2. The frame and one prompt go to a new session (no history, greedy, at most 32 answer tokens): the
+   line "Answer each line with yes or no, nothing else." and a line `<i>. Is there <condition>?` per
+   condition. `-form single` asks one session per condition instead ("Is there <condition>? Answer
+   yes or no.").
+3. The answer is read one line per condition: a line that starts with a number answers that
+   condition, its first word "yes" or "no" is the answer, and a condition no line answers is `?`.
+4. A condition that is yes now and was not on the frame before fires its reaction.
+
+The screen shows the live camera (or the example photo last answered), one row per condition with
+its answer, the latest frame's times — capture to the model's input, the first token, and the whole
+frame — and the frame count, the thermal state and the memory footprint.
+
+| argument | meaning |
+|---|---|
+| `-watch 1` | the watch mode instead of the Look screen |
+| `-source camera` | `camera` (the default on an iPhone), or `photos`: the three examples in turn (sign, object, scene, sign …), each read as a tap on its thumbnail reads it |
+| `-seconds 60` | how long the loop runs; a frame it started is finished |
+| `-conditions "a|b|…"` | the conditions, separated by `|` (default: a chessboard, a lighthouse, a sign with words on it, a person) |
+| `-symbols "a|b|…"` | the SF Symbol of each condition (default for the four: `checkerboard.rectangle`, `light.beacon.max`, `signpost.right`, `person`) |
+| `-form batch` | `batch` (one prompt for all the conditions) or `single` (one session per condition) |
+| `-tokens 32` | the answer's token cap |
+| `-truth "sign:no,no,yes,no;…"` | what each example photo shows, condition by condition, for `-source photos` (built in for the four default conditions) |
+| `-permwait 600` | how long the first camera run waits for the answer to the camera permission request |
+| `-log 1` | the lines START, READY, CAMERA, WATCH (one per frame), DONE (or ERROR) in `Documents/look-autoplay.log`, and the record `Documents/watch-run-<epoch>.json` |
+| `-quit 1` | exit after the record |
+
+The record (`watch-run/1`) holds the conditions, the prompt and, per frame: when it was captured and
+taken, how old it was, the time to make its image, the first token, the model's time and the whole
+frame's time, the tokens in and out, the answers, the raw answer, the reactions, the thermal state and
+the memory footprint (`phys_footprint`); with `-source photos`, also what the photo shows and how
+many answers matched it. The summary holds the frame count, the mean, median and maximum of the
+times, the yes count per condition, the unread answers (`?`) and the thermal states seen. The first
+camera run asks for the camera permission on the phone.
+
+On an iPhone 18 Pro (iOS 27.2) with the four default conditions, every frame sent 131 tokens in and
+got 15 back, one numbered line per condition (`1. No`, `2. No`, `3. Yes`, `4. No`). With `-source
+photos`, the loop answered 41 frames in 61 s, a frame took 1,485 ms (median; the first token came
+after 1,355 ms), and all 164 answers matched the photos. With the camera facing a dark desk, it
+answered 39 frames in 62 s, a frame took 1,576 ms (median; the frame was 32 ms old when it reached the
+model, and the first token came 1,443 ms later), and all 156 answers were no. The memory footprint
+stayed between 334 and 353 MB. Both runs started at the thermal state nominal and ended at fair (the
+photos run in its last frame, the camera run from 47 s on). Measured on 2026-10-21.
+
 ## Example photos
 
 Three photos, each CC0 1.0 according to its Openverse record; none shows a person, a brand or a logo.
