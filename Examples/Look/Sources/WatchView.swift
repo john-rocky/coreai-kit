@@ -5,8 +5,9 @@
 // Everything sits in the band the app gives every screen (the screen's width × 16/9, LookApp.swift).
 // The rows have fixed heights and the picture gets what is left: on an iPhone 18 Pro with three rules
 // it is ≈ 275 pt tall in take mode (`-take 1`: three rules at most, no "+ Add a rule", no video
-// button) and ≈ 229 pt otherwise. A rule's words are 26 pt; a reaction shows its symbol at 64 pt and
-// its words at 44 pt for at least 3 s.
+// button) and ≈ 229 pt otherwise. A rule's words are 26 pt (a long sentence shrinks to fit its row);
+// a reaction shows its symbol at 64 pt and its words at 44 pt for at least 3 s; an effect plays over
+// its place on the picture for 3 s, drawn (WatchEffects.swift), without a symbol or words.
 
 import PhotosUI
 import SwiftUI
@@ -67,7 +68,7 @@ struct WatchView: View {
             RuleEditor(
                 target: target, count: model.rowStates[target.rule.id]?.count ?? 0,
                 onSave: { model.save($0) }, onDelete: { model.delete(target.rule.id) },
-                onPlay: { model.preview($0) })
+                onPlay: { model.preview($0) }, onPlayEffect: { model.preview($0) })
         }
     }
 
@@ -183,6 +184,8 @@ struct WatchView: View {
                     placeholder("photo")
                 }
             }
+            WatchEffectLayer(runs: model.effects)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             if let overlay = model.overlay {
                 reaction(overlay)
                     .id(overlay.id)
@@ -282,10 +285,12 @@ struct WatchView: View {
                     .frame(width: 44, height: 44)
                     .background(RoundedRectangle(cornerRadius: 10).fill(yes ? WatchPalette.yes : Palette.surfaceHigh))
                 VStack(alignment: .leading, spacing: 1) {
+                    // a sentence ("water rushing over rows of stones") shrinks to fit the row rather than lose its end
                     Text(rule.condition)
                         .font(.system(size: WatchRows.conditionFont, weight: .semibold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                     HStack(spacing: 8) {
                         Text(Self.answerLabel(state.answer))
                             .font(.system(size: 14, weight: .heavy))
@@ -335,6 +340,8 @@ struct WatchView: View {
             Label("×\(state.count)", systemImage: "number")
         case .log:
             Label("log", systemImage: "list.bullet")
+        case .effect(let effect):
+            Label(effect.rawValue, systemImage: "sparkles")
         }
     }
 
@@ -447,38 +454,45 @@ private struct VideoButton: View {
     }
 }
 
-/// One rule in a sheet: what to look for, what happens then, its symbol; Done keeps it.
+/// One rule in a sheet: what to look for, what happens then, its symbol (not for an effect, which
+/// shows none); Done keeps it.
 struct RuleEditor: View {
     let target: WatchModel.EditTarget
     let count: Int
     let onSave: (WatchRule) -> Void
     let onDelete: () -> Void
     let onPlay: (WatchSound) -> Void
+    let onPlayEffect: (WatchEffect) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var condition: String
     @State private var kind: WatchReaction.Kind
     @State private var sound: WatchSound
     @State private var sayText: String
     @State private var minutes: Double
+    @State private var effect: WatchEffect
     @State private var symbol: String
 
     init(
         target: WatchModel.EditTarget, count: Int, onSave: @escaping (WatchRule) -> Void,
-        onDelete: @escaping () -> Void, onPlay: @escaping (WatchSound) -> Void
+        onDelete: @escaping () -> Void, onPlay: @escaping (WatchSound) -> Void,
+        onPlayEffect: @escaping (WatchEffect) -> Void
     ) {
         self.target = target
         self.count = count
         self.onSave = onSave
         self.onDelete = onDelete
         self.onPlay = onPlay
+        self.onPlayEffect = onPlayEffect
         let rule = target.rule
         var sound = WatchSound.chime
         var say = ""
         var minutes = 3.0
+        var effect = WatchEffect.ripple
         switch rule.reaction {
         case .sound(let chosen): sound = chosen
         case .say(let text): say = text
         case .timer(let chosen): minutes = chosen
+        case .effect(let chosen): effect = chosen
         default: break
         }
         _condition = State(initialValue: rule.condition)
@@ -486,6 +500,7 @@ struct RuleEditor: View {
         _sound = State(initialValue: sound)
         _sayText = State(initialValue: say)
         _minutes = State(initialValue: minutes)
+        _effect = State(initialValue: effect)
         _symbol = State(initialValue: rule.symbol)
     }
 
@@ -499,6 +514,7 @@ struct RuleEditor: View {
         case .timer: .timer(minutes: min(max(minutes, 0.1), 120))
         case .count: .count
         case .log: .log
+        case .effect: .effect(effect)
         }
     }
 
@@ -533,23 +549,25 @@ struct RuleEditor: View {
                     .labelsHidden()
                     detail
                 }
-                Section("Symbol") {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                        ForEach(WatchRules.symbols, id: \.self) { name in
-                            Button { symbol = name } label: {
-                                Image(systemName: name)
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 44)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8).fill(symbol == name ? Palette.accent : Palette.surfaceHigh))
+                if kind != .effect {
+                    Section("Symbol") {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+                            ForEach(WatchRules.symbols, id: \.self) { name in
+                                Button { symbol = name } label: {
+                                    Image(systemName: name)
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 44)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8).fill(symbol == name ? Palette.accent : Palette.surfaceHigh))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(name)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(name)
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                 }
                 if !target.isNew {
                     Section {
@@ -609,6 +627,15 @@ struct RuleEditor: View {
             Text("Adds one each time it fires (now \(count)).").foregroundStyle(.secondary)
         case .log:
             Text("Writes the time and the rule under the list.").foregroundStyle(.secondary)
+        case .effect:
+            Picker("Effect", selection: $effect) {
+                ForEach(WatchEffect.allCases) { effect in Text(effect.title).tag(effect) }
+            }
+            .pickerStyle(.segmented)
+            Text(effect.look).foregroundStyle(.secondary)
+            Text("It plays over the part of the picture where the model says the thing is, or over all of it.")
+                .foregroundStyle(.secondary)
+            Button("Play its sound") { onPlayEffect(effect) }
         }
     }
 }

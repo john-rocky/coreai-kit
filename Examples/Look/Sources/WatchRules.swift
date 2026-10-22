@@ -1,8 +1,10 @@
 // WatchRules — what the watch screen looks for and what it does then. A rule is a condition in
 // words ("a chessboard"; the model is asked "Is there a chessboard?"), one reaction, and an SF
 // Symbol that shows over the picture whenever the rule fires. The reactions are the app's own
-// functions and the system's sounds and voice — no media files: a system sound, a haptic, a line
-// spoken by the system voice, a timer, a count, a line in the log.
+// functions and the system's sounds and voice: a system sound, a haptic, a line spoken by the
+// system voice, a timer, a count, a line in the log — or an effect, drawn by the app at the place
+// the model names, with a short sound (WatchEffects.swift; the sound files are fetched, not in the
+// repository, and the chime plays when one is missing). An effect shows no symbol and no words.
 //
 // Rules typed on the screen are kept between launches (UserDefaults). A launch with `-rules`
 // (or r5's `-conditions`) uses those instead and keeps nothing:
@@ -10,7 +12,8 @@
 //   -rules "a chessboard=chime|a lighthouse=say:There is the lighthouse|a sign with words on it=count"
 //
 // One rule per `|`, the condition before the first `=`, then the reaction: chime | glass | bell
-// (a sound), haptic, say:<text>, timer:<minutes>, count, log.
+// (a sound), haptic, say:<text>, timer:<minutes>, count, log, effect:ripple | effect:sweep |
+// effect:rays.
 
 import AudioToolbox
 import Foundation
@@ -33,7 +36,37 @@ enum WatchSound: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// What a rule does when it fires (besides its symbol over the picture, which every rule shows).
+/// The effects a rule can play where the model says its thing is: drawn by the app over the
+/// picture (WatchEffects.swift), with a short sound. No image, no symbol, no words.
+enum WatchEffect: String, Codable, CaseIterable, Identifiable {
+    case ripple, sweep, rays
+
+    var id: String { rawValue }
+
+    var title: String { rawValue.capitalized }
+
+    /// Its sound: Sounds/<sound>.m4a in the app (tools/fetch_examples.sh), the chime when the build
+    /// does not have it.
+    var sound: String {
+        switch self {
+        case .ripple: "water"
+        case .sweep: "horn"
+        case .rays: "bells"
+        }
+    }
+
+    /// What it looks and sounds like, for the editor.
+    var look: String {
+        switch self {
+        case .ripple: "Rings spread from the place, with the sound of running water."
+        case .sweep: "A band of light runs across the place and traces its edges, with a horn."
+        case .rays: "Rays of light burst from the place, with bells."
+        }
+    }
+}
+
+/// What a rule does when it fires (besides its symbol over the picture, which every rule but an
+/// effect shows).
 enum WatchReaction: Codable, Equatable {
     case sound(WatchSound)
     case haptic
@@ -41,9 +74,10 @@ enum WatchReaction: Codable, Equatable {
     case timer(minutes: Double)
     case count
     case log
+    case effect(WatchEffect)
 
     enum Kind: String, CaseIterable, Identifiable {
-        case sound, haptic, say, timer, count, log
+        case sound, haptic, say, timer, count, log, effect
 
         var id: String { rawValue }
 
@@ -55,6 +89,7 @@ enum WatchReaction: Codable, Equatable {
             case .timer: "Timer"
             case .count: "Count"
             case .log: "Log"
+            case .effect: "Effect"
             }
         }
 
@@ -66,6 +101,7 @@ enum WatchReaction: Codable, Equatable {
             case .timer: "timer"
             case .count: "number"
             case .log: "list.bullet"
+            case .effect: "sparkles"
             }
         }
     }
@@ -78,10 +114,11 @@ enum WatchReaction: Codable, Equatable {
         case .timer: .timer
         case .count: .count
         case .log: .log
+        case .effect: .effect
         }
     }
 
-    /// The record's name for it: "chime", "haptic", "say", "timer", "count", "log".
+    /// The record's name for it: "chime", "haptic", "say", "timer", "count", "log", "effect".
     var name: String {
         switch self {
         case .sound(let sound): sound.rawValue
@@ -90,19 +127,27 @@ enum WatchReaction: Codable, Equatable {
         case .timer: "timer"
         case .count: "count"
         case .log: "log"
+        case .effect: "effect"
         }
     }
 
-    /// The text it speaks, or its minutes; nil for the others.
+    /// The text it speaks, its minutes, or its effect; nil for the others.
     var detail: String? {
         switch self {
         case .say(let text): text
         case .timer(let minutes): Self.minutesText(minutes)
+        case .effect(let effect): effect.rawValue
         default: nil
         }
     }
 
-    /// The `-rules` form: "chime", "say:There is the lighthouse", "timer:3".
+    /// The effect it plays, nil for the other reactions.
+    var effect: WatchEffect? {
+        if case .effect(let effect) = self { return effect }
+        return nil
+    }
+
+    /// The `-rules` form: "chime", "say:There is the lighthouse", "timer:3", "effect:ripple".
     var token: String { detail.map { "\(name):\($0)" } ?? name }
 
     /// Reads one reaction of `-rules`; anything else plays the chime.
@@ -117,7 +162,13 @@ enum WatchReaction: Codable, Equatable {
         case "count": self = .count
         case "log": self = .log
         case "sound": self = .sound(WatchSound(rawValue: rest.lowercased()) ?? .chime)
-        default: self = .sound(WatchSound(rawValue: head) ?? .chime)
+        case "effect": self = .effect(WatchEffect(rawValue: rest.lowercased()) ?? .ripple)
+        default:
+            if let effect = WatchEffect(rawValue: head) {
+                self = .effect(effect)
+            } else {
+                self = .sound(WatchSound(rawValue: head) ?? .chime)
+            }
         }
     }
 

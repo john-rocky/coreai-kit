@@ -38,6 +38,13 @@ targets:
         type: folder
         buildPhase: resources
         optional: true
+      # The Watch screen's effect sounds (water.m4a, horn.m4a, bells.m4a), as a folder in the app bundle
+      # (Look.app/Sounds/). Not in the repository either: tools/fetch_examples.sh downloads and cuts them here
+      # (README: Reaction sounds). Without them an effect plays the system chime.
+      - path: Sounds
+        type: folder
+        buildPhase: resources
+        optional: true
     dependencies:
       - package: coreai-kit
         product: CoreAIKit
