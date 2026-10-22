@@ -226,16 +226,30 @@ answered 21 frames, a frame took 1,455 ms (median; the frame was 31 ms old when 
 all 63 answers were no, and nothing fired. Both runs stayed at the thermal state nominal, and the memory
 footprint stayed between 335 and 383 MB. Measured on 2026-10-21.
 
-The recorded take played the [example video](#example-video) with its three rules, in a new process on the
-same phone, on 2026-10-22 (`watch-run-1792603139.json`). It answered 20 frames in 27.0 s and ended with
-the video; a frame took 1,345 ms (median; the first token came after 1,256 ms), with 117 tokens in and 11
-back. At the end the numbers lines read `first token 1.24 s · total 1.33 s` and
-`GPU · on-device · frame 20 · nominal · 344 MB` (the last frame's). Each rule fired once and nothing else
-did: the chime 1.37 s into the video, the count at 6.75 s and the spoken line at 17.53 s — 1.37, 1.75 and
-2.53 s after the seconds where the same model with the same prompt, given one frame a second on a Mac,
-first answers yes (0, 5 and 15 s). Each reaction came 1.34–1.37 s after its frame was taken: the next
-frame is taken when the answer before it is in, so a thing that comes into view waits for that frame. The
-thermal state stayed nominal and the memory footprint between 343 and 388 MB.
+The recorded take played the [example video](#example-video) with three effect rules — *water rushing
+over rows of stones* → Ripple, *a river flowing under a bridge* → Sweep, *a church with a tall spire* →
+Rays — and the place question in words (`-cells ask -cellwords 1`), in a new process on the same phone,
+on 2026-10-22 (`watch-run-1792648309.json`; Look 1.0 (1) built from commit 6aa2700). It answered 15
+frames in 26.2 s and ended with the video; a frame took 1,495 ms (median; the first token came after
+1,382 ms), with 130 tokens in and 11–14 back, and each place question took 1,213–1,228 ms more (median
+1,223 ms). At the end the numbers lines read `first token 1.37 s · total 1.49 s` and
+`GPU · on-device · frame 15 · nominal · 349 MB` (the last frame's). Each rule fired once and nothing else
+did, on the frames taken 0.03, 5.74 and 15.94 s into the video — within a second of the seconds where the
+same model with the same prompt, given one frame a second on a Mac, first answers yes (0, 5 and 15 s):
+
+| rule | the place answer | cell | where the thing was, by eye (the seconds around that frame) |
+|---|---|---|---|
+| water rushing over rows of stones | `center; middle` | 5 | cells 2, 4, 5, 7, 8 |
+| a river flowing under a bridge | `center; top` | 2 | cell 3, the next cell |
+| a church with a tall spire | `center; top` | 2 | cells 2, 3 |
+
+Each effect started 2.68–2.72 s after its frame was taken (the yes / no answer, then the place question),
+and its sound 16–19 ms after that; the video moves on meanwhile, so an effect marks where the thing was
+when its frame was taken. The thermal state stayed nominal and the memory footprint between 349 and
+414 MB. An earlier take of the same video with three plain reactions (the chime, a count and a spoken
+line, no place question; `watch-run-1792603139.json`) answered 20 frames at 1,345 ms a frame (median),
+and each reaction came 1.34–1.37 s after its frame was taken: the next frame is taken when the answer
+before it is in, so a thing that comes into view waits for that frame.
 
 The screen sits in the same band as the Ask screen. On an iPhone 18 Pro with three rules the picture is
 370 × 275 pt with `-take 1` (the run's record, `preview_pt`) and ≈ 229 pt tall with Add a rule under
@@ -398,30 +412,31 @@ checks the clip's form instead (H.264, 1920 × 1080, 30 fps, 26 s, no audio). Wi
 says so and puts the photos in place only.
 
 To watch it on the phone: copy `Videos/flyover.mp4` to the iPhone (AirDrop from a Mac puts it in
-Photos), open Watch, tap **Pick a video** and choose it, write three rules — *a river* → Sound (Chime),
-*a bridge* → Count, *a church* → Say "There is a church" — and Start. The video plays once from its
-start, muted, and the run ends with it. A script does the same with launch arguments (the recorded take
-in [Watch](#watch) ran this, plus `-trigger` and `-frames 1`):
+Photos), open Watch, tap **Pick a video** and choose it, write three rules as states and relations —
+*water rushing over rows of stones* → Effect (Ripple), *a river flowing under a bridge* → Effect (Sweep),
+*a church with a tall spire* → Effect (Rays) — and Start. The video plays once from its start, muted, and
+the run ends with it; the effects' sounds come from `tools/fetch_examples.sh`. Started by hand, an effect
+plays over the whole picture. A script can also have the app ask where each thing is (`-cells ask
+-cellwords 1`); the recorded take in [Watch](#watch) ran this, plus `-trigger` and `-frames 1`:
 
 ```sh
 xcrun devicectl device copy to --device <udid> --domain-type appDataContainer \
   --domain-identifier com.coreaikit.look --source Videos/flyover.mp4 --destination Documents/flyover.mp4
 xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
   -watch 1 -source video -file Documents/flyover.mp4 -seconds 45 -delay 2 -take 1 -log 1 \
-  -rules "a river=chime|a bridge=count|a church=say:There is a church" \
+  -cells ask -cellwords 1 \
+  -rules "water rushing over rows of stones=effect:ripple|a river flowing under a bridge=effect:sweep|a church with a tall spire=effect:rays" \
   -symbols "water.waves|road.lanes|building.columns"
 ```
 
-The same video with effects at the place: write the rules as states and relations — *water rushing over
-rows of stones* → Effect (Ripple), *a river flowing under a bridge* → Effect (Sweep), *a church with a tall
-spire* → Effect (Rays) — and let the app ask where each one is (a script: `-cells ask -cellwords 1`; the
-sounds come from `tools/fetch_examples.sh`):
+The earlier take of the same video had three plain reactions — *a river* → Sound (Chime), *a bridge* →
+Count, *a church* → Say "There is a church":
 
 ```sh
 xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
   -watch 1 -source video -file Documents/flyover.mp4 -seconds 45 -delay 2 -take 1 -log 1 \
-  -cells ask -cellwords 1 \
-  -rules "water rushing over rows of stones=effect:ripple|a river flowing under a bridge=effect:sweep|a church with a tall spire=effect:rays"
+  -rules "a river=chime|a bridge=count|a church=say:There is a church" \
+  -symbols "water.waves|road.lanes|building.columns"
 ```
 
 ## Reaction sounds
