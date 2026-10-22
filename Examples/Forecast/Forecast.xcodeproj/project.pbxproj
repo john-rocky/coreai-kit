@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0B744A1C13637B8296383528 /* ScriptedRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF44A4C5B3A3CCE45AA343A4 /* ScriptedRun.swift */; };
 		455EB2AEF9E36948667EAC7E /* QuickStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34742FCC142AAC892699763F /* QuickStart.swift */; };
+		54E3DD28839093A2C97C780F /* SeriesInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44F6640B67CD4F849CB345B /* SeriesInput.swift */; };
 		89A87776E79E16813F9674DE /* ForecastApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CEED77474905B3766AA325 /* ForecastApp.swift */; };
 		93DBD52E22D59C3DC1FD22DA /* real_series.json in Resources */ = {isa = PBXBuildFile; fileRef = B5E18765B57C7D83F67A2784 /* real_series.json */; };
 		E49C4A0DCF3F11E3081903B4 /* CoreAIKit in Frameworks */ = {isa = PBXBuildFile; productRef = B73D671EE0B7C69BF24114F6 /* CoreAIKit */; };
@@ -19,6 +21,8 @@
 		6876250DACCF7F2681CE1EB4 /* Forecast.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Forecast.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A7CEED77474905B3766AA325 /* ForecastApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastApp.swift; sourceTree = "<group>"; };
 		B5E18765B57C7D83F67A2784 /* real_series.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = real_series.json; sourceTree = "<group>"; };
+		D44F6640B67CD4F849CB345B /* SeriesInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesInput.swift; sourceTree = "<group>"; };
+		DF44A4C5B3A3CCE45AA343A4 /* ScriptedRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedRun.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,6 +41,7 @@
 			isa = PBXGroup;
 			children = (
 				A7CEED77474905B3766AA325 /* ForecastApp.swift */,
+				DF44A4C5B3A3CCE45AA343A4 /* ScriptedRun.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -69,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				34742FCC142AAC892699763F /* QuickStart.swift */,
+				D44F6640B67CD4F849CB345B /* SeriesInput.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -162,6 +168,8 @@
 			files = (
 				89A87776E79E16813F9674DE /* ForecastApp.swift in Sources */,
 				455EB2AEF9E36948667EAC7E /* QuickStart.swift in Sources */,
+				0B744A1C13637B8296383528 /* ScriptedRun.swift in Sources */,
+				54E3DD28839093A2C97C780F /* SeriesInput.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -232,6 +240,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = MFN25KNUGJ;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -318,6 +328,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = MFN25KNUGJ;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LD_RUNPATH_SEARCH_PATHS = (
