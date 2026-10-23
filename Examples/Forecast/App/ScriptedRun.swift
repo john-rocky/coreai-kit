@@ -6,9 +6,12 @@ import UIKit
 //
 //   -model timestral|timesfm  -source sample|paste|csv  -sample <index>  -input <file in Documents>
 //   -horizon <steps>  -band 80|90|98  -compute gpu|ane  -bundle <folder in Documents>  -repeat <forecasts>
-//   -fixture <folder in Documents>  -out <name>  -log <file in Documents>
+//   -delay <seconds>  -gap <seconds>  -fixture <folder in Documents>  -out <name>  -log <file in Documents>
 //
 // -input fills the paste box (source paste) or stands in for the file picker (source csv) with the file's text.
+// -delay keeps the opened screen without the input for that many seconds and -gap waits that many more before the
+// first forecast, so a recording shows each step. Both count from the run's start on one clock (sleeps in a row
+// drift); 0, the default, or a value that is not a number means no wait.
 // -compute gives every Timestral graph that unit; without it each graph runs on its form's unit.
 // -fixture replays a fixture pack instead (windows.json + contexts.f32.bin, as the model zoo's sample_ref.py writes
 // them): every window through the Timestral forecaster the screen uses, the forecasts to <folder>/<out>/ (default
@@ -33,6 +36,8 @@ struct ScriptedRun: ViewModifier {
     @MainActor private func run() async {
         let args = UserDefaults.standard  // `-key value` launch arguments land in the argument domain
         guard let model = args.string(forKey: "model") else { return }
+        let clock = ContinuousClock()
+        let start = clock.now  // -delay and -gap count from here
         UIApplication.shared.isIdleTimerDisabled = true
         let docs = URL.documentsDirectory
         let log = args.string(forKey: "log").map { docs.appending(path: $0) }
@@ -61,15 +66,6 @@ struct ScriptedRun: ViewModifier {
         vm.band = Band.allCases.first { $0.rawValue == (args.string(forKey: "band") ?? "80") + "%" } ?? .p80
         vm.computeOverride = args.string(forKey: "compute").flatMap { $0 == "auto" ? nil : $0 }
         if let bundle = args.string(forKey: "bundle") { vm.localBundle = docs.appending(path: bundle) }
-        if let name = args.string(forKey: "input") {
-            let text = (try? String(contentsOf: docs.appending(path: name), encoding: .utf8)) ?? ""
-            if vm.source == .paste {
-                vm.pasted = text
-            } else {
-                vm.csvText = text
-                vm.csvName = (name as NSString).lastPathComponent
-            }
-        }
         let total = max(1, args.integer(forKey: "repeat"))
         var index = 0
         vm.onResult = { outcome in
@@ -84,12 +80,25 @@ struct ScriptedRun: ViewModifier {
         write(["event": "start", "model": vm.model.rawValue, "source": vm.source.rawValue, "horizon": vm.horizonText,
                "repeat": total, "device": Self.machine(), "os": ProcessInfo.processInfo.operatingSystemVersionString,
                "compute": vm.computeOverride ?? "auto", "free_disk_mb": free.map { Int($0 / 1_000_000) as Any } ?? NSNull()])
+        let delay = Self.seconds(args, "delay")
+        let gap = Self.seconds(args, "gap")
+        if delay > 0 { try? await Task.sleep(until: start + .seconds(delay), tolerance: .milliseconds(10), clock: clock) }
+        if let name = args.string(forKey: "input") {
+            let text = (try? String(contentsOf: docs.appending(path: name), encoding: .utf8)) ?? ""
+            if vm.source == .paste {
+                vm.pasted = text
+            } else {
+                vm.csvText = text
+                vm.csvName = (name as NSString).lastPathComponent
+            }
+        }
         if let pack = args.string(forKey: "fixture") {
             let line = await replay(docs.appending(path: pack), out: args.string(forKey: "out") ?? "swift")
             write(line)
             write(["event": "done", "forecasts": 0])
             return
         }
+        if gap > 0 { try? await Task.sleep(until: start + .seconds(delay + gap), tolerance: .milliseconds(10), clock: clock) }
         for _ in 0..<total { await vm.forecast() }
         write(["event": "done", "forecasts": index])
     }
@@ -149,6 +158,12 @@ struct ScriptedRun: ViewModifier {
         } catch {
             return ["event": "fixture", "error": error.localizedDescription]
         }
+    }
+
+    /// -delay / -gap in seconds: 0 when absent, not a number, negative or infinite.
+    static func seconds(_ args: UserDefaults, _ key: String) -> Double {
+        guard let value = args.string(forKey: key).flatMap({ Double($0) }), value.isFinite else { return 0 }
+        return max(0, value)
     }
 
     static func thermal() -> String {
