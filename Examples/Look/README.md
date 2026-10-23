@@ -242,6 +242,29 @@ answered 21 frames, a frame took 1,455 ms (median; the frame was 31 ms old when 
 all 63 answers were no, and nothing fired. Both runs stayed at the thermal state nominal, and the memory
 footprint stayed between 335 and 383 MB. Measured on 2026-10-21.
 
+Take 5 is this build's recorded take (Look 1.0 (1) built from commit 4346afa): the
+[example video](#example-video) with three effect rules — *water rushing over rows of stones* → Ripple,
+*a river flowing under a bridge* → Zoom, *a church with a tall spire* → Spotlight — and the place question
+in words (`-cells ask -cellwords 1`), in a new process on the same phone, on 2026-10-23
+(`watch-run-1792743006.json`). It answered 15 frames and ended with the video after 35.2 s: the 26 s of the
+video and its three holds, the video standing still during each. A frame took 1,498 ms (median; the first
+token came after 1,380 ms), with 130 tokens in and 11–14 back, and each place question took 1,213–1,224 ms
+more (median 1,213 ms). At the end the numbers lines read `first token 1.37 s · total 1.49 s` and
+`GPU · on-device · frame 15 · nominal · 336 MB` (the last frame's). Each rule fired once and nothing else
+did, on the frames taken 0.02, 5.70 and 15.85 s into the video — within a second of the seconds where the
+same model with the same prompt, given one frame a second on a Mac, first answers yes (0, 5 and 15 s):
+
+| rule | the place answer | cell | where the thing was, by eye (the seconds around that frame) | the edit on the held frame |
+|---|---|---|---|---|
+| water rushing over rows of stones | `center; middle` | 5 | cells 2, 4, 5, 7, 8 | Ripple from the middle of cell 5 |
+| a river flowing under a bridge | `center; top` | 2 | cell 3, the next cell | Zoom to 2× toward the middle of cell 2: the bridge's abutment at the window's top right |
+| a church with a tall spire | `center; top` | 2 | cells 2, 3 | Spotlight on cell 2: the church tower |
+
+Each hold started 2.68–2.72 s after its frame was taken (the yes / no answer, then the place question), with
+its edit and, 19–41 ms later, its sound; it held the frame for 3,006–3,029 ms, and the video went on from the
+second where it had stopped. The thermal state stayed nominal and the memory footprint between 336 and
+410 MB.
+
 Take 4, below, ran the build before the hold (commit 6aa2700), which drew its effects — Ripple, Sweep and
 Rays, animations of its own — over the live picture instead of editing a held frame. That take played the
 [example video](#example-video) with three effect rules — *water rushing over rows of stones* → Ripple,
