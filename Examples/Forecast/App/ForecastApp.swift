@@ -278,10 +278,18 @@ final class ForecastViewModel: ObservableObject {
         history = tail.enumerated().compactMap { $0.element.isFinite ? Pt(x: Double($0.offset), y: Double($0.element)) : nil }
         let base = Double(tail.count - 1)
         nowX = base
-        median = (0..<h).map { Pt(x: base + Double($0 + 1), y: Double(mid[$0])) }
-        bandPoints = (0..<h).map { BandPt(x: base + Double($0 + 1), lo: Double(lo[$0]), hi: Double(hi[$0])) }
+        // The median, the band (at zero width) and the actual start at the last observed point, so each one
+        // continues the history line instead of starting a step to its right.
+        let last = history.last
+        func fromLast(_ ys: [Float]) -> [Pt] {
+            let start = last.map { [Pt(x: $0.x, y: $0.y)] } ?? []
+            return start + ys.enumerated().map { Pt(x: base + Double($0.offset + 1), y: Double($0.element)) }
+        }
+        median = fromLast(mid)
+        let bandStart = last.map { [BandPt(x: $0.x, lo: $0.y, hi: $0.y)] } ?? []
+        bandPoints = bandStart + (0..<h).map { BandPt(x: base + Double($0 + 1), lo: Double(lo[$0]), hi: Double(hi[$0])) }
         let truthTail = Array((actual ?? []).prefix(h))
-        truth = truthTail.enumerated().map { Pt(x: base + Double($0.offset + 1), y: Double($0.element)) }
+        truth = truthTail.isEmpty ? [] : fromLast(truthTail)
         let ys = history.map(\.y) + bandPoints.flatMap { [$0.lo, $0.hi] } + truth.map(\.y)
         let low = ys.min() ?? 0, high = ys.max() ?? 1
         let pad = (high - low) * 0.08 + 1e-3
