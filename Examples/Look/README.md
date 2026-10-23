@@ -270,6 +270,31 @@ answered 21 frames, a frame took 1,455 ms (median; the frame was 31 ms old when 
 all 63 answers were no, and nothing fired. Both runs stayed at the thermal state nominal, and the memory
 footprint stayed between 335 and 383 MB. Measured on 2026-10-21.
 
+Take 6 ran the build of commit 1fb9943 (Look 1.0 (1): the box question, each edit at the box, a sound picked per
+rule): the [example video](#example-video) with three effect rules — *water rushing over rows of stones* → Ripple,
+*a road bridge crossing over the river* → Spotlight with the horn, *a church with a tall spire* → Zoom with the
+bells — and the box question (`-cells box`, the default), in a new process on the same phone, on 2026-10-24
+(`watch-run-1792777586.json`). It answered 15 frames and ended with the video after 35.6 s: the 26 s of the video
+and its three holds, the video standing still during each. A frame took 1,500 ms (median; the first token came
+after 1,383 ms), with 131 tokens in and 11–14 back, and each box question took 1,278–1,340 ms more (median
+1,337 ms), with 24–29 tokens back. At the end the numbers lines read `first token 1.38 s · total 1.49 s` and
+`GPU · on-device · frame 15 · nominal · 345 MB` (the last frame's). Each rule fired once and nothing else did, on
+the frames taken 0.02, 5.78 and 16.11 s into the video — 0.02, 0.78 and 1.11 s after the seconds where the same
+model with the same prompt, given one frame a second on a Mac, first answers yes (0, 5 and 15 s). The boxes, in
+per mille of the frame (left, top, right, bottom), against the thing's box drawn by eye on the Mac's frames of
+the seconds around that frame:
+
+| rule | the box answer | the box | where the thing was, by eye | the edit on the held frame |
+|---|---|---|---|---|
+| water rushing over rows of stones | `<ref>water rushing over rows of stones</ref>:<box>238 0 688 998</box>` | 238 0 688 998 | the river's band, 240–720 across and the full height; the box's middle inside it | Ripple from the box's middle, on the water |
+| a road bridge crossing over the river | `The region matching "road bridge crossing over the river" is<box>588 0 1000 181</box>.` | 588 0 1000 181 | the bridge's deck and abutment at the top right, 585–1000 across, 0–245 down; the box's middle inside it | Spotlight on the box: the abutment and the deck's end lit, the river and its banks dark and grey |
+| a church with a tall spire | `The region matching "a church with a tall spire" is<box>505 0 575 308</box>.` | 505 0 575 308 | the church tower with its nave, 548–745 across, 0–445 down; the box's middle 8 ‰ left of it, beside the tower | Zoom to 2.16× on the box: the tower, the chapel and the trees beside them in the window |
+
+Each hold started 2.76–2.84 s after its frame was taken (the yes / no answer, then the box question), with its
+edit and, 15–30 ms later, its sound (`water`, `horn`, `bells`); it held the frame for 3,015–3,032 ms, and the video
+went on from the second where it had stopped. The thermal state stayed nominal and the memory footprint between
+344 and 414 MB.
+
 Take 5 ran the build before the box (Look 1.0 (1) built from commit 4346afa: the place asked in words, the
 edit at a cell, each edit with its own sound): the
 [example video](#example-video) with three effect rules — *water rushing over rows of stones* → Ripple,
