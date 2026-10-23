@@ -2,8 +2,9 @@
 // the model sees it, and Start. Frames from the back camera, a video you pick, or the three example
 // photos go to the model one at a time; every rule is asked in the same turn, and a rule whose
 // answer turns yes fires its reaction (WatchRules.swift) with its SF Symbol over the picture — or,
-// for an effect, an animation and a sound at the place the model names (WatchEffects.swift).
-// The model is the one the Ask screen loaded (LookModel): it loads once per launch.
+// for an effect, the picture holds the frame the model answered for 3 s while the app edits it at
+// the place the model names, with a sound (WatchEffects.swift). The model is the one the Ask screen
+// loaded (LookModel): it loads once per launch.
 //
 // One frame at a time: when an answer is in, the source's newest frame is taken (camera frames that
 // came meanwhile are dropped), cropped to what the preview shows, and sent to a new session (no
@@ -27,10 +28,14 @@
 // `-file` for a script) waits on its first frame; Start plays it from its start, muted, and the run
 // ends when the video does.
 //
+// An effect holds the picture: for its 3 s the loop takes no frame and a video is paused, then
+// goes on from where it stopped; effects that fire on one frame hold one after the other, in rule
+// order. Stop lets a hold finish.
+//
 // Start and Stop are start() and stop(); Autoplay.swift (WatchAutoplay) calls the same two for a
 // recording or a check. With `-log 1`, every run — Start to Stop — appends PRESS / WATCH (one per
-// frame) / FIRE (one per reaction) / DONE lines to Documents/look-autoplay.log and writes
-// Documents/watch-run-<epoch>.json (schema watch-run/3).
+// frame) / FIRE (one per reaction) / HOLD (one per effect, when its hold ends) / DONE lines to
+// Documents/look-autoplay.log and writes Documents/watch-run-<epoch>.json (schema watch-run/4).
 
 import AVFoundation
 import AudioToolbox
@@ -411,8 +416,8 @@ final class WatchModel {
     private(set) var camera: CameraFeed?
     private(set) var video: VideoFeed?
     var overlay: Overlay?
-    /// The effects playing over the picture (WatchEffectLayer draws them).
-    var effects: [WatchEffectRun] = []
+    /// The frame an effect holds on the picture while its edit plays (WatchHoldLayer draws it).
+    var held: WatchHold?
     var logLines: [String] = []
     var editing: EditTarget?
     var numbersHead = "first token – s · total – s"
@@ -443,7 +448,9 @@ final class WatchModel {
     @ObservationIgnored private var previous: [UUID: String] = [:]
     @ObservationIgnored private var lastFire: [UUID: ContinuousClock.Instant] = [:]
     @ObservationIgnored private var overlayID = 0
-    @ObservationIgnored private var effectID = 0
+    @ObservationIgnored private var holdID = 0
+    /// The held frames' PNGs being written (`-frames 1`): the record waits for them.
+    @ObservationIgnored private var heldWrites: [Task<Void, Never>] = []
     @ObservationIgnored private var sceneLog = SceneLog()
     @ObservationIgnored private var run = Run()
     private let speech = AVSpeechSynthesizer()
@@ -517,6 +524,7 @@ final class WatchModel {
                 "free_bytes=\(Autoplay.freeBytes().map { String($0) } ?? "-")",
                 "cells=\(settings.cells.rawValue) cellwords=\(settings.cellWords) grid=\(settings.grid)",
                 "sounds=\(sounds.isEmpty ? "-" : sounds.joined(separator: ","))",
+                "record=watch-run/4",  // the record's schema (writeRecord), so a script knows which build it runs
             ]
             note(fields.joined(separator: " "))
         }
@@ -800,7 +808,8 @@ final class WatchModel {
         lastFire = [:]
         for rule in rules { rowStates[rule.id, default: RowState()].answer = "–" }
         stopping = false
-        effects = []
+        held = nil
+        heldWrites = []
         phase = .watching
         detail = "\(source.title) · \(rules.count) \(rules.count == 1 ? "rule" : "rules")"
         if source == .video { video?.restart() }
@@ -914,11 +923,19 @@ final class WatchModel {
                 cellMs = LookModel.seconds(clock.now - askStart) * 1000
             }
             let firedAt = clock.now
-            let extras = react(fired, cells: cells, frame: frame)
+            react(fired.filter { run.rules[$0].reaction.effect == nil })
             record(
-                frame, index, reply, answers, fired, suppressed, cells: cells, cellMs: cellMs, asked: asked, extras: extras,
+                frame, index, reply, answers, fired, suppressed, cells: cells, cellMs: cellMs, asked: asked,
                 pace: pace, waitedMs: waitedMs, start: start, grabbed: grabbed, parseStart: parseStart, parsed: parsed,
                 firedAt: firedAt)
+            // Each effect holds this frame in turn; the next frame is taken when the holds are over.
+            var heldMs = 0.0
+            for k in fired where run.rules[k].reaction.effect != nil {
+                heldMs += await hold(
+                    k, cell: cells.indices.contains(k) ? cells[k] : nil, frame: frame, index: index, start: start,
+                    grabbed: grabbed)
+            }
+            if heldMs > 0 { run.frames[run.frames.count - 1]["hold_ms"] = Self.round1(heldMs) }
         }
         run.loopSeconds = LookModel.seconds(clock.now - start)
         await finishRun()
@@ -1086,11 +1103,10 @@ final class WatchModel {
 
     // MARK: - Reactions
 
-    /// The fired rules' reactions: an effect at its place, with its sound; the others' symbols on
-    /// the picture for at least 3 s. Returns what the record keeps of each effect, by rule.
-    private func react(_ fired: [Int], cells: [Int?], frame: Frame) -> [Int: [String: Any]] {
-        guard !fired.isEmpty else { return [:] }
-        var kept: [Int: [String: Any]] = [:]
+    /// The fired rules' reactions but the effects (each of those holds the frame: hold(…)): their
+    /// symbols on the picture for at least 3 s.
+    private func react(_ fired: [Int]) {
+        guard !fired.isEmpty else { return }
         var symbols: [String] = []
         var title = ""
         var subtitle = ""
@@ -1100,9 +1116,8 @@ final class WatchModel {
             let first = symbols.isEmpty
             let line: String
             switch rule.reaction {
-            case .effect(let effect):
-                kept[k] = startEffect(effect, cell: cells.indices.contains(k) ? cells[k] : nil, frame: frame, fire: run.fires.count + n)
-                continue  // no symbol, no words
+            case .effect:
+                continue  // the loop holds the frame for it: no symbol, no words
             case .sound(let sound):
                 playSound(sound, fire: run.fires.count + n)
                 line = "♪ \(sound.title)"
@@ -1138,26 +1153,48 @@ final class WatchModel {
         if !symbols.isEmpty {
             showOverlay(Overlay(id: 0, symbols: symbols, title: title, subtitle: subtitle, speech: speech))
         }
-        return kept
     }
 
-    /// An effect over the place the model named — the whole picture when it named none — for 3 s,
-    /// and its sound (the chime when this build has no file for it). Returns what the record keeps.
-    private func startEffect(_ effect: WatchEffect, cell: Int?, frame: Frame, fire: Int) -> [String: Any] {
-        effectID += 1
-        let id = effectID
-        let place = WatchCells.place(cell, box: previewSize, photo: frame.crop == nil ? frame.uprightSize : nil)
-        effects.append(WatchEffectRun(id: id, effect: effect, cell: cell, place: place.unit, start: Date()))
-        Task {
-            try? await Task.sleep(for: .seconds(WatchEffectRun.seconds))
-            self.effects.removeAll { $0.id == id }
+    /// An effect fires: the picture holds the frame the model answered for `WatchHold.seconds`, its
+    /// edit playing at the place the model named (all of the picture when it named none), and its
+    /// sound plays (the chime when this build has no file for it). A video is paused meanwhile and
+    /// goes on from where it stopped; over the camera or a photo the held frame covers the live one.
+    /// The fire is recorded when the hold starts (its FIRE line), its length when it ends (the HOLD
+    /// line); with `-frames 1` the edited frame 2.5 s into the hold is written as a PNG. Returns how
+    /// long it held, in ms.
+    private func hold(
+        _ k: Int, cell: Int?, frame: Frame, index: Int, start: ContinuousClock.Instant, grabbed: ContinuousClock.Instant
+    ) async -> Double {
+        guard let effect = run.rules[k].reaction.effect else { return 0 }
+        let clock = run.clock
+        let began = clock.now
+        let playing = source == .video && video?.isPlaying == true
+        let pausedAt = source == .video ? video?.time : nil
+        if playing { video?.pause() }
+        holdID += 1
+        let id = holdID
+        let next = WatchHold(
+            id: id, edit: effect, cell: cell, image: frame.image, orientation: frame.orientation, fits: frame.crop == nil,
+            start: Date())
+        held = next
+        let tGrab = LookModel.seconds(grabbed - start)
+        let tCapture = tGrab - frame.ageMs / 1000
+        let tFire = LookModel.seconds(began - start)
+        let tSwitch = frame.switchedAt.map { LookModel.seconds($0 - start) }
+        var item = fireItem(
+            k, frame: frame, index: index, cell: cell, tCapture: tCapture, tGrab: tGrab, tFire: tFire, tSwitch: tSwitch)
+        let place = WatchCells.place(cell, box: previewSize, photo: frame.crop == nil ? frame.uprightSize : nil).points
+        item["effect_rect_pt"] = [place.minX, place.minY, place.width, place.height].map { Self.round1(Double($0)) }
+        item["held_frame"] = index
+        item["hold_ms"] = Self.round1(WatchHold.seconds * 1000)  // planned; the hold's end writes its length
+        if let pausedAt { item["paused_t_s"] = Self.round3(pausedAt) ?? 0 }
+        let fire = run.fires.count
+        var picture: (path: String, url: URL)?
+        if settings.frames {
+            let path = String(format: "frames/watch-%d/catch%02d.png", launchEpoch, fire + 1)
+            picture = (path, URL.documentsDirectory.appending(path: path))
+            item["held_png"] = path
         }
-        let rect = place.points
-        var item: [String: Any] = [
-            "effect": effect.rawValue, "cell": Self.orNull(cell),
-            "effect_rect_pt": [rect.minX, rect.minY, rect.width, rect.height].map { Self.round1(Double($0)) },
-        ]
-        let clock = ContinuousClock()
         let started = clock.now
         if let played = sounds.play(effect.sound) {
             item["sound"] = effect.sound
@@ -1172,8 +1209,35 @@ final class WatchModel {
             }
         }
         item["sound_ms"] = Self.round1(LookModel.seconds(clock.now - started) * 1000)
-        return item
+        run.fires.append(item)
+        noteFireLine(
+            k, item, tFire: tFire, latencyMs: Int(((tFire - (tSwitch ?? tCapture)) * 1000).rounded()),
+            holdMs: Int(WatchHold.seconds * 1000))
+        onFire?(run.fires.count)
+        if let picture {
+            try? await clock.sleep(until: began + .seconds(Self.heldPictureAt))
+            let shown = next.shown(in: previewSize)
+            let scale = max(Autoplay.screenFacts().1, 1)
+            let pixels = CGSize(width: (shown.width * scale).rounded(), height: (shown.height * scale).rounded())
+            if let edited = WatchEditor(next, size: pixels).picture(at: Self.heldPictureAt) {
+                heldWrites.append(Task.detached { Autoplay.writePNG(edited, to: picture.url) })
+            }
+        }
+        try? await clock.sleep(until: began + .seconds(WatchHold.seconds))
+        if held?.id == id { held = nil }
+        if playing, visible { video?.resume() }
+        let resumedAt = playing && visible ? video?.time : nil
+        let heldMs = LookModel.seconds(clock.now - began) * 1000
+        run.fires[fire]["hold_ms"] = Self.round1(heldMs)
+        if let resumedAt { run.fires[fire]["resumed_t_s"] = Self.round3(resumedAt) ?? 0 }
+        note(
+            "HOLD rule=\(k + 1) frame=\(index) held_ms=\(String(format: "%.1f", heldMs))"
+                + " resumed_t=\(resumedAt.map { Self.decimals($0) } ?? "-")")
+        return heldMs
     }
+
+    /// When the PNG of a held frame is taken (`-frames 1`), in seconds into its hold.
+    static let heldPictureAt = 2.5
 
     private func showOverlay(_ next: Overlay) {
         overlayID += 1
@@ -1274,10 +1338,10 @@ final class WatchModel {
 
     /// The frame's row and fires in the record, its WATCH and FIRE lines, and the numbers lines.
     /// `cells` = the cell each rule's answer named (nil = none), `cellMs` / `asked` = the second
-    /// questions of `-cells ask`, `extras` = what each effect that fired keeps (by rule).
+    /// questions of `-cells ask`. An effect's fire is recorded when its hold starts (hold(…)).
     private func record(
         _ frame: Frame, _ index: Int, _ reply: Reply, _ answers: [String], _ fired: [Int], _ suppressed: [Int],
-        cells: [Int?], cellMs: Double?, asked: [[String: Any]], extras: [Int: [String: Any]],
+        cells: [Int?], cellMs: Double?, asked: [[String: Any]],
         pace: Double, waitedMs: Double, start: ContinuousClock.Instant, grabbed: ContinuousClock.Instant,
         parseStart: ContinuousClock.Instant, parsed: ContinuousClock.Instant, firedAt: ContinuousClock.Instant
     ) {
@@ -1322,6 +1386,7 @@ final class WatchModel {
         if !asked.isEmpty { row["cell_asks"] = asked }
         row["fired"] = fired.map { $0 + 1 }
         row["suppressed"] = suppressed.map { $0 + 1 }
+        row["hold_ms"] = 0.0  // the effects' holds after this frame, added when they are over
         row["thermal"] = thermal
         row["footprint_mb"] = Self.round1(footprint)
         row["available_mb"] = Self.round1(WatchMemory.availableMB())
@@ -1348,29 +1413,15 @@ final class WatchModel {
         note(fields.joined(separator: " "))
 
         for k in fired + suppressed {
-            let rule = run.rules[k]
             let isFire = fired.contains(k)
-            var item: [String: Any] = [
-                "rule": k + 1, "condition": rule.condition, "reaction": rule.reaction.name, "symbol": rule.symbol,
-                "frame": index, "source": frame.name, "t_capture_s": Self.round3(tCapture) ?? 0,
-                "t_grab_s": Self.round3(tGrab) ?? 0, "t_fire_s": Self.round3(tFire) ?? 0,
-                "wall": Self.round3(Date().timeIntervalSince1970) ?? 0,
-                "from_capture_ms": Self.round1((tFire - tCapture) * 1000),
-                "cell": Self.orNull(cells.indices.contains(k) ? cells[k] : nil), "effect": Self.orNull(rule.reaction.effect?.rawValue),
-            ]
-            if let detail = rule.reaction.detail { item["detail"] = detail }
-            if let tSwitch { item["from_switch_ms"] = Self.round1((tFire - tSwitch) * 1000) }
-            if let videoTime = frame.videoTime { item["video_t_s"] = Self.round3(videoTime) ?? 0 }
-            if rule.reaction == .count { item["count"] = rowStates[rule.id]?.count ?? 0 }
-            if isFire, let extra = extras[k] { item.merge(extra) { _, new in new } }
+            if isFire, run.rules[k].reaction.effect != nil { continue }  // recorded when its hold starts
+            var item = fireItem(
+                k, frame: frame, index: index, cell: cells.indices.contains(k) ? cells[k] : nil, tCapture: tCapture,
+                tGrab: tGrab, tFire: tFire, tSwitch: tSwitch)
             if isFire {
                 run.fires.append(item)
-                let latency = Int(((tFire - (tSwitch ?? tCapture)) * 1000).rounded())
-                let cell = (cells.indices.contains(k) ? cells[k] : nil).map(String.init) ?? "-"
-                note(
-                    "FIRE rule=\(k + 1) cond=\(rule.condition) reaction=\(rule.reaction.name) frame=\(index)"
-                        + " t=\(Self.decimals(tFire)) latency_ms=\(latency) cell=\(cell)"
-                        + " effect=\(rule.reaction.effect?.rawValue ?? "-") sound=\(item["sound"] as? String ?? "-")")
+                noteFireLine(
+                    k, item, tFire: tFire, latencyMs: Int(((tFire - (tSwitch ?? tCapture)) * 1000).rounded()), holdMs: 0)
                 onFire?(run.fires.count)
             } else {
                 item["reason"] = "cooldown"
@@ -1383,6 +1434,40 @@ final class WatchModel {
         let offline = engine?.offline == true ? ", offline" : ""
         let paced = pace > 0 ? " · every \(Self.decimals1(pace)) s" : ""
         numbersTail = "\(backend) · on-device\(offline) · frame \(index) · \(thermal)\(paced) · \(Int(footprint.rounded())) MB"
+    }
+
+    /// A fire's row in the record (or a fire held back): the rule, the frame, its times and its cell. The edit and
+    /// the hold are an effect's (hold(…) fills them in); a reaction that holds nothing keeps them null / 0.
+    private func fireItem(
+        _ k: Int, frame: Frame, index: Int, cell: Int?, tCapture: Double, tGrab: Double, tFire: Double, tSwitch: Double?
+    ) -> [String: Any] {
+        let rule = run.rules[k]
+        var item: [String: Any] = [
+            "rule": k + 1, "condition": rule.condition, "reaction": rule.reaction.name, "symbol": rule.symbol,
+            "frame": index, "source": frame.name, "t_capture_s": Self.round3(tCapture) ?? 0,
+            "t_grab_s": Self.round3(tGrab) ?? 0, "t_fire_s": Self.round3(tFire) ?? 0,
+            "wall": Self.round3(Date().timeIntervalSince1970) ?? 0,
+            "from_capture_ms": Self.round1((tFire - tCapture) * 1000),
+            "cell": Self.orNull(cell), "effect": Self.orNull(rule.reaction.effect?.rawValue),
+            "edit": Self.orNull(rule.reaction.effect?.rawValue), "hold_ms": 0.0, "held_frame": NSNull(),
+            "held_png": NSNull(),
+        ]
+        if let detail = rule.reaction.detail { item["detail"] = detail }
+        if let tSwitch { item["from_switch_ms"] = Self.round1((tFire - tSwitch) * 1000) }
+        if let videoTime = frame.videoTime { item["video_t_s"] = Self.round3(videoTime) ?? 0 }
+        if rule.reaction == .count { item["count"] = rowStates[rule.id]?.count ?? 0 }
+        return item
+    }
+
+    /// The FIRE line: the rule, the reaction, the frame, when, the cell, an effect's edit and sound, and how long
+    /// the fire holds the picture (`hold_ms`, planned: 0 for a reaction that holds nothing).
+    private func noteFireLine(_ k: Int, _ item: [String: Any], tFire: Double, latencyMs: Int, holdMs: Int) {
+        let rule = run.rules[k]
+        let edit = rule.reaction.effect?.rawValue ?? "-"
+        note(
+            "FIRE rule=\(k + 1) cond=\(rule.condition) reaction=\(rule.reaction.name) frame=\(item["frame"] as? Int ?? 0)"
+                + " t=\(Self.decimals(tFire)) latency_ms=\(latencyMs) cell=\((item["cell"] as? Int).map(String.init) ?? "-")"
+                + " effect=\(edit) sound=\(item["sound"] as? String ?? "-") edit=\(edit) hold_ms=\(holdMs)")
     }
 
     private func finishRun() async {
@@ -1404,6 +1489,7 @@ final class WatchModel {
         await Task.yield()
         var extra: [String: Any] = [:]
         if let beforeRecord { extra = await beforeRecord() }
+        for write in heldWrites { await write.value }
         let file = writeRecord(extra)
         if let failure = run.failure {
             note("ERROR \(failure) json=\(file)")
@@ -1448,7 +1534,7 @@ final class WatchModel {
         let now = LookDevice.sinceStart()
         let (screenPixels, scale) = Autoplay.screenFacts()
 
-        put("schema", "watch-run/3")
+        put("schema", "watch-run/4")
         put("mode", "watch")
         put("epoch", run.epoch)
         put("args", Array(CommandLine.arguments.dropFirst()))
@@ -1476,7 +1562,7 @@ final class WatchModel {
         put("cell_max_tokens", settings.cells == .ask ? Self.askTokens : nil)
         put("grid", settings.grid)
         put("grid_style", settings.grid ? WatchGrid.style : nil)
-        put("effect_s", WatchEffectRun.seconds)
+        put("effect_s", WatchHold.seconds)
         put("sounds_in_build", EffectSounds.inBuild)
         put("truth", run.truth)
         put("cooldown_s", settings.cooldown)
@@ -1552,6 +1638,15 @@ final class WatchModel {
         }
         summary["fires_by_effect"] = byEffect
         summary["fires_by_sound"] = bySound
+        var byEdit: [String: Int] = [:]
+        for fire in run.fires { if let edit = fire["edit"] as? String { byEdit[edit, default: 0] += 1 } }
+        summary["fires_by_edit"] = byEdit
+        let holds = run.fires.compactMap { $0["hold_ms"] as? Double }.filter { $0 > 0 }
+        summary["holds"] =
+            [
+                "n": holds.count, "total_ms": Self.round1(holds.reduce(0, +)), "min_ms": Self.orNull(holds.min()),
+                "max_ms": Self.orNull(holds.max()),
+            ] as [String: Any]
         let scored = run.frames.filter { $0["correct"] != nil }
         if !scored.isEmpty {
             summary["correct"] = scored.reduce(0) { total, row in total + (row["correct"] as? Int ?? 0) }

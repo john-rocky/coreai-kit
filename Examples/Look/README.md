@@ -9,9 +9,10 @@ ran. The photo and the question go to the model in the app's own process.
 
 The second screen, [Watch](#watch), turns the camera into rules you write in words: "a chessboard",
 "a sign with words on it", "water rushing over rows of stones" — each with one thing to do when the
-model sees it (a sound, a buzz, a spoken line, a timer, a count, a log line, or an effect drawn at the
-place the model names, with its sound). Press Start and the model checks one frame at a time; a rule
-whose answer turns yes fires its reaction. Both screens use the same model, loaded once.
+model sees it (a sound, a buzz, a spoken line, a timer, a count, a log line, or an effect: the picture
+stops on the frame the model answered and the app edits it at the place the model names, with a sound).
+Press Start and the model checks one frame at a time; a rule whose answer turns yes fires its reaction.
+Both screens use the same model, loaded once.
 
 The model is `minicpm-v-4.7-1b` from the kit's catalog: MiniCPM-V 4.7 1B, Hugging Face
 `mlboydaisuke/MiniCPM-V-4.7-1B-CoreAI` at revision `51278afd`, an int8 decoder and an int8 vision
@@ -49,7 +50,7 @@ higher limit that first specialization died with `std::bad_alloc` on an iPhone 1
 same model). Run it in Release: the engine's per-token host work is about 3× slower unoptimized.
 The project also has a Mac destination (macOS 27, Apple silicon), with Pick a photo and the examples
 and without Take a photo or the camera source. This version, the Watch screen included, built for a
-Mac on 2026-10-22 (Release, arm64, unsigned); Look has not been run on one. The numbers on this page
+Mac on 2026-10-23 (Release, arm64, unsigned); Look has not been run on one. The numbers on this page
 are from an iPhone.
 
 ## The screen
@@ -152,11 +153,11 @@ model stay in the app's process.
 | Timer | a countdown of the minutes you typed; at its end, the chime and "Time's up" | the time left |
 | Count | adds one | ×N |
 | Log | the time and the rule as a line under the list (the latest three show) | log |
-| Effect | an animation drawn where the model says the thing is, for 3 s, with its sound: Ripple (rings spread out — running water), Sweep (a band of light runs across the place and traces its edges — a car horn), Rays (rays of light burst out — church bells) | ripple, sweep or rays |
+| Effect | the picture stops on the frame the model answered for 3 s and the app edits it where the model says the thing is, with its sound: Ripple (a wave spreads from the place and leaves the frame tinted blue — running water), Zoom (the frame zooms in on the place to twice its size — a car horn), Spotlight (around the place the frame goes dark and grey — church bells) | ripple, zoom or spotlight |
 
 Every rule but an effect also shows its symbol (64 pt) and its words (44 pt) over the picture for at
 least 3 s; a spoken line stays until the voice is done. An effect shows no symbol and no words: the
-animation is drawn by the app (TimelineView and Canvas; no image) and the row turns YES. The Sound
+held frame is edited by the app (Core Image; no image) and the row turns YES. The Sound
 reaction's sounds are the system's own (`AudioServicesPlaySystemSound`) and follow the ring / silent
 switch; the spoken line (`AVSpeechSynthesizer`) and the effects' sounds (`AVAudioPlayer`, the files
 `Sounds/water.m4a`, `horn.m4a`, `bells.m4a` in the app — see [Reaction sounds](#reaction-sounds)) play
@@ -164,19 +165,32 @@ through it, mixed with other audio. A build without an effect's file plays the c
 
 ### Where an effect plays
 
-An effect plays over one of nine cells of the picture (3 × 3, numbered 1–9 from the top left, row by
-row) when the app asks the model where the thing is, and over the whole picture when it does not (the
-default). `-cells ask` asks right after a rule's answer turns yes, with a second question about the same
+An effect plays on the frame the model answered. The moment it fires, the picture shows that frame —
+the crop the model got — with a thin blue border for 3 s, and the edit plays on it while its sound plays;
+then the live picture comes back. A video is paused for those 3 s and goes on from where it stopped (it is
+not rewound); over the camera or an example photo, the held frame covers the live picture. The loop takes
+no frame during a hold, and effects that fire on the same frame hold one after the other, in rule order.
+The picture moves on while the model answers; the hold shows the frame the answer is about, so the edit
+lands where the thing was in that frame.
+
+The edit plays at one of nine cells of the frame (3 × 3, numbered 1–9 from the top left, row by row) when
+the app asks the model where the thing is, and on the whole frame when it does not (the default): Ripple's
+wave starts at the cell's middle, Zoom zooms toward the cell's middle (at 2× the window is half the frame
+each way, moved in when the cell is at an edge), and Spotlight keeps the cell lit, with a soft edge; with
+no cell they use the frame's middle, and Spotlight keeps its middle two thirds lit. The edits are Core
+Image filters on the held frame (`CIRippleTransition` to a blue-tinted copy; a scaled window; exposure
+−1.6 EV and saturation 0.1 outside a blurred mask), one picture per screen frame. `-cells ask` asks right
+after a rule's answer turns yes, with a second question about the same
 frame, before the rule fires; with `-cellwords 1` the question is "Where in the picture is
 *your words*? Answer with two words: left, center or right; then top, middle or bottom." and the two
 words make the cell (a word left out counts as center or middle), without it "Which cell of a 3x3 grid
 (1-9, numbered left to right, top to bottom) contains *your words*? Answer with the number only.".
 `-cells batch` asks for the cell's number inside the yes / no prompt instead; on the example video that
 made the yes / no answers worse. `-grid 1` draws the nine cells and their numbers on the frame the model
-gets (the screen shows the picture as it is). The cell is the same part of what the model saw and of
-what the screen shows: the camera and a video fill the picture's box and the model gets that crop, so a
-cell is a third of the box each way; an example photo is fitted whole, so a cell is a third of the
-fitted photo.
+gets (the screen shows them only on a held frame, which is that frame). The cell is the same part of
+what the model saw and of what the screen shows: the camera and a video fill the picture's box and the
+model gets that crop, so a cell is a third of the box each way; an example photo is fitted whole, so a
+cell is a third of the fitted photo.
 
 On the example video, a Mac run of the same model with the words question named the cell where the
 thing was for 79 % of the frames a rule was yes on, and that cell or one next to it for 96 % (24 frames,
@@ -201,8 +215,9 @@ What one frame sends:
    word "yes" or "no" is the answer, and a rule no line answers is `?`.
 4. With `-cells ask`, for each rule whose answer turned yes: a second new session with the same frame and
    the place question (at most 8 answer tokens), then the rule fires at that cell.
-5. The next frame is taken when the answers are in. At the thermal state fair a frame starts at most every
-   2 s, at serious every 4 s, and the second numbers line says so (`every 2.0 s`).
+5. The next frame is taken when the answers are in and the holds of the effects that fired are over. At
+   the thermal state fair a frame starts at most every 2 s, at serious every 4 s, and the second numbers
+   line says so (`every 2.0 s`).
 
 The numbers lines under Start (as the screen showed them at the 18th frame of the Example photos run below):
 
@@ -213,7 +228,8 @@ GPU · on-device · frame 18 · nominal · 349 MB
 
 - first token: from the frame's call to the model to its first streamed text.
 - total: from taking the frame to its answer read — one turn of the loop. The place question of
-  `-cells ask` comes after it and is not in these numbers (the record keeps it: `cell_ms`).
+  `-cells ask` and an effect's hold come after it and are not in these numbers (the record keeps them:
+  `cell_ms`, `hold_ms`).
 - GPU · on-device: where the model ran, as on the Ask screen; then the frames answered since Start, the
   thermal state (`ProcessInfo.thermalState`) and the app's memory footprint (`phys_footprint`).
 
@@ -226,9 +242,11 @@ answered 21 frames, a frame took 1,455 ms (median; the frame was 31 ms old when 
 all 63 answers were no, and nothing fired. Both runs stayed at the thermal state nominal, and the memory
 footprint stayed between 335 and 383 MB. Measured on 2026-10-21.
 
-The recorded take played the [example video](#example-video) with three effect rules — *water rushing
-over rows of stones* → Ripple, *a river flowing under a bridge* → Sweep, *a church with a tall spire* →
-Rays — and the place question in words (`-cells ask -cellwords 1`), in a new process on the same phone,
+Take 4, below, ran the build before the hold (commit 6aa2700), which drew its effects — Ripple, Sweep and
+Rays, animations of its own — over the live picture instead of editing a held frame. That take played the
+[example video](#example-video) with three effect rules — *water rushing over rows of stones* → Ripple,
+*a river flowing under a bridge* → Sweep, *a church with a tall spire* → Rays — and the place question in
+words (`-cells ask -cellwords 1`), in a new process on the same phone,
 on 2026-10-22 (`watch-run-1792648309.json`; Look 1.0 (1) built from commit 6aa2700). It answered 15
 frames in 26.2 s and ended with the video; a frame took 1,495 ms (median; the first token came after
 1,382 ms), with 130 tokens in and 11–14 back, and each place question took 1,213–1,228 ms more (median
@@ -244,12 +262,12 @@ same model with the same prompt, given one frame a second on a Mac, first answer
 | a church with a tall spire | `center; top` | 2 | cells 2, 3 |
 
 Each effect started 2.68–2.72 s after its frame was taken (the yes / no answer, then the place question),
-and its sound 16–19 ms after that; the video moves on meanwhile, so an effect marks where the thing was
-when its frame was taken. The thermal state stayed nominal and the memory footprint between 349 and
-414 MB. An earlier take of the same video with three plain reactions (the chime, a count and a spoken
-line, no place question; `watch-run-1792603139.json`) answered 20 frames at 1,345 ms a frame (median),
-and each reaction came 1.34–1.37 s after its frame was taken: the next frame is taken when the answer
-before it is in, so a thing that comes into view waits for that frame.
+and its sound 16–19 ms after that; the video moved on meanwhile, so an effect marked where the thing had
+been when its frame was taken — what the hold now shows. The thermal state stayed nominal and the memory
+footprint between 349 and 414 MB. An earlier take of the same video with three plain reactions (the chime,
+a count and a spoken line, no place question; `watch-run-1792603139.json`) answered 20 frames at 1,345 ms a
+frame (median), and each reaction came 1.34–1.37 s after its frame was taken: the next frame is taken when
+the answer before it is in, so a thing that comes into view waits for that frame.
 
 The screen sits in the same band as the Ask screen. On an iPhone 18 Pro with three rules the picture is
 370 × 275 pt with `-take 1` (the run's record, `preview_pt`) and ≈ 229 pt tall with Add a rule under
@@ -312,10 +330,10 @@ xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
 |---|---|
 | `-watch 1` | open on the Watch screen |
 | `-source camera` | `camera` (the default on an iPhone), `video` (with `-file`) or `photos` |
-| `-rules "a=b\|…"` | this launch's rules (not kept): `condition=reaction`, the reaction one of `chime`, `glass`, `bell`, `haptic`, `say:<line>`, `timer:<minutes>`, `count`, `log`, `effect:ripple`, `effect:sweep`, `effect:rays` |
-| `-cells none` | where an effect plays: `none` (the default: the whole picture), `ask` (a second question about the frame for each rule that turns yes, before it fires) or `batch` (the cell's number inside the yes / no prompt) |
+| `-rules "a=b\|…"` | this launch's rules (not kept): `condition=reaction`, the reaction one of `chime`, `glass`, `bell`, `haptic`, `say:<line>`, `timer:<minutes>`, `count`, `log`, `effect:ripple`, `effect:zoom`, `effect:spotlight` |
+| `-cells none` | where an effect's edit plays on the held frame: `none` (the default: the whole frame), `ask` (a second question about the frame for each rule that turns yes, before it fires) or `batch` (the cell's number inside the yes / no prompt) |
 | `-cellwords 1` | with `-cells ask`: the place as two words (left / center / right, top / middle / bottom) instead of a cell's number |
-| `-grid 1` | draw the nine cells and their numbers on the frame the model gets (not on the screen) |
+| `-grid 1` | draw the nine cells and their numbers on the frame the model gets (the screen shows them only on a held frame) |
 | `-conditions "a\|b\|…"` | the first version's form: conditions only, each with the chime |
 | `-symbols "a\|b\|…"` | the rules' SF Symbols, by place |
 | `-seconds 40` | press Start, watch this long (a frame being answered is finished), press Stop |
@@ -329,33 +347,40 @@ xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
 | `-edit new`, `-edit <n>` | open the rule editor at READY, for a new rule or for rule n |
 | `-add "cond=reaction"` | with `-edit new`: fill the new rule, then save it `-gap` seconds later (what Done calls); alone: add it at READY |
 | `-take 1` | hide the Ask \| Watch switch; at most three rules show, and the video's play / pause button is hidden |
-| `-frames 1` | write the screen as PNGs to `Documents/frames/watch-<epoch>/`: READY, Start, each reaction (0.3 s after it) and the end |
+| `-frames 1` | write the screen as PNGs to `Documents/frames/watch-<epoch>/`: READY, Start, each reaction (0.3 s after it) and the end; and for each effect its edited held frame 2.5 s into the hold (`catch<n>.png`, n = the fire's number) |
 | `-log 1` | the lines and the record below, for every run (Start to Stop), by hand or not |
 | `-quit 1` | exit after the record; without it the app stays on the screen as the run left it |
 
-The log (`Documents/look-autoplay.log`) has START (with `cells=`, `grid=` and `sounds=`, the effect
-sounds this build has) and READY, CAMERA / VIDEO when the source opens, TRIGGER, PRESS start / PRESS stop
-(VIDEO ended when the video ends the run), one WATCH line per frame (its times, tokens, answers, the
-rules that fired; `cells=` and `cell_ms=` when the place is asked), one FIRE line per reaction (the rule,
-the reaction, the frame, the time, `cell=`, `effect=`, `sound=` — the sound's id, or `fallback` for the
-chime), TIMER when a timer ends, EDIT and RULES for the editor, and DONE (or ERROR) with the record's
-name. The record (`Documents/watch-run-<epoch>.json`, schema `watch-run/3`) holds the rules and the
-prompt, `cells_form`, `cell_words`, `cell_prompt` and `grid` (and `grid_style`), and `sounds_in_build`;
-per frame the times (capture, grab, done), the crop, the tokens in and out, the answers and the raw
-text, `cells` (the cell each rule's answer named, null for none), `cell_ms` and `cell_asks` (each place
-question: the rule, the raw answer, the cell, its times), the rules fired and held back, the thermal
-state and the memory footprint, and with Example photos what the photo shows and when it came on the
-screen; `fires` (each reaction: the rule, the frame, the time from the frame's capture — and with Example
-photos from the photo's change — to the reaction, `cell` and `effect`; for an effect `sound` (its id or
-`fallback`), `sound_ms` until the player started (until the system reported the chime played:
-`sound_done_ms`), `sound_s` its length and `effect_rect_pt` the place on the picture; `sound_ms` for the
-Sound reaction until the system reported it played; `speech_start_ms` / `speech_end_ms` for a spoken
-line), `suppressed` (a yes within 3 s of the rule's last fire), `timers`, `presses`; the band in pixels
-(`take_rect_px`), `screen_px`, the picture's size (`preview_pt`), the numbers lines, the thermal state
-and the free bytes at the start and the end, the stretches when the app was not active (`inactive_*`),
-and `frames_png`. The summary holds the frame count, the median and range of the times (`cell_ms`
-too), the yes count per rule, the unread answers, the fires by rule, by reaction, by effect and by
-sound, the cells named per rule, and the thermal states seen.
+The log (`Documents/look-autoplay.log`) has START (with `cells=`, `grid=`, `sounds=` — the effect
+sounds this build has — and `record=`, the record's schema) and READY, CAMERA / VIDEO when the source
+opens, TRIGGER, PRESS start / PRESS stop (VIDEO ended when the video ends the run), one WATCH line per
+frame (its times, tokens, answers, the rules that fired; `cells=` and `cell_ms=` when the place is asked),
+one FIRE line per reaction (the rule, the reaction, the frame, the time, `cell=`, `effect=`, `sound=` — the
+sound's id, or `fallback` for the chime — `edit=` and `hold_ms=`, how long it holds the frame: 3000 for an
+effect, 0 otherwise), one HOLD line when an effect's hold ends (`rule=`, `frame=`, `held_ms=` its length,
+`resumed_t=` where the video went on, in seconds), TIMER when a timer ends, EDIT and RULES for the
+editor, and DONE (or ERROR) with the record's name. An effect's FIRE line comes when its hold starts,
+after its frame's WATCH line, and its HOLD line before the next WATCH line. The record
+(`Documents/watch-run-<epoch>.json`, schema `watch-run/4`) holds the rules and the prompt, `cells_form`,
+`cell_words`, `cell_prompt` and `grid` (and `grid_style`), and `sounds_in_build`; per frame the times
+(capture, grab, done), the crop, the tokens in and out, the answers and the raw text, `cells` (the cell
+each rule's answer named, null for none), `cell_ms` and `cell_asks` (each place question: the rule, the
+raw answer, the cell, its times), the rules fired and held back, `hold_ms` (the holds that followed the
+frame, 0 for none), the thermal state and the memory footprint, and with Example photos what the photo
+shows and when it came on the screen; `fires` (each reaction: the rule, the frame, the time from the
+frame's capture — and with Example photos from the photo's change — to the reaction (for an effect, to
+its hold's start), `cell` and `effect`; for an effect `edit`, `held_frame` (the frame it holds, the one
+that fired), `hold_ms` (the hold's length, measured), `held_png` (with `-frames 1`), and for a video
+`paused_t_s` / `resumed_t_s` (where the video stopped and went on), `sound` (its id or `fallback`),
+`sound_ms` until the player started (until the system reported the chime played: `sound_done_ms`),
+`sound_s` its length and `effect_rect_pt` the place on the picture; `sound_ms` for the Sound reaction until
+the system reported it played; `speech_start_ms` / `speech_end_ms` for a spoken line), `suppressed` (a yes
+within 3 s of the rule's last fire), `timers`, `presses`; the band in pixels (`take_rect_px`), `screen_px`,
+the picture's size (`preview_pt`), the numbers lines, the thermal state and the free bytes at the start and
+the end, the stretches when the app was not active (`inactive_*`), and `frames_png`. The summary holds the
+frame count, the median and range of the times (`cell_ms` too), the yes count per rule, the unread
+answers, the fires by rule, by reaction, by effect, by edit and by sound, `holds` (how many, their total,
+shortest and longest ms), the cells named per rule, and the thermal states seen.
 
 The first version of this mode (`-conditions` with four conditions — a chessboard, a lighthouse, a sign
 with words on it, a person — and the next example photo every frame, as `-hold 0` does now) was
@@ -413,11 +438,12 @@ says so and puts the photos in place only.
 
 To watch it on the phone: copy `Videos/flyover.mp4` to the iPhone (AirDrop from a Mac puts it in
 Photos), open Watch, tap **Pick a video** and choose it, write three rules as states and relations —
-*water rushing over rows of stones* → Effect (Ripple), *a river flowing under a bridge* → Effect (Sweep),
-*a church with a tall spire* → Effect (Rays) — and Start. The video plays once from its start, muted, and
-the run ends with it; the effects' sounds come from `tools/fetch_examples.sh`. Started by hand, an effect
-plays over the whole picture. A script can also have the app ask where each thing is (`-cells ask
--cellwords 1`); the recorded take in [Watch](#watch) ran this, plus `-trigger` and `-frames 1`:
+*water rushing over rows of stones* → Effect (Ripple), *a river flowing under a bridge* → Effect (Zoom),
+*a church with a tall spire* → Effect (Spotlight) — and Start. The video plays once from its start, muted,
+pauses for 3 s at each effect, and the run ends with it; the effects' sounds come from
+`tools/fetch_examples.sh`. Started by hand, an effect edits the whole held frame. A script can also have the
+app ask where each thing is (`-cells ask -cellwords 1`), as the recorded takes in [Watch](#watch) did (with
+`-trigger` and `-frames 1` as well); with this build's three edits:
 
 ```sh
 xcrun devicectl device copy to --device <udid> --domain-type appDataContainer \
@@ -425,7 +451,7 @@ xcrun devicectl device copy to --device <udid> --domain-type appDataContainer \
 xcrun devicectl device process launch --device <udid> com.coreaikit.look -- \
   -watch 1 -source video -file Documents/flyover.mp4 -seconds 45 -delay 2 -take 1 -log 1 \
   -cells ask -cellwords 1 \
-  -rules "water rushing over rows of stones=effect:ripple|a river flowing under a bridge=effect:sweep|a church with a tall spire=effect:rays" \
+  -rules "water rushing over rows of stones=effect:ripple|a river flowing under a bridge=effect:zoom|a church with a tall spire=effect:spotlight" \
   -symbols "water.waves|road.lanes|building.columns"
 ```
 
@@ -453,8 +479,8 @@ so, and the app plays the system chime for each effect.
 | id | the effect | sounds like | source page |
 |---|---|---|---|
 | `water` | Ripple | a shallow brook over stones, 2.3 s | [Commons](https://commons.wikimedia.org/wiki/File:2024-07-26_Molln_(Ober%C3%B6sterreich)_Bachlauf_pl%C3%A4tschert_(Krumme_Steyerling_bei_Piesslingerstra%C3%9Fe).wav) |
-| `horn` | Sweep | a car horn pressed twice, 2.3 s | [Commons](https://commons.wikimedia.org/wiki/File:Car_Horn.wav) |
-| `bells` | Rays | one church bell swinging, four strikes, 3.0 s | [Commons](https://commons.wikimedia.org/wiki/File:Zajeci_zvony_kostel_2025.ogg) |
+| `horn` | Zoom | a car horn pressed twice, 2.3 s | [Commons](https://commons.wikimedia.org/wiki/File:Car_Horn.wav) |
+| `bells` | Spotlight | one church bell swinging, four strikes, 3.0 s | [Commons](https://commons.wikimedia.org/wiki/File:Zajeci_zvony_kostel_2025.ogg) |
 
 ## When it does not answer
 
@@ -475,7 +501,8 @@ so, and the app plays the system chime for each effect.
 | Watch: every rule deleted | Add a rule first (Start stays off) |
 | Watch: Stop during a frame | Stopping after this frame…, then PAUSED · Stopped · N frames · M reactions |
 | Watch: an effect whose sound file is not in the build | nothing: the effect plays with the system chime (the record says `fallback`) |
-| Watch: the place answer has no number or place word in it | nothing: the effect plays over the whole picture (the record's `cell` is null) |
+| Watch: the place answer has no number or place word in it | nothing: the edit plays on the whole held frame (the record's `cell` is null) |
+| Watch: Stop while an effect holds the frame | Stopping after this frame…; the hold plays its 3 s first, then PAUSED |
 
 These are the app's own sentences, from `LookModel.swift` and `Watch.swift`.
 

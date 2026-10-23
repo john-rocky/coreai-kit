@@ -134,7 +134,8 @@ struct PickedMovie: Transferable {
 /// frame on the screen — the one the player shows at that moment (AVPlayerItemVideoOutput on the
 /// player's own item, as DetectCamera reads a video: one decode for the screen and the model). It
 /// opens paused on its first frame; Start plays it from the start (`restart()`), and a run over a video
-/// ends with it (`ended`): it does not loop.
+/// ends with it (`ended`): it does not loop. An effect's hold pauses it and then `resume()`s it from
+/// where it stopped.
 @MainActor
 final class VideoFeed {
     let player: AVPlayer
@@ -200,6 +201,14 @@ final class VideoFeed {
     }
 
     func pause() { player.pause() }
+
+    /// After a hold: on from where it stopped (a video at its end stays there).
+    func resume() {
+        if !ended { player.play() }
+    }
+
+    /// Where the video is now, in seconds.
+    var time: Double { player.currentTime().seconds }
 
     /// Start: from the first frame, playing (the frames taken before are forgotten).
     func restart() {

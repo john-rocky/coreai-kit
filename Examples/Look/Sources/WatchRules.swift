@@ -2,9 +2,10 @@
 // words ("a chessboard"; the model is asked "Is there a chessboard?"), one reaction, and an SF
 // Symbol that shows over the picture whenever the rule fires. The reactions are the app's own
 // functions and the system's sounds and voice: a system sound, a haptic, a line spoken by the
-// system voice, a timer, a count, a line in the log — or an effect, drawn by the app at the place
-// the model names, with a short sound (WatchEffects.swift; the sound files are fetched, not in the
-// repository, and the chime plays when one is missing). An effect shows no symbol and no words.
+// system voice, a timer, a count, a line in the log — or an effect: the picture holds the frame the
+// model answered for 3 s and the app edits it at the place the model names, with a short sound
+// (WatchEffects.swift; the sound files are fetched, not in the repository, and the chime plays when
+// one is missing). An effect shows no symbol and no words.
 //
 // Rules typed on the screen are kept between launches (UserDefaults). A launch with `-rules`
 // (or r5's `-conditions`) uses those instead and keeps nothing:
@@ -12,8 +13,8 @@
 //   -rules "a chessboard=chime|a lighthouse=say:There is the lighthouse|a sign with words on it=count"
 //
 // One rule per `|`, the condition before the first `=`, then the reaction: chime | glass | bell
-// (a sound), haptic, say:<text>, timer:<minutes>, count, log, effect:ripple | effect:sweep |
-// effect:rays.
+// (a sound), haptic, say:<text>, timer:<minutes>, count, log, effect:ripple | effect:zoom |
+// effect:spotlight.
 
 import AudioToolbox
 import Foundation
@@ -36,10 +37,11 @@ enum WatchSound: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// The effects a rule can play where the model says its thing is: drawn by the app over the
-/// picture (WatchEffects.swift), with a short sound. No image, no symbol, no words.
+/// The edits a rule can play on the frame the model answered, where the model says its thing is:
+/// the picture holds that frame for 3 s while Core Image edits it (WatchEffects.swift), with a
+/// short sound. No image, no symbol, no words.
 enum WatchEffect: String, Codable, CaseIterable, Identifiable {
-    case ripple, sweep, rays
+    case ripple, zoom, spotlight
 
     var id: String { rawValue }
 
@@ -50,17 +52,17 @@ enum WatchEffect: String, Codable, CaseIterable, Identifiable {
     var sound: String {
         switch self {
         case .ripple: "water"
-        case .sweep: "horn"
-        case .rays: "bells"
+        case .zoom: "horn"
+        case .spotlight: "bells"
         }
     }
 
-    /// What it looks and sounds like, for the editor.
+    /// What happens to the held frame, and its sound, for the editor.
     var look: String {
         switch self {
-        case .ripple: "Rings spread from the place, with the sound of running water."
-        case .sweep: "A band of light runs across the place and traces its edges, with a horn."
-        case .rays: "Rays of light burst from the place, with bells."
+        case .ripple: "A wave spreads from the place and leaves the picture tinted blue, with the sound of running water."
+        case .zoom: "The picture zooms in on the place to twice its size, with a horn."
+        case .spotlight: "Everything around the place goes dark and grey, with bells."
         }
     }
 }

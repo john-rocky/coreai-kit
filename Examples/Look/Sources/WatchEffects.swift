@@ -1,26 +1,31 @@
-// WatchEffects — what an Effect rule does when it fires: an animation drawn by the app over the
-// place the model names, and a short sound. The place is one of nine cells of the picture (3×3,
-// numbered 1–9 left to right, top to bottom) when the launch asks the model for it (`-cells`), the
-// whole picture otherwise. Three effects, each about 3 s, drawn every frame with TimelineView and
-// Canvas — no image, no symbol, no words:
+// WatchEffects — what an Effect rule does when it fires: the picture holds the frame the model
+// answered — the crop it saw — for 3 s, with a thin border, and the app edits that frame with Core
+// Image at the place the model names, while a short sound plays. The place is one of nine cells of
+// the picture (3×3, numbered 1–9 left to right, top to bottom) when the launch asks the model for it
+// (`-cells`), the whole picture otherwise. A video waits during the hold and then goes on from where
+// it stopped; the camera's and the example photos' live picture is covered. Three edits, one picture
+// rendered per screen frame (TimelineView, one Metal CIContext) — no image, no symbol, no words:
 //
-//   ripple  rings spread out from the place's middle (water)
-//   sweep   a band of light runs across the place, then its edges are traced (a car)
-//   rays    rays of light burst out from the place's middle (bells)
+//   ripple     a circular wave spreads from the place's middle and leaves the frame tinted blue (water)
+//   zoom       the frame zooms 1× → 2× toward the place's middle in 0.6 s and stays there (a car horn)
+//   spotlight  around the place the frame goes dark and grey in 0.4 s; the place stays as it was (bells)
 //
 // Each plays its sound (Sounds/<id>.m4a: water, horn, bells) with AVAudioPlayer. The sound files are
 // not in the repository: tools/fetch_examples.sh downloads and cuts them into Sounds/, which the app
 // bundles; a build without one plays the system chime instead and the record says `fallback`.
 //
 // `-grid 1` burns the 3×3 cells and their numbers into the frame the model gets (WatchGrid), so the
-// model can read the number off the picture; the screen does not show the grid.
+// model can read the number off the picture; the screen shows the grid only on a held frame.
 
 import AVFoundation
 import CoreAIKit
 import CoreGraphics
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import CoreText
 import Foundation
 import ImageIO
+import Metal
 import SwiftUI
 
 /// Where the model says a rule's thing is: how the app asks (`-cells`), and the cell's place on the screen.
@@ -142,146 +147,232 @@ enum WatchGrid {
     }
 }
 
-/// One effect playing: which, where (in units of the picture's box), since when.
-struct WatchEffectRun: Identifiable, Equatable {
+/// One hold: the frame the model answered, held on the picture while its edit plays at the place the model named.
+struct WatchHold: Identifiable, Equatable {
     let id: Int
-    let effect: WatchEffect
+    let edit: WatchEffect
+    /// The cell the model named; nil = the whole picture.
     let cell: Int?
-    let place: CGRect
+    /// The frame as the model got it, and the orientation that turns it upright.
+    let image: CGImage
+    let orientation: CGImagePropertyOrientation
+    /// An example photo is fitted into the picture's box whole; a camera or video crop fills the box.
+    let fits: Bool
     let start: Date
 
-    /// How long an effect plays, in seconds.
+    /// How long a hold lasts, in seconds.
     static let seconds = 3.0
+
+    static func == (a: WatchHold, b: WatchHold) -> Bool { a.id == b.id }
+
+    /// The frame's size once upright.
+    var uprightSize: CGSize {
+        let quarter = [.left, .right, .leftMirrored, .rightMirrored].contains(orientation)
+        return quarter ? CGSize(width: image.height, height: image.width) : CGSize(width: image.width, height: image.height)
+    }
+
+    /// Where the held frame shows in the picture's box, in points: all of it, or the fitted photo.
+    func shown(in box: CGSize) -> CGRect {
+        WatchCells.place(nil, box: box, photo: fits ? uprightSize : nil).points
+    }
 }
 
-/// The effects over the picture, drawn every frame while one plays (at most 60 a second).
-struct WatchEffectLayer: View {
-    let runs: [WatchEffectRun]
+/// The edits, in Core Image: a held frame turned upright and drawn at a size in pixels, and the picture `t` seconds
+/// into its hold. One per hold and size. Once its edit has settled (ripple after 2.4 s, zoom 0.6 s, spotlight 0.4 s)
+/// the last picture is kept.
+@MainActor
+final class WatchEditor {
+    /// One Metal context for every hold (Core Image's default one where there is no Metal device).
+    static let context: CIContext = MTLCreateSystemDefaultDevice().map { CIContext(mtlDevice: $0) } ?? CIContext()
+
+    static let rippleSeconds = 2.4
+    static let zoomSeconds = 0.6
+    static let spotlightSeconds = 0.4
+
+    let edit: WatchEffect
+    /// The picture's size in pixels.
+    let size: CGSize
+    /// The frame upright at its own size, and drawn at `size`.
+    private let full: CIImage
+    private let base: CIImage
+    /// The place in `size`'s pixels, Core Image's y running up: the cell, or the whole picture.
+    private let place: CGRect
+    private var settled: CGImage?
+
+    convenience init(_ hold: WatchHold, size: CGSize) {
+        self.init(image: hold.image, orientation: hold.orientation, edit: hold.edit, cell: hold.cell, size: size)
+    }
+
+    init(image: CGImage, orientation: CGImagePropertyOrientation, edit: WatchEffect, cell: Int?, size: CGSize) {
+        self.edit = edit
+        self.size = size
+        let upright = CIImage(cgImage: image).oriented(orientation)
+        full = upright.transformed(by: CGAffineTransform(translationX: -upright.extent.minX, y: -upright.extent.minY))
+        base = full.transformed(
+            by: CGAffineTransform(scaleX: size.width / full.extent.width, y: size.height / full.extent.height))
+        place = Self.place(cell, in: size)
+    }
+
+    /// Cell 1–9 of a picture (left to right, top to bottom) in Core Image's coordinates; the whole picture for none.
+    static func place(_ cell: Int?, in size: CGSize) -> CGRect {
+        guard let cell, (1...9).contains(cell) else { return CGRect(origin: .zero, size: size) }
+        let width = size.width / 3
+        let height = size.height / 3
+        return CGRect(
+            x: CGFloat((cell - 1) % 3) * width, y: size.height - CGFloat((cell - 1) / 3 + 1) * height, width: width,
+            height: height)
+    }
+
+    /// The picture t seconds into the hold.
+    func picture(at t: Double) -> CGImage? {
+        if let settled { return settled }
+        let picture = Self.context.createCGImage(image(at: t), from: CGRect(origin: .zero, size: size))
+        if t >= settles { settled = picture }
+        return picture
+    }
+
+    /// When the edit stops changing, in seconds into the hold.
+    var settles: Double {
+        switch edit {
+        case .ripple: Self.rippleSeconds
+        case .zoom: Self.zoomSeconds
+        case .spotlight: Self.spotlightSeconds
+        }
+    }
+
+    /// The edit t seconds into the hold, as a Core Image recipe the size of the picture.
+    func image(at t: Double) -> CIImage {
+        let t = max(t, 0)
+        let picture: CIImage
+        switch edit {
+        case .ripple: picture = ripple(min(t / Self.rippleSeconds, 1))
+        case .zoom: picture = zoom(Self.easeOut(min(t / Self.zoomSeconds, 1)))
+        case .spotlight: picture = spotlight(Self.easeOut(min(t / Self.spotlightSeconds, 1)))
+        }
+        return picture.cropped(to: CGRect(origin: .zero, size: size))
+    }
+
+    /// Fast, then slower to the end: 1 − (1 − x)³.
+    static func easeOut(_ x: Double) -> Double { 1 - pow(1 - x, 3) }
+
+    /// A cell's shorter side in pixels (the place's own when it is a cell).
+    private var cellSide: CGFloat { min(size.width, size.height) / 3 }
+
+    /// Water: a circular wave runs out from the place's middle (`time` 0 → 1 over 2.4 s) and leaves the frame a cold
+    /// blue behind it (CIRippleTransition from the frame to a blue copy of it).
+    private func ripple(_ time: Double) -> CIImage {
+        let blue = base.applyingFilter(
+            "CIColorMatrix",
+            parameters: [
+                "inputRVector": CIVector(x: 0.40, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: 0.70, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: 0.80, w: 0), "inputBiasVector": CIVector(x: 0, y: 0.04, z: 0.20, w: 0),
+            ])
+        let wave = CIFilter.rippleTransition()
+        // clamped: near the picture's edges the wave bends in pixels from beyond them (the edge's own, not clear ones)
+        wave.inputImage = base.clampedToExtent()
+        wave.targetImage = blue.clampedToExtent()
+        wave.shadingImage = Self.shading
+        wave.center = CGPoint(x: place.midX, y: place.midY)
+        wave.extent = base.extent
+        wave.time = Float(time)
+        wave.width = Float(cellSide * 0.3)
+        wave.scale = 50
+        return wave.outputImage ?? blue
+    }
+
+    /// The light on the wave's slopes. The filter looks a point of the wave up in this square by the wave's slope
+    /// there: where the frame is flat it reads the middle, which is clear (no light), and a slope facing the upper
+    /// left reads the soft white spot there — a highlight on one side of each crest.
+    private static let shading: CIImage = {
+        let light = CIFilter.radialGradient()
+        light.center = CGPoint(x: 34, y: 94)
+        light.radius0 = 0
+        light.radius1 = 34
+        light.color0 = CIColor(red: 1, green: 1, blue: 1, alpha: 0.75)
+        light.color1 = CIColor(red: 1, green: 1, blue: 1, alpha: 0)
+        return light.outputImage?.cropped(to: CGRect(x: 0, y: 0, width: 128, height: 128)) ?? CIImage.empty()
+    }()
+
+    /// A horn: the frame zoomed by 1 + p toward the place's middle. At 2× the window is half the frame each way,
+    /// centred on the place's middle, moved in when that would leave the frame; on the way the window's middle moves
+    /// from the frame's to there, so the window never leaves the frame. Drawn from the frame at its own size.
+    private func zoom(_ p: Double) -> CIImage {
+        let width = full.extent.width
+        let height = full.extent.height
+        let zoom = 1 + p
+        let x = min(max(place.midX * width / size.width, width / 4), width * 3 / 4)
+        let y = min(max(place.midY * height / size.height, height / 4), height * 3 / 4)
+        let along = 2 * (1 - 1 / zoom)  // 0 at 1×, 1 at 2×
+        let window = CGRect(
+            x: width / 2 + (x - width / 2) * along - width / (2 * zoom),
+            y: height / 2 + (y - height / 2) * along - height / (2 * zoom), width: width / zoom, height: height / zoom)
+        let transform = CGAffineTransform(translationX: -window.minX, y: -window.minY)
+            .concatenating(CGAffineTransform(scaleX: size.width / window.width, y: size.height / window.height))
+        return full.clampedToExtent().transformed(by: transform)
+    }
+
+    /// Bells: around the place the frame darkens (−1.6 EV) and loses its colour (saturation 0.1), the place stays as it
+    /// was, behind a soft edge (the place's mask blurred by 6 % of a cell's shorter side); `a` = how far it has come
+    /// (0 → 1 over 0.4 s). With no place, the middle two thirds of the frame stay lit.
+    private func spotlight(_ a: Double) -> CIImage {
+        let extent = base.extent
+        let lit = place == extent ? extent.insetBy(dx: extent.width / 6, dy: extent.height / 6) : place
+        let dark = base.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: -1.6])
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0.1])
+        let mask = CIImage(color: .white).cropped(to: lit)
+            .composited(over: CIImage(color: .black).cropped(to: extent))
+            .clampedToExtent()
+            .applyingGaussianBlur(sigma: Double(cellSide) * 0.06)
+            .cropped(to: extent)
+        let spot = base.applyingFilter(
+            "CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: dark, kCIInputMaskImageKey: mask])
+        guard a < 1 else { return spot }
+        return base.applyingFilter("CIDissolveTransition", parameters: [kCIInputTargetImageKey: spot, kCIInputTimeKey: a])
+    }
+}
+
+/// The held frame over the picture as its edit goes on (at most 30 pictures a second), with a thin border in the
+/// accent colour: the frame the model answered, over the live picture.
+struct WatchHoldLayer: View {
+    let hold: WatchHold
+    @Environment(\.displayScale) private var scale
+    @State private var editors = WatchEditors()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: runs.isEmpty)) { timeline in
-            Canvas { context, size in
-                for run in runs {
-                    let t = timeline.date.timeIntervalSince(run.start)
-                    guard t >= 0, t <= WatchEffectRun.seconds else { continue }
-                    let rect = CGRect(
-                        x: run.place.minX * size.width, y: run.place.minY * size.height,
-                        width: run.place.width * size.width, height: run.place.height * size.height)
-                    switch run.effect {
-                    case .ripple: Self.ripple(context, rect, t)
-                    case .sweep: Self.sweep(context, rect, t)
-                    case .rays: Self.rays(context, rect, t)
+        GeometryReader { proxy in
+            let shown = hold.shown(in: proxy.size)
+            let pixels = CGSize(width: (shown.width * scale).rounded(), height: (shown.height * scale).rounded())
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(Palette.surface)
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { timeline in
+                    if let picture = editors.editor(hold, pixels).picture(at: timeline.date.timeIntervalSince(hold.start)) {
+                        Image(decorative: picture, scale: scale)
+                            .resizable()
+                            .frame(width: shown.width, height: shown.height)
                     }
                 }
+                .offset(x: shown.minX, y: shown.minY)
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Palette.accent, lineWidth: 3)
+                    .frame(width: shown.width, height: shown.height)
+                    .offset(x: shown.minX, y: shown.minY)
             }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+}
 
-    /// 0 → 1 over the first 0.12 s, then 1 until 2.6 s, then → 0 at the end (3 s).
-    static func envelope(_ t: Double) -> Double {
-        let rise = min(1, t / 0.12)
-        let fall = t > 2.6 ? max(0, (WatchEffectRun.seconds - t) / 0.4) : 1
-        return rise * fall
-    }
+/// The hold layer's editor, kept across its redraws: one per hold and size.
+@MainActor
+final class WatchEditors {
+    private var current: (id: Int, size: CGSize, editor: WatchEditor)?
 
-    private static func point(_ center: CGPoint, _ radius: Double, _ angle: Double) -> CGPoint {
-        CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
-    }
-
-    private static func circle(_ center: CGPoint, _ radius: Double) -> Path {
-        Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius))
-    }
-
-    /// Water: the place tinted, a ring every 0.4 s from its middle (each spreading for 1.3 s to its corners and
-    /// thinning out), and a pulsing drop at the middle.
-    static func ripple(_ context: GraphicsContext, _ rect: CGRect, _ t: Double) {
-        let a = envelope(t)
-        let water = Color(red: 0.55, green: 0.90, blue: 1.0)
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let reach = hypot(rect.width, rect.height) / 2
-        context.fill(Path(roundedRect: rect.insetBy(dx: 3, dy: 3), cornerRadius: 10), with: .color(water.opacity(0.18 * a)))
-        for k in 0..<5 {
-            let age = t - Double(k) * 0.4
-            guard age >= 0, age <= 1.3 else { continue }
-            let p = age / 1.3
-            let ring = circle(center, reach * (0.1 + 0.95 * (1 - pow(1 - p, 2.2))))
-            let width = 2 + 7 * (1 - p)
-            context.stroke(ring, with: .color(.black.opacity(0.25 * (1 - p) * a)), lineWidth: width + 3)
-            context.stroke(ring, with: .color(water.opacity((1 - p) * a)), lineWidth: width)
-        }
-        let drop = 7 + 5 * (0.5 + 0.5 * sin(t * 2 * .pi * 1.5))
-        context.fill(circle(center, drop + 2), with: .color(.black.opacity(0.25 * a)))
-        context.fill(circle(center, drop), with: .color(.white.opacity(0.9 * a)))
-    }
-
-    /// A car: a band of light runs across the place from left to right twice (0–0.9 s, 0.9–1.8 s) while its edges are
-    /// traced (0.05–1.25 s); the traced edges then glow until the end.
-    static func sweep(_ context: GraphicsContext, _ rect: CGRect, _ t: Double) {
-        let a = envelope(t)
-        let light = Color(red: 1.0, green: 0.80, blue: 0.30)
-        let edges = Path(roundedRect: rect.insetBy(dx: 5, dy: 5), cornerRadius: 12)
-        var inside = context
-        inside.clip(to: edges)
-        inside.fill(edges, with: .color(light.opacity(0.14 * a)))
-        if t < 1.8 {
-            let pass = t.truncatingRemainder(dividingBy: 0.9) / 0.9
-            let band = rect.width * 0.45
-            // the band's middle runs from the place's left edge to its right edge
-            let strip = CGRect(x: rect.minX - band / 2 + rect.width * pass, y: rect.minY, width: band, height: rect.height)
-            let colors = [light.opacity(0), light.opacity(0.85 * a), Color.white.opacity(0.95 * a), light.opacity(0)]
-            inside.fill(
-                Path(strip),
-                with: .linearGradient(
-                    Gradient(colors: colors), startPoint: CGPoint(x: strip.minX, y: strip.midY),
-                    endPoint: CGPoint(x: strip.maxX, y: strip.midY)))
-        }
-        let traced = min(1, max(0, (t - 0.05) / 1.2))
-        guard traced > 0 else { return }
-        let glow = traced < 1 ? 1 : 0.75 + 0.25 * sin((t - 1.25) * 2 * .pi * 2)
-        let path = edges.trimmedPath(from: 0, to: traced)
-        context.stroke(path, with: .color(.black.opacity(0.3 * a)), style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
-        context.stroke(path, with: .color(light.opacity(glow * a)), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
-        context.stroke(path, with: .color(.white.opacity(0.7 * glow * a)), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-    }
-
-    /// Bells: twelve rays grow out from the place's middle in 0.5 s and turn slowly, flickering; a ring rings out once
-    /// in the first second; the middle glows.
-    static func rays(_ context: GraphicsContext, _ rect: CGRect, _ t: Double) {
-        let a = envelope(t)
-        let gold = Color(red: 1.0, green: 0.84, blue: 0.40)
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let reach = hypot(rect.width, rect.height) / 2
-        let grow = 1 - pow(1 - min(1, t / 0.5), 3)
-        let inner = reach * 0.12
-        for k in 0..<12 {
-            let angle = t * 0.35 + Double(k) / 12 * 2 * .pi
-            let length = reach * (0.35 + 0.75 * grow) * (k % 2 == 0 ? 1 : 0.72)
-            let flicker = 0.65 + 0.35 * sin(t * 7 + Double(k) * 1.7)
-            var ray = Path()
-            ray.move(to: point(center, inner, angle - 0.04))
-            ray.addLine(to: point(center, length, angle - 0.09))
-            ray.addLine(to: point(center, length, angle + 0.09))
-            ray.addLine(to: point(center, inner, angle + 0.04))
-            ray.closeSubpath()
-            context.stroke(ray, with: .color(.black.opacity(0.3 * a)), lineWidth: 1.5)
-            context.fill(
-                ray,
-                with: .linearGradient(
-                    Gradient(colors: [Color.white.opacity(flicker * a), gold.opacity(flicker * a), gold.opacity(0)]),
-                    startPoint: point(center, inner, angle), endPoint: point(center, length, angle)))
-        }
-        if t < 1 {
-            let ring = circle(center, reach * (0.2 + 0.9 * t))
-            context.stroke(ring, with: .color(gold.opacity((1 - t) * a)), lineWidth: 5 * (1 - t) + 1)
-        }
-        let glow = reach * (0.3 + 0.06 * sin(t * 2 * .pi * 2))
-        context.fill(
-            circle(center, glow),
-            with: .radialGradient(
-                Gradient(colors: [Color.white.opacity(0.95 * a), gold.opacity(0.6 * a), gold.opacity(0)]), center: center,
-                startRadius: 0, endRadius: glow))
+    func editor(_ hold: WatchHold, _ size: CGSize) -> WatchEditor {
+        if let current, current.id == hold.id, current.size == size { return current.editor }
+        let editor = WatchEditor(hold, size: size)
+        current = (hold.id, size, editor)
+        return editor
     }
 }
 

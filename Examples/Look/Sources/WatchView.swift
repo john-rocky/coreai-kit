@@ -6,8 +6,9 @@
 // The rows have fixed heights and the picture gets what is left: on an iPhone 18 Pro with three rules
 // it is ≈ 275 pt tall in take mode (`-take 1`: three rules at most, no "+ Add a rule", no video
 // button) and ≈ 229 pt otherwise. A rule's words are 26 pt (a long sentence shrinks to fit its row);
-// a reaction shows its symbol at 64 pt and its words at 44 pt for at least 3 s; an effect plays over
-// its place on the picture for 3 s, drawn (WatchEffects.swift), without a symbol or words.
+// a reaction shows its symbol at 64 pt and its words at 44 pt for at least 3 s; an effect holds the
+// frame the model answered on the picture for 3 s, with a thin border, and edits it at its place
+// (WatchEffects.swift), without a symbol or words.
 
 import PhotosUI
 import SwiftUI
@@ -184,14 +185,16 @@ struct WatchView: View {
                     placeholder("photo")
                 }
             }
-            WatchEffectLayer(runs: model.effects)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            if let held = model.held {
+                WatchHoldLayer(hold: held)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
             if let overlay = model.overlay {
                 reaction(overlay)
                     .id(overlay.id)
                     .transition(.opacity)
             }
-            if model.source == .video, let video = model.video, !take {
+            if model.source == .video, let video = model.video, !take, model.held == nil {
                 VideoButton(video: video)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(10)
@@ -633,8 +636,10 @@ struct RuleEditor: View {
             }
             .pickerStyle(.segmented)
             Text(effect.look).foregroundStyle(.secondary)
-            Text("It plays over the part of the picture where the model says the thing is, or over all of it.")
-                .foregroundStyle(.secondary)
+            Text(
+                "The picture stops on the frame the model answered for 3 s, and the edit plays where the model says the thing is, or on all of it."
+            )
+            .foregroundStyle(.secondary)
             Button("Play its sound") { onPlayEffect(effect) }
         }
     }

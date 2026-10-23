@@ -477,8 +477,9 @@ final class Autoplay {
 /// `-add "cond=reaction"` fills the new rule, and `-gap` seconds later saves it — save(_:), what the
 /// editor's Done calls. `-frames 1` writes the screen as PNGs to Documents/frames/watch-<epoch>/: READY,
 /// Start, each reaction (0.3 s after it, when the reaction is on the screen) and the end; the record
-/// lists them (`frames_png`). `-quit 1` exits after the record; without it the app stays on the
-/// screen as the run left it.
+/// lists them (`frames_png`). The watch screen adds each effect's edited held frame there, 2.5 s into
+/// its hold (catch<n>.png, the fire's `held_png`). `-quit 1` exits after the record; without it the
+/// app stays on the screen as the run left it.
 @MainActor
 final class WatchAutoplay {
     private var fired = false
