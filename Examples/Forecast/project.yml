@@ -23,6 +23,7 @@ targets:
     sources:
       - path: App
       - path: Sources/QuickStart.swift
+      - path: Sources/SeriesInput.swift
       - path: Resources
         buildPhase: resources
     dependencies:
@@ -40,4 +41,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: "YES"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        # Documents shows in the Files app and Finder: a local Timestral bundle goes in Documents/models/timestral/.
+        INFOPLIST_KEY_UIFileSharingEnabled: "YES"
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: "YES"
         SWIFT_APPROACHABLE_CONCURRENCY: "YES"

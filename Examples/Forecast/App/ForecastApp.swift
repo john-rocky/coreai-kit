@@ -1,124 +1,390 @@
-import SwiftUI
 import Charts
 import CoreAIKit
+import SwiftUI
+import UniformTypeIdentifiers
 
-// Interactive on-device TimesFM 2.5 demo on REAL data. Each series is split into a context (fed to
-// the model) and a held-out tail (the true future). The iPhone forecasts the context; we overlay the
-// held-out actual so you can see forecast vs. ground truth — all on-device via KitForecaster.
+// On-device forecasting of your own series. Pick a model (TimesFM 2.5, or Timestral 209M for any horizon up to
+// 1,024 steps with 21 quantiles), give a series — a bundled real one (its held-out tail is drawn as the actual), pasted
+// numbers, or a CSV file — choose the horizon, and the forecast comes back as a fan chart: the median and the band.
 
 struct RealSeries: Codable, Identifiable {
     var id: String { name }
     let name: String
     let unit: String
-    let context: [Float]   // fed to the model
-    let actual: [Float]    // held-out true future (overlaid)
+    let context: [Float]  // fed to the model
+    let actual: [Float]  // held-out true future (overlaid)
 }
 
 func loadSeries() -> [RealSeries] {
     guard let url = Bundle.main.url(forResource: "real_series", withExtension: "json"),
-          let data = try? Data(contentsOf: url),
-          let box = try? JSONDecoder().decode([String: [RealSeries]].self, from: data),
-          let s = box["series"] else { return [] }
+        let data = try? Data(contentsOf: url),
+        let box = try? JSONDecoder().decode([String: [RealSeries]].self, from: data),
+        let s = box["series"]
+    else { return [] }
     return s
 }
 
-struct Pt: Identifiable { let id = UUID(); let x: Double; let y: Double }
-struct Band: Identifiable { let id = UUID(); let x: Double; let lo: Double; let hi: Double }
+struct Pt: Identifiable {
+    let id = UUID()
+    let x: Double
+    let y: Double
+}
+
+struct BandPt: Identifiable {
+    let id = UUID()
+    let x: Double
+    let lo: Double
+    let hi: Double
+}
+
+enum ForecastModel: String, CaseIterable, Identifiable {
+    case timestral = "Timestral 209M"
+    case timesfm = "TimesFM 2.5"
+    var id: String { rawValue }
+}
+
+enum SeriesSource: String, CaseIterable, Identifiable {
+    case sample = "Sample"
+    case paste = "Paste"
+    case csv = "CSV file"
+    var id: String { rawValue }
+}
+
+/// The interval drawn around the median: its lower and upper quantile levels.
+enum Band: String, CaseIterable, Identifiable {
+    case p80 = "80%"
+    case p90 = "90%"
+    case p98 = "98%"
+    var id: String { rawValue }
+    var levels: (Float, Float) {
+        switch self {
+        case .p80: return (0.1, 0.9)
+        case .p90: return (0.05, 0.95)
+        case .p98: return (0.01, 0.99)
+        }
+    }
+}
+
+enum ForecastAppError: LocalizedError {
+    case timestralBundleMissing
+    case timesfmHorizon(Int)
+    case horizonNotANumber(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .timestralBundleMissing:
+            return "Timestral 209M is not in this kit's catalog yet. Put its bundle in the app's Documents/models/timestral/ "
+                + "folder (Files app → On My iPhone → Forecast)."
+        case .timesfmHorizon(let h):
+            return "TimesFM 2.5 forecasts 1…128 steps; \(h) is outside. Timestral 209M goes to 1,024."
+        case .horizonNotANumber(let s):
+            return "Horizon '\(s)' is not a whole number of steps."
+        }
+    }
+}
 
 @MainActor
-final class VM: ObservableObject {
-    @Published var series = loadSeries()
+final class ForecastViewModel: ObservableObject {
+    @Published var model: ForecastModel = .timestral
+    @Published var source: SeriesSource = .sample
+    @Published var samples = loadSeries()
     @Published var pick = 0
-    @Published var ready = false
+    @Published var pasted = ""
+    @Published var csvName: String?
+    @Published var horizonText = "48"
+    @Published var band: Band = .p80
     @Published var busy = false
-    @Published var status = "loading model…"
+    @Published var status = "Pick a series and forecast."
+    @Published var error: String?
     @Published var history: [Pt] = []
     @Published var median: [Pt] = []
     @Published var truth: [Pt] = []
-    @Published var band: [Band] = []
+    @Published var bandPoints: [BandPt] = []
     @Published var yDomain: ClosedRange<Double> = 0...1
+    @Published var nowX = 0.0
     @Published var caption = ""
 
-    private var forecaster: KitForecaster?
-    static let shown = 120
+    var csvText: String?
+    /// A scripted run's `-compute gpu|ane`: that unit for every Timestral graph. nil = each graph on its form's unit.
+    var computeOverride: String?
+    /// A local Timestral bundle to load instead of the catalog entry (a graph, or a folder of graphs).
+    var localBundle: URL?
+    /// Called after every forecast or error (the scripted runs log it).
+    var onResult: ((_ outcome: [String: Any]) -> Void)?
+    private var timesfm: KitForecaster?
+    private var timestral: KitTimestralForecaster?
+    private(set) var lastLoadMilliseconds: Double?
 
-    func load() async {
+    /// The series the current input gives, NaN where a value is missing.
+    func currentSeries() throws -> (values: [Float], actual: [Float]?, label: String) {
+        switch source {
+        case .sample:
+            guard samples.indices.contains(pick) else { throw SeriesInputError.empty }
+            let s = samples[pick]
+            return (s.context, s.actual, s.name)
+        case .paste:
+            let input = try SeriesParser.parse(pasted)
+            return (input.values, nil, "pasted series")
+        case .csv:
+            guard let text = csvText else { throw SeriesInputError.empty }
+            let input = try SeriesParser.parse(text)
+            return (input.values, nil, csvName.map { name in input.column.map { "\(name) · \($0)" } ?? name } ?? "CSV")
+        }
+    }
+
+    func importCSV(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
-            forecaster = try await KitForecaster(catalog: "timesfm-2.5-200m") { p in
-                Task { @MainActor in self.status = "downloading… \(Int(p.fraction * 100))%" }
+            csvText = try String(contentsOf: url, encoding: .utf8)
+            csvName = url.lastPathComponent
+            error = nil
+        } catch {
+            self.error = "Cannot read \(url.lastPathComponent): \(error.localizedDescription)"
+        }
+    }
+
+    /// The loaded Timestral forecaster (loads it on first use), for the scripted fixture replay.
+    func timestralForecaster() async throws -> KitTimestralForecaster { try await loadTimestral() }
+
+    private func loadTimestral() async throws -> KitTimestralForecaster {
+        if let t = timestral { return t }
+        let t0 = Date()
+        let loaded: KitTimestralForecaster
+        if let localBundle {
+            loaded = try await openTimestral(at: localBundle)
+            lastLoadMilliseconds = Date().timeIntervalSince(t0) * 1000
+            timestral = loaded
+            return loaded
+        }
+        do {
+            let progress: @Sendable (DownloadProgress) -> Void = { p in
+                Task { @MainActor in self.status = "Downloading Timestral 209M… \(Int(p.fraction * 100))%" }
             }
-            ready = true
-            await forecast()
-        } catch { status = "error: \(error)" }
+            if let unit = computeOverride {
+                loaded = try await KitTimestralForecaster(
+                    computeUnits: unit == "ane" ? .neuralEngine : .gpu, downloadProgress: progress)
+            } else {
+                loaded = try await KitTimestralForecaster(downloadProgress: progress)
+            }
+        } catch CoreAIKitError.modelNotInCatalog {
+            // Until the catalog lists it: a bundle the user put in Documents/models/timestral/.
+            let local = URL.documentsDirectory.appending(path: "models/timestral")
+            guard FileManager.default.fileExists(atPath: local.path) else { throw ForecastAppError.timestralBundleMissing }
+            loaded = try await openTimestral(at: local)
+        }
+        lastLoadMilliseconds = Date().timeIntervalSince(t0) * 1000
+        timestral = loaded
+        return loaded
+    }
+
+    /// A local bundle: each graph on its form's unit, or the scripted run's `-compute` unit for every graph.
+    private func openTimestral(at url: URL) async throws -> KitTimestralForecaster {
+        guard let unit = computeOverride else { return try await KitTimestralForecaster(bundleAt: url) }
+        return try await KitTimestralForecaster(bundleAt: url, computeUnits: unit == "ane" ? .neuralEngine : .gpu)
+    }
+
+    /// Where a forecast's graph ran, for the caption and the scripted log.
+    static func unitName(_ d: QuantileForecast.Details) -> String {
+        switch d.computeUnits {
+        case .neuralEngine: return "Neural Engine"
+        case .gpu: return "GPU"
+        default: return "CPU"
+        }
+    }
+
+    private func loadTimesFM() async throws -> KitForecaster {
+        if let f = timesfm { return f }
+        let t0 = Date()
+        let loaded = try await KitForecaster(catalog: "timesfm-2.5-200m") { p in
+            Task { @MainActor in self.status = "Downloading TimesFM 2.5… \(Int(p.fraction * 100))%" }
+        }
+        lastLoadMilliseconds = Date().timeIntervalSince(t0) * 1000
+        timesfm = loaded
+        return loaded
     }
 
     func forecast() async {
-        guard let f = forecaster, !busy, !series.isEmpty else { return }
-        busy = true; status = "forecasting on-device…"
-        let s = series[pick]
+        guard !busy else { return }
+        busy = true
+        error = nil
+        defer { busy = false }
+        var outcome: [String: Any] = ["model": model.rawValue, "source": source.rawValue, "horizon_text": horizonText]
         do {
+            let text = horizonText.trimmingCharacters(in: .whitespaces)
+            guard let h = Int(text) else { throw ForecastAppError.horizonNotANumber(text) }
+            let (series, actual, label) = try currentSeries()
+            outcome["values"] = series.count
+            let lo: [Float], mid: [Float], hi: [Float]
+            let detail: String
             let t0 = Date()
-            let out = try await f.forecast(s.context)
-            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            switch model {
+            case .timestral:
+                status = "Loading Timestral 209M…"
+                let f = try await loadTimestral()
+                status = "Forecasting on device…"
+                let q = try await f.forecast(series, horizon: h)
+                let (l, u) = band.levels
+                lo = q.quantile(l)!
+                mid = q.median
+                hi = q.quantile(u)!
+                let d = q.details
+                let dropped = d.contextDropped > 0 ? " (oldest \(d.contextDropped.formatted()) left out)" : ""
+                detail = String(format: "%.1f ms (graph %.1f ms)", d.totalMilliseconds, d.graphMilliseconds)
+                    + " on the \(Self.unitName(d)) · read \(d.contextUsed.formatted()) points\(dropped)"
+                outcome.merge([
+                    "total_ms": d.totalMilliseconds, "graph_ms": d.graphMilliseconds, "bucket": "\(d.bucket)",
+                    "compute": Self.unitName(d), "context_used": d.contextUsed, "context_dropped": d.contextDropped,
+                ]) { $1 }
+            case .timesfm:
+                guard (1...128).contains(h) else { throw ForecastAppError.timesfmHorizon(h) }
+                status = "Loading TimesFM 2.5…"
+                let f = try await loadTimesFM()
+                status = "Forecasting on device…"
+                let ts = Date()
+                let out = try await f.forecast(series)
+                let ms = Date().timeIntervalSince(ts) * 1000
+                lo = (0..<h).map { out.quantiles[$0][1] }
+                mid = Array(out.mean.prefix(h))
+                hi = (0..<h).map { out.quantiles[$0][9] }
+                detail = String(format: "%.1f ms", ms) + " · p10–p90"
+                outcome["total_ms"] = ms
+            }
+            let wall = Date().timeIntervalSince(t0) * 1000
+            draw(series: series, lo: lo, mid: mid, hi: hi, actual: actual)
+            var line = "\(model.rawValue) · \(h)-step forecast · \(detail)"
+            if let actual, !actual.isEmpty {
+                let n = min(h, actual.count)
+                let mae = zip(mid.prefix(n), actual.prefix(n)).map { abs($0 - $1) }.reduce(0, +) / Float(n)
+                let last = series.last(where: { $0.isFinite }) ?? 0
+                let naive = actual.prefix(n).map { abs($0 - last) }.reduce(0, +) / Float(n)
+                line += String(format: " · MAE %.2f (last value %.2f)", mae, naive)
+            }
+            caption = line
+            status = label
+            outcome.merge(["ok": true, "wall_ms": wall, "load_ms": lastLoadMilliseconds.map { $0 as Any } ?? NSNull()]) { $1 }
+        } catch {
+            self.error = error.localizedDescription
+            status = "No forecast."
+            outcome.merge(["ok": false, "error": error.localizedDescription]) { $1 }
+        }
+        onResult?(outcome)
+    }
 
-            let hist = Array(s.context.suffix(Self.shown))
-            history = hist.enumerated().map { Pt(x: Double($0.offset), y: Double($0.element)) }
-            let base = Double(hist.count - 1)
-            let h = s.actual.count                                  // show forecast over the held-out span
-            median = (0..<h).map { Pt(x: base + Double($0 + 1), y: Double(out.mean[$0])) }
-            band = (0..<h).map {
-                Band(x: base + Double($0 + 1), lo: Double(out.quantiles[$0][1]), hi: Double(out.quantiles[$0][9])) }
-            truth = s.actual.enumerated().map { Pt(x: base + Double($0.offset + 1), y: Double($0.element)) }
-
-            let mae = zip(out.mean.prefix(h), s.actual).map { abs($0 - $1) }.reduce(0, +) / Float(h)
-            let naive = s.actual.map { abs($0 - s.context.last!) }.reduce(0, +) / Float(h)
-            caption = String(format: "%@ · %d-step · %d ms · MAE %.2f (%.1f× better than last-value)",
-                             s.unit, h, ms, mae, naive / max(mae, 1e-6))
-
-            let ys = hist.map { Double($0) } + out.mean.prefix(h).map { Double($0) } + s.actual.map { Double($0) }
-            let lo = ys.min() ?? 0, hi = ys.max() ?? 1, pad = (hi - lo) * 0.08 + 1e-3
-            yDomain = (lo - pad)...(hi + pad)
-            status = s.name
-        } catch { status = "error: \(error)" }
-        busy = false
+    private func draw(series: [Float], lo: [Float], mid: [Float], hi: [Float], actual: [Float]?) {
+        let h = mid.count
+        let shown = min(series.count, max(96, 2 * h), 1024)
+        let tail = Array(series.suffix(shown))
+        history = tail.enumerated().compactMap { $0.element.isFinite ? Pt(x: Double($0.offset), y: Double($0.element)) : nil }
+        let base = Double(tail.count - 1)
+        nowX = base
+        median = (0..<h).map { Pt(x: base + Double($0 + 1), y: Double(mid[$0])) }
+        bandPoints = (0..<h).map { BandPt(x: base + Double($0 + 1), lo: Double(lo[$0]), hi: Double(hi[$0])) }
+        let truthTail = Array((actual ?? []).prefix(h))
+        truth = truthTail.enumerated().map { Pt(x: base + Double($0.offset + 1), y: Double($0.element)) }
+        let ys = history.map(\.y) + bandPoints.flatMap { [$0.lo, $0.hi] } + truth.map(\.y)
+        let low = ys.min() ?? 0, high = ys.max() ?? 1
+        let pad = (high - low) * 0.08 + 1e-3
+        yDomain = (low - pad)...(high + pad)
     }
 }
 
 struct ContentView: View {
-    @StateObject private var vm = VM()
-    private let nowX = Double(VM.shown - 1)
+    @ObservedObject var vm: ForecastViewModel
+    @State private var importing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("TimesFM 2.5 · on-device forecast vs. actual").font(.headline)
-            Text(vm.status).font(.subheadline).foregroundStyle(.secondary)
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Model", selection: $vm.model) {
+                        ForEach(ForecastModel.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
 
-            Picker("series", selection: $vm.pick) {
-                ForEach(Array(vm.series.enumerated()), id: \.offset) { i, s in Text(s.name).tag(i) }
+                    Picker("Series", selection: $vm.source) {
+                        ForEach(SeriesSource.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+
+                    input
+
+                    HStack(spacing: 10) {
+                        Text("Horizon")
+                        TextField("steps", text: $vm.horizonText)
+                            .keyboardType(.numberPad)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                        Text("steps").foregroundStyle(.secondary)
+                        Spacer()
+                        Picker("Band", selection: $vm.band) {
+                            ForEach(Band.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(vm.model == .timesfm)
+                    }
+
+                    Button {
+                        Task { await vm.forecast() }
+                    } label: {
+                        Text(vm.busy ? "Forecasting…" : "Forecast").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.busy)
+
+                    if let error = vm.error {
+                        Text(error).font(.callout).foregroundStyle(.red)
+                    }
+                    Text(vm.status).font(.subheadline).foregroundStyle(.secondary)
+                    chart.frame(height: 260)
+                    Text(vm.caption).font(.caption).foregroundStyle(.secondary)
+                    legend
+                }
+                .padding()
             }
-            .pickerStyle(.segmented)
-            .disabled(!vm.ready || vm.busy)
-            .onChange(of: vm.pick) { Task { await vm.forecast() } }
-
-            chart.frame(maxHeight: .infinity)
-
-            Text(vm.caption).font(.caption).foregroundStyle(.secondary)
-            HStack(spacing: 16) {
-                Label("history", systemImage: "minus").foregroundStyle(.secondary)
-                Label("forecast", systemImage: "minus").foregroundStyle(.orange)
-                Label("actual", systemImage: "minus").foregroundStyle(.teal)
-                Label("p10–p90", systemImage: "rectangle.fill").foregroundStyle(.orange.opacity(0.4))
-            }.font(.caption2)
+            .navigationTitle("Forecast")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .padding()
-        .task { await vm.load() }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText]) {
+            if case .success(let url) = $0 { vm.importCSV(url) }
+        }
+    }
+
+    @ViewBuilder private var input: some View {
+        switch vm.source {
+        case .sample:
+            Picker("Sample", selection: $vm.pick) {
+                ForEach(Array(vm.samples.enumerated()), id: \.offset) { i, s in Text("\(s.name) · \(s.unit)").tag(i) }
+            }
+            .pickerStyle(.menu)
+        case .paste:
+            VStack(alignment: .leading, spacing: 6) {
+                TextEditor(text: $vm.pasted)
+                    .font(.system(.footnote, design: .monospaced))
+                    .frame(height: 110)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                HStack {
+                    PasteButton(payloadType: String.self) { strings in
+                        if let s = strings.first { vm.pasted = s }
+                    }
+                    .labelStyle(.titleAndIcon)
+                    Text("one number per line, or separated by commas").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        case .csv:
+            HStack {
+                Button("Choose CSV…") { importing = true }
+                    .buttonStyle(.bordered)
+                Text(vm.csvName ?? "no file").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
     }
 
     private var chart: some View {
         Chart {
-            ForEach(vm.band) {
-                AreaMark(x: .value("t", $0.x), yStart: .value("p10", $0.lo), yEnd: .value("p90", $0.hi))
-                    .foregroundStyle(.orange.opacity(0.16))
+            ForEach(vm.bandPoints) {
+                AreaMark(x: .value("t", $0.x), yStart: .value("lo", $0.lo), yEnd: .value("hi", $0.hi))
+                    .foregroundStyle(.orange.opacity(0.22))
             }
             ForEach(vm.history) {
                 LineMark(x: .value("t", $0.x), y: .value("v", $0.y), series: .value("s", "history"))
@@ -129,22 +395,40 @@ struct ContentView: View {
                     .foregroundStyle(.teal)
             }
             ForEach(vm.median) {
-                LineMark(x: .value("t", $0.x), y: .value("v", $0.y), series: .value("s", "forecast"))
-                    .foregroundStyle(.orange).lineStyle(StrokeStyle(lineWidth: 2))
+                LineMark(x: .value("t", $0.x), y: .value("v", $0.y), series: .value("s", "median"))
+                    .foregroundStyle(.orange)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
             }
             if !vm.median.isEmpty {
-                RuleMark(x: .value("now", nowX))
+                RuleMark(x: .value("now", vm.nowX))
                     .foregroundStyle(.gray.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
             }
         }
         .chartYScale(domain: vm.yDomain)
         .chartYAxis { AxisMarks(position: .leading) }
-        .animation(.easeInOut(duration: 0.35), value: vm.median.map(\.y))
+    }
+
+    private var legend: some View {
+        HStack(spacing: 14) {
+            Label("history", systemImage: "minus").foregroundStyle(.secondary)
+            Label("median", systemImage: "minus").foregroundStyle(.orange)
+            if !vm.truth.isEmpty { Label("actual", systemImage: "minus").foregroundStyle(.teal) }
+            Label(vm.model == .timesfm ? "p10–p90" : vm.band.rawValue + " band", systemImage: "rectangle.fill")
+                .foregroundStyle(.orange.opacity(0.5))
+        }
+        .font(.caption2)
     }
 }
 
 @main
 struct ForecastApp: App {
-    var body: some Scene { WindowGroup { ContentView() } }
+    @StateObject private var vm = ForecastViewModel()
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView(vm: vm)
+                .scriptedRun(vm)
+        }
+    }
 }

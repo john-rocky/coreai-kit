@@ -1369,6 +1369,24 @@
         }
       },
       "engine": "static-shape"
+    },
+    {
+      "id": "timestral-209m",
+      "name": "Timestral 209M",
+      "repo": "mlboydaisuke/Timestral-209M-CoreAI",
+      "revision": "5d1713f56f7867c54214c95f9d4c280a2859c7e5",
+      "kind": "quantileForecasting",
+      "variants": {
+        "macos": {
+          "path": "macos",
+          "sizeMB": 1214
+        },
+        "ios": {
+          "path": "ios",
+          "sizeMB": 1214
+        }
+      },
+      "license": "LicenseRef-Timestral-Modified-MIT"
     }
   ]
 }

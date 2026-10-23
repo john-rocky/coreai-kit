@@ -37,6 +37,12 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         case retrieval
         /// Time-series forecasting (TimesFM 2.5): univariate series → point + quantile forecast.
         case forecasting
+        /// Probabilistic forecasting at any horizon up to one decode block (Timestral-209M): a univariate series → 21
+        /// quantiles (0.01 … 0.99) for every step, one graph per context bucket plus the host's scaling, refine frame,
+        /// cap and symmetric averaging, driven by `KitTimestralForecaster`. Not `forecasting`: a kit built before this
+        /// case decodes the entry as `unknown` and leaves it out of `available(_:)`, where `forecasting` would list it
+        /// and hand it to the TimesFM-only `KitForecaster`, which refuses every other id.
+        case quantileForecasting
         /// Music source separation (Mel-Band RoFormer): song → vocals + instrumental stems.
         case separation
         /// Typed decisions (decider): state + question → probabilities over listed options,
@@ -1174,5 +1180,17 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
                     "ios": .init(path: "timesfm_2p5_200m_ctx2048_fp16.aimodel", sizeMB: 463),
                 ], engine: "static-shape"),
+            // ── Probabilistic forecasting: Timestral 209M, one graph per bucket (64 context patches = 2,048 points
+            //    with 4 or 32 horizon patches, 256 = 8,192 with 32) plus the host's float64 scaling, refine frame, cap
+            //    and symmetric averaging (KitTimestralForecaster). `quantileForecasting`, not `forecasting`: a kit
+            //    built before the kind decodes the entry as `unknown` instead of handing it to the TimesFM-only
+            //    KitForecaster. The weights' licence is Modified MIT with a revenue condition (`license`). ──
+            CatalogEntry(
+                id: "timestral-209m", name: "Timestral 209M",
+                repo: "mlboydaisuke/Timestral-209M-CoreAI", kind: .quantileForecasting,
+                variants: [
+                    "macos": .init(path: "macos", sizeMB: 1214),
+                    "ios": .init(path: "ios", sizeMB: 1214),
+                ], license: "LicenseRef-Timestral-Modified-MIT"),
         ])
 }
