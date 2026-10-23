@@ -343,8 +343,8 @@ struct WatchView: View {
             Label("×\(state.count)", systemImage: "number")
         case .log:
             Label("log", systemImage: "list.bullet")
-        case .effect(let effect):
-            Label(effect.rawValue, systemImage: "sparkles")
+        case .effect(let effect, let sound):
+            Label("\(effect.rawValue) · \((sound ?? effect.sound).rawValue)", systemImage: "sparkles")
         }
     }
 
@@ -465,7 +465,7 @@ struct RuleEditor: View {
     let onSave: (WatchRule) -> Void
     let onDelete: () -> Void
     let onPlay: (WatchSound) -> Void
-    let onPlayEffect: (WatchEffect) -> Void
+    let onPlayEffect: (WatchEffectSound) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var condition: String
     @State private var kind: WatchReaction.Kind
@@ -473,12 +473,13 @@ struct RuleEditor: View {
     @State private var sayText: String
     @State private var minutes: Double
     @State private var effect: WatchEffect
+    @State private var effectSound: WatchEffectSound
     @State private var symbol: String
 
     init(
         target: WatchModel.EditTarget, count: Int, onSave: @escaping (WatchRule) -> Void,
         onDelete: @escaping () -> Void, onPlay: @escaping (WatchSound) -> Void,
-        onPlayEffect: @escaping (WatchEffect) -> Void
+        onPlayEffect: @escaping (WatchEffectSound) -> Void
     ) {
         self.target = target
         self.count = count
@@ -495,7 +496,7 @@ struct RuleEditor: View {
         case .sound(let chosen): sound = chosen
         case .say(let text): say = text
         case .timer(let chosen): minutes = chosen
-        case .effect(let chosen): effect = chosen
+        case .effect(let chosen, _): effect = chosen
         default: break
         }
         _condition = State(initialValue: rule.condition)
@@ -504,6 +505,7 @@ struct RuleEditor: View {
         _sayText = State(initialValue: say)
         _minutes = State(initialValue: minutes)
         _effect = State(initialValue: effect)
+        _effectSound = State(initialValue: rule.reaction.effectSound ?? effect.sound)
         _symbol = State(initialValue: rule.symbol)
     }
 
@@ -517,7 +519,7 @@ struct RuleEditor: View {
         case .timer: .timer(minutes: min(max(minutes, 0.1), 120))
         case .count: .count
         case .log: .log
-        case .effect: .effect(effect)
+        case .effect: WatchReaction(effect: effect, sound: effectSound)
         }
     }
 
@@ -635,12 +637,18 @@ struct RuleEditor: View {
                 ForEach(WatchEffect.allCases) { effect in Text(effect.title).tag(effect) }
             }
             .pickerStyle(.segmented)
+            // a new edit brings its own sound; pick another below
+            .onChange(of: effect) { _, chosen in effectSound = chosen.sound }
             Text(effect.look).foregroundStyle(.secondary)
             Text(
-                "The picture stops on the frame the model answered for 3 s, and the edit plays where the model says the thing is, or on all of it."
+                "The picture stops on the frame the model answered for 3 s, and the edit plays at the box the model gives for the thing, or on all of it."
             )
             .foregroundStyle(.secondary)
-            Button("Play its sound") { onPlayEffect(effect) }
+            Picker("Sound", selection: $effectSound) {
+                ForEach(WatchEffectSound.allCases) { sound in Text(sound.title).tag(sound) }
+            }
+            .pickerStyle(.segmented)
+            Button("Play its sound") { onPlayEffect(effectSound) }
         }
     }
 }

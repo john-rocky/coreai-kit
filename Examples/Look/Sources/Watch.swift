@@ -14,12 +14,15 @@
 // frame before) and it has not fired in the last 3 s; a yes that stays yes does not fire again. At
 // the thermal state fair the loop starts a frame at most every 2 s, at serious every 4 s.
 //
-// Where the thing is (`-cells`, default none = not asked, and an effect covers the whole picture):
-// `ask` asks a second question about the same frame for each rule that fires, before it fires —
-// "Where in the picture is <condition>? …" with `-cellwords 1` (two place words: left / center /
-// right, top / middle / bottom), else the number of a 3×3 cell (1–9, left to right, top to bottom);
-// `batch` asks for the cell's number inside the yes / no prompt (on the example video that made the
-// yes / no answers worse). `-grid 1` draws the cells and their numbers on the frame the model gets
+// Where the thing is (`-cells`, default box): `box` asks a second question about the same frame for
+// each effect rule that fires, before it fires, in the model's own grounding form — "Detect
+// <condition> in the picture and output its bounding box." (at most 48 answer tokens) — and reads
+// the first box of the answer (`<box>x1 y1 x2 y2</box>`, per mille of the frame it got: WatchParse.box);
+// `ask` asks for every rule that fires "Where in the picture is <condition>? …" with `-cellwords 1`
+// (two place words: left / center / right, top / middle / bottom), else the number of a 3×3 cell
+// (1–9, left to right, top to bottom); `batch` asks for the cell's number inside the yes / no prompt
+// (on the example video that made the yes / no answers worse); `none` asks nothing, and an effect
+// covers the whole picture. `-grid 1` draws the cells and their numbers on the frame the model gets
 // (not on the screen).
 //
 // The example photos come in turn — sign, object, scene, sign … — each on the screen for at least
@@ -35,7 +38,7 @@
 // Start and Stop are start() and stop(); Autoplay.swift (WatchAutoplay) calls the same two for a
 // recording or a check. With `-log 1`, every run — Start to Stop — appends PRESS / WATCH (one per
 // frame) / FIRE (one per reaction) / HOLD (one per effect, when its hold ends) / DONE lines to
-// Documents/look-autoplay.log and writes Documents/watch-run-<epoch>.json (schema watch-run/4).
+// Documents/look-autoplay.log and writes Documents/watch-run-<epoch>.json (schema watch-run/5).
 
 import AVFoundation
 import AudioToolbox
@@ -88,7 +91,7 @@ struct WatchSettings {
     let edit: String?
     let add: String?
     let modelID: String
-    /// `-cells none|batch|ask`: whether and how the model is asked where a rule's thing is.
+    /// `-cells box|none|batch|ask` (default box): whether and how the model is asked where a rule's thing is.
     let cells: WatchCells.Form
     /// `-cellwords 1`: `-cells ask` asks for the place in words (left / center / right, then top / middle /
     /// bottom), not a number.
@@ -135,7 +138,7 @@ struct WatchSettings {
         edit = defaults.string(forKey: "edit")
         add = defaults.string(forKey: "add")
         modelID = defaults.string(forKey: "model") ?? "minicpm-v-4.7-1b"
-        cells = WatchCells.Form(rawValue: (defaults.string(forKey: "cells") ?? "none").lowercased()) ?? .off
+        cells = WatchCells.Form(rawValue: (defaults.string(forKey: "cells") ?? "box").lowercased()) ?? .box
         cellWords = defaults.bool(forKey: "cellwords")
         grid = defaults.bool(forKey: "grid")
     }
@@ -187,6 +190,14 @@ enum WatchPrompt {
         words
             ? "Where in the picture is \(condition)? Answer with two words: left, center or right; then top, middle or bottom."
             : "Which cell of a 3x3 grid (1-9, numbered left to right, top to bottom) contains \(condition)? Answer with the number only."
+    }
+
+    /// `-cells box`: the second question, about one effect rule that fired, in the model's own grounding form (the Mac
+    /// check of the example video asked it word for word): `<condition>` is the rule's words.
+    static let boxForm = "Detect <condition> in the picture and output its bounding box."
+
+    static func box(_ condition: String) -> String {
+        boxForm.replacingOccurrences(of: "<condition>", with: condition)
     }
 }
 
@@ -290,6 +301,70 @@ enum WatchParse {
             }
         }
         if word == "yes" || word == "no" { found.append(word) }
+        return found
+    }
+
+    /// The tags a box can come in, the model's own first (`<ref>…</ref><box>x1 y1 x2 y2</box>`).
+    static let boxTags = [("<box>", "</box>"), ("<|box_start|>", "<|box_end|>"), ("<point>", "</point>"), ("<quad>", "</quad>")]
+
+    /// The box an answer gives — left, top, right, bottom in per mille of the frame the model got — read as the Mac check
+    /// of the example video read it: the numbers inside the first box tag (the earliest of `boxTags`; up to its closing
+    /// tag, or to the end), else every number in the answer; the first four count. Their unit by their range: all four
+    /// within 0–1 with a decimal point = fractions (× 1000); an x or a y over 1000 = pixels of the frame (`pixels`, its
+    /// upright size); else per mille. Clamped to 0–1000, left / right and top / bottom swapped when they come the other
+    /// way round, rounded. Nil when there are fewer than four numbers.
+    static func box(_ text: String, pixels: CGSize? = nil) -> [Int]? {
+        var segment = Substring(text)
+        var first: (at: String.Index, open: String, close: String)?
+        for (open, close) in boxTags {
+            if let range = text.range(of: open), first == nil || range.lowerBound < first!.at {
+                first = (range.lowerBound, open, close)
+            }
+        }
+        if let first {
+            segment = text[first.at...].dropFirst(first.open.count)
+            if let end = segment.range(of: first.close) { segment = segment[..<end.lowerBound] }
+        }
+        let found = numbers(in: segment)
+        guard found.count >= 4 else { return nil }
+        let strings = Array(found.prefix(4))
+        var values = strings.compactMap(Double.init)
+        guard values.count == 4 else { return nil }
+        if values.allSatisfy({ (0...1).contains($0) }), strings.contains(where: { $0.contains(".") }) {
+            values = values.map { $0 * 1000 }
+        } else if values[0] > 1000 || values[2] > 1000 || values[1] > 1000 || values[3] > 1000, let pixels,
+            pixels.width > 0, pixels.height > 0
+        {
+            values = values.enumerated().map { $0.element * 1000 / Double($0.offset % 2 == 0 ? pixels.width : pixels.height) }
+        }
+        values = values.map { min(1000, max(0, $0)) }
+        let (left, right) = (min(values[0], values[2]), max(values[0], values[2]))
+        let (top, bottom) = (min(values[1], values[3]), max(values[1], values[3]))
+        return [left, top, right, bottom].map { Int($0.rounded()) }
+    }
+
+    /// The numbers of a text in order: runs of the digits 0–9, with a decimal part when a "." and a digit follow (no
+    /// sign: "401-650" is two numbers).
+    static func numbers<S: StringProtocol>(in text: S) -> [String] {
+        var found: [String] = []
+        var number = ""
+        var decimal = false  // a "." right after digits: the next digit carries on the number
+        for character in text {
+            if character.isASCII, character.isNumber {
+                if decimal {
+                    number.append(".")
+                    decimal = false
+                }
+                number.append(character)
+            } else if character == ".", !number.isEmpty, !decimal, !number.contains(".") {
+                decimal = true
+            } else {
+                if !number.isEmpty { found.append(number) }
+                number = ""
+                decimal = false
+            }
+        }
+        if !number.isEmpty { found.append(number) }
         return found
     }
 }
@@ -524,7 +599,7 @@ final class WatchModel {
                 "free_bytes=\(Autoplay.freeBytes().map { String($0) } ?? "-")",
                 "cells=\(settings.cells.rawValue) cellwords=\(settings.cellWords) grid=\(settings.grid)",
                 "sounds=\(sounds.isEmpty ? "-" : sounds.joined(separator: ","))",
-                "record=watch-run/4",  // the record's schema (writeRecord), so a script knows which build it runs
+                "record=watch-run/5",  // the record's schema (writeRecord), so a script knows which build it runs
             ]
             note(fields.joined(separator: " "))
         }
@@ -780,9 +855,9 @@ final class WatchModel {
     /// The editor's Play it.
     func preview(_ sound: WatchSound) { AudioServicesPlaySystemSound(sound.systemSound) }
 
-    /// The editor's Play its sound (an effect's): the chime when this build does not have the file.
-    func preview(_ effect: WatchEffect) {
-        if sounds.play(effect.sound) == nil { AudioServicesPlaySystemSound(WatchSound.chime.systemSound) }
+    /// The editor's Play its sound (an effect's): the chime for the chime, and when this build does not have the file.
+    func preview(_ sound: WatchEffectSound) {
+        if sound.file.flatMap({ sounds.play($0) }) == nil { AudioServicesPlaySystemSound(WatchSound.chime.systemSound) }
     }
 
     // MARK: - Start and Stop
@@ -816,7 +891,7 @@ final class WatchModel {
         note("PRESS start source=\(source.rawValue) rules=\(rules.map { "\($0.condition)=\($0.reaction.token)" }.joined(separator: "|"))")
         keepAwake()
         let speaks = rules.contains { $0.reaction.kind == .say }
-        let effectSounds = rules.compactMap { $0.reaction.effect?.sound }
+        let effectSounds = rules.compactMap { $0.reaction.effectSound?.file }
         #if os(iOS)
         // The voice and the effects' sounds play whatever the ring / silent switch says, mixed with other audio.
         if speaks || !effectSounds.isEmpty {
@@ -922,18 +997,25 @@ final class WatchModel {
                 }
                 cellMs = LookModel.seconds(clock.now - askStart) * 1000
             }
+            // -cells box: where each effect rule that fires is, as the model's box on the same frame, before it fires.
+            var boxes: [Int: Located] = [:]
+            if settings.cells == .box {
+                for k in fired where run.rules[k].reaction.effect != nil {
+                    boxes[k] = await locate(frame, run.rules[k].condition)
+                }
+            }
             let firedAt = clock.now
             react(fired.filter { run.rules[$0].reaction.effect == nil })
             record(
-                frame, index, reply, answers, fired, suppressed, cells: cells, cellMs: cellMs, asked: asked,
+                frame, index, reply, answers, fired, suppressed, cells: cells, cellMs: cellMs, asked: asked, boxes: boxes,
                 pace: pace, waitedMs: waitedMs, start: start, grabbed: grabbed, parseStart: parseStart, parsed: parsed,
                 firedAt: firedAt)
             // Each effect holds this frame in turn; the next frame is taken when the holds are over.
             var heldMs = 0.0
             for k in fired where run.rules[k].reaction.effect != nil {
                 heldMs += await hold(
-                    k, cell: cells.indices.contains(k) ? cells[k] : nil, frame: frame, index: index, start: start,
-                    grabbed: grabbed)
+                    k, cell: cells.indices.contains(k) ? cells[k] : nil, located: boxes[k], frame: frame, index: index,
+                    start: start, grabbed: grabbed)
             }
             if heldMs > 0 { run.frames[run.frames.count - 1]["hold_ms"] = Self.round1(heldMs) }
         }
@@ -946,6 +1028,46 @@ final class WatchModel {
 
     /// `-cells ask`: the second answer's token cap (a number, or two words).
     static let askTokens = 8
+
+    /// `-cells box`: the second answer's token cap (the model's own form takes about 30 tokens: the words, then the box).
+    static let boxTokens = 48
+
+    /// What `-cells box` asked about one rule on one frame: the box it read (nil = none), the answer, its times.
+    struct Located {
+        var box: [Int]?
+        var text = ""
+        var firstMs: Double?
+        var modelMs = 0.0
+        var outputTokens = 0
+        var error: String?
+    }
+
+    /// A box question in the record: the rule, the raw answer (its first 200 characters), the box, the times.
+    private func boxAsk(_ located: Located, rule k: Int) -> [String: Any] {
+        var item: [String: Any] = [
+            "rule": k + 1, "raw": String(located.text.prefix(200)), "box": Self.orNull(located.box),
+            "first_token_ms": Self.orNull(located.firstMs.map(Self.round1)), "model_ms": Self.round1(located.modelMs),
+            "output_tokens": located.outputTokens,
+        ]
+        if let error = located.error { item["error"] = error }
+        return item
+    }
+
+    /// `-cells box`: the second question, the model's own grounding form, in a new session with the same frame.
+    private func locate(_ frame: Frame, _ condition: String) async -> Located {
+        var located = Located()
+        do {
+            let reply = try await answer(frame, WatchPrompt.box(condition), maxTokens: Self.boxTokens)
+            located.box = WatchParse.box(reply.text, pixels: frame.uprightSize)
+            located.text = reply.text
+            located.firstMs = reply.firstMs
+            located.modelMs = reply.modelMs
+            located.outputTokens = reply.outputTokens
+        } catch {
+            located.error = error.localizedDescription
+        }
+        return located
+    }
 
     /// The video source has played to its end: the run ends with it.
     private var videoEnded: Bool {
@@ -1156,14 +1278,15 @@ final class WatchModel {
     }
 
     /// An effect fires: the picture holds the frame the model answered for `WatchHold.seconds`, its
-    /// edit playing at the place the model named (all of the picture when it named none), and its
-    /// sound plays (the chime when this build has no file for it). A video is paused meanwhile and
-    /// goes on from where it stopped; over the camera or a photo the held frame covers the live one.
-    /// The fire is recorded when the hold starts (its FIRE line), its length when it ends (the HOLD
-    /// line); with `-frames 1` the edited frame 2.5 s into the hold is written as a PNG. Returns how
-    /// long it held, in ms.
+    /// edit playing at the place the model named — its box, or its cell (all of the picture when it
+    /// named none) — and its sound plays (the chime when this build has no file for it). A video is
+    /// paused meanwhile and goes on from where it stopped; over the camera or a photo the held frame
+    /// covers the live one. The fire is recorded when the hold starts (its FIRE line), its length when
+    /// it ends (the HOLD line); with `-frames 1` the edited frame 2.5 s into the hold is written as a
+    /// PNG. Returns how long it held, in ms.
     private func hold(
-        _ k: Int, cell: Int?, frame: Frame, index: Int, start: ContinuousClock.Instant, grabbed: ContinuousClock.Instant
+        _ k: Int, cell: Int?, located: Located?, frame: Frame, index: Int, start: ContinuousClock.Instant,
+        grabbed: ContinuousClock.Instant
     ) async -> Double {
         guard let effect = run.rules[k].reaction.effect else { return 0 }
         let clock = run.clock
@@ -1173,8 +1296,10 @@ final class WatchModel {
         if playing { video?.pause() }
         holdID += 1
         let id = holdID
+        let box = located?.box
+        let unit = WatchCells.unit(box: box) ?? WatchCells.unit(cell: cell)
         let next = WatchHold(
-            id: id, edit: effect, cell: cell, image: frame.image, orientation: frame.orientation, fits: frame.crop == nil,
+            id: id, edit: effect, place: unit, image: frame.image, orientation: frame.orientation, fits: frame.crop == nil,
             start: Date())
         held = next
         let tGrab = LookModel.seconds(grabbed - start)
@@ -1183,8 +1308,20 @@ final class WatchModel {
         let tSwitch = frame.switchedAt.map { LookModel.seconds($0 - start) }
         var item = fireItem(
             k, frame: frame, index: index, cell: cell, tCapture: tCapture, tGrab: tGrab, tFire: tFire, tSwitch: tSwitch)
-        let place = WatchCells.place(cell, box: previewSize, photo: frame.crop == nil ? frame.uprightSize : nil).points
-        item["effect_rect_pt"] = [place.minX, place.minY, place.width, place.height].map { Self.round1(Double($0)) }
+        let place = WatchCells.place(unit, box: previewSize, photo: frame.crop == nil ? frame.uprightSize : nil)
+        item["effect_rect_pt"] = [place.points.minX, place.points.minY, place.points.width, place.points.height].map {
+            Self.round1(Double($0))
+        }
+        if let box {
+            item["box"] = box
+            item["box_unit"] = [place.unit.minX, place.unit.minY, place.unit.width, place.unit.height].map {
+                (Double($0) * 10000).rounded() / 10000
+            }
+        }
+        if let located {
+            item["place_text"] = String(located.text.prefix(200))
+            item["place_ms"] = Self.round1(located.modelMs)
+        }
         item["held_frame"] = index
         item["hold_ms"] = Self.round1(WatchHold.seconds * 1000)  // planned; the hold's end writes its length
         if let pausedAt { item["paused_t_s"] = Self.round3(pausedAt) ?? 0 }
@@ -1196,12 +1333,14 @@ final class WatchModel {
             item["held_png"] = path
         }
         let started = clock.now
-        if let played = sounds.play(effect.sound) {
-            item["sound"] = effect.sound
+        let sound = run.rules[k].reaction.effectSound ?? effect.sound
+        item["sound_chosen"] = sound.rawValue
+        if let file = sound.file, let played = sounds.play(file) {
+            item["sound"] = sound.rawValue
             item["sound_started"] = played.started
             item["sound_s"] = Self.round3(played.seconds) ?? 0
         } else {
-            item["sound"] = "fallback"
+            item["sound"] = sound == .chime ? sound.rawValue : "fallback"  // the chime chosen, or its file missing
             Self.play(WatchSound.chime.systemSound) { [weak self] in
                 let ms = LookModel.seconds(clock.now - started) * 1000
                 guard let model = self else { return }
@@ -1338,10 +1477,11 @@ final class WatchModel {
 
     /// The frame's row and fires in the record, its WATCH and FIRE lines, and the numbers lines.
     /// `cells` = the cell each rule's answer named (nil = none), `cellMs` / `asked` = the second
-    /// questions of `-cells ask`. An effect's fire is recorded when its hold starts (hold(…)).
+    /// questions of `-cells ask`, `boxes` = those of `-cells box` (by rule). An effect's fire is
+    /// recorded when its hold starts (hold(…)).
     private func record(
         _ frame: Frame, _ index: Int, _ reply: Reply, _ answers: [String], _ fired: [Int], _ suppressed: [Int],
-        cells: [Int?], cellMs: Double?, asked: [[String: Any]],
+        cells: [Int?], cellMs: Double?, asked: [[String: Any]], boxes: [Int: Located],
         pace: Double, waitedMs: Double, start: ContinuousClock.Instant, grabbed: ContinuousClock.Instant,
         parseStart: ContinuousClock.Instant, parsed: ContinuousClock.Instant, firedAt: ContinuousClock.Instant
     ) {
@@ -1384,6 +1524,10 @@ final class WatchModel {
         row["cells"] = cells.map { Self.orNull($0) }
         row["cell_ms"] = Self.orNull(cellMs.map(Self.round1))
         if !asked.isEmpty { row["cell_asks"] = asked }
+        let placeMs = boxes.isEmpty ? nil : boxes.values.reduce(0) { $0 + $1.modelMs }
+        row["boxes"] = (0..<count).map { Self.orNull(boxes[$0]?.box) }
+        row["place_ms"] = Self.orNull(placeMs.map(Self.round1))
+        if !boxes.isEmpty { row["box_asks"] = boxes.keys.sorted().map { boxAsk(boxes[$0]!, rule: $0) } }
         row["fired"] = fired.map { $0 + 1 }
         row["suppressed"] = suppressed.map { $0 + 1 }
         row["hold_ms"] = 0.0  // the effects' holds after this frame, added when they are over
@@ -1408,8 +1552,11 @@ final class WatchModel {
             "fire=\(fired.isEmpty ? "-" : fired.map { String($0 + 1) }.joined(separator: ","))",
             "thermal=\(thermal) pace_s=\(Self.decimals(pace)) footprint_mb=\(Int(footprint.rounded()))",
         ]
-        if settings.cells != .off { fields.append("cells=\(cells.map { $0.map(String.init) ?? "-" }.joined(separator: ","))") }
+        if settings.cells == .ask || settings.cells == .batch {
+            fields.append("cells=\(cells.map { $0.map(String.init) ?? "-" }.joined(separator: ","))")
+        }
         if let cellMs { fields.append("cell_ms=\(Int(cellMs.rounded()))") }
+        if let placeMs { fields.append("place_ms=\(Int(placeMs.rounded()))") }
         note(fields.joined(separator: " "))
 
         for k in fired + suppressed {
@@ -1436,8 +1583,8 @@ final class WatchModel {
         numbersTail = "\(backend) · on-device\(offline) · frame \(index) · \(thermal)\(paced) · \(Int(footprint.rounded())) MB"
     }
 
-    /// A fire's row in the record (or a fire held back): the rule, the frame, its times and its cell. The edit and
-    /// the hold are an effect's (hold(…) fills them in); a reaction that holds nothing keeps them null / 0.
+    /// A fire's row in the record (or a fire held back): the rule, the frame, its times and its cell. The edit, the
+    /// box and the hold are an effect's (hold(…) fills them in); a reaction that holds nothing keeps them null / 0.
     private func fireItem(
         _ k: Int, frame: Frame, index: Int, cell: Int?, tCapture: Double, tGrab: Double, tFire: Double, tSwitch: Double?
     ) -> [String: Any] {
@@ -1450,7 +1597,7 @@ final class WatchModel {
             "from_capture_ms": Self.round1((tFire - tCapture) * 1000),
             "cell": Self.orNull(cell), "effect": Self.orNull(rule.reaction.effect?.rawValue),
             "edit": Self.orNull(rule.reaction.effect?.rawValue), "hold_ms": 0.0, "held_frame": NSNull(),
-            "held_png": NSNull(),
+            "held_png": NSNull(), "box": NSNull(), "box_unit": NSNull(), "place_text": NSNull(), "place_ms": NSNull(),
         ]
         if let detail = rule.reaction.detail { item["detail"] = detail }
         if let tSwitch { item["from_switch_ms"] = Self.round1((tFire - tSwitch) * 1000) }
@@ -1459,15 +1606,19 @@ final class WatchModel {
         return item
     }
 
-    /// The FIRE line: the rule, the reaction, the frame, when, the cell, an effect's edit and sound, and how long
-    /// the fire holds the picture (`hold_ms`, planned: 0 for a reaction that holds nothing).
+    /// The FIRE line: the rule, the reaction, the frame, when, the cell, an effect's edit and sound, how long the fire
+    /// holds the picture (`hold_ms`, planned: 0 for a reaction that holds nothing), and the box its edit plays at
+    /// (`box=-` for none) with the time of the question that gave it (`place_ms=-` when none was asked).
     private func noteFireLine(_ k: Int, _ item: [String: Any], tFire: Double, latencyMs: Int, holdMs: Int) {
         let rule = run.rules[k]
         let edit = rule.reaction.effect?.rawValue ?? "-"
+        let box = (item["box"] as? [Int]).map { $0.map(String.init).joined(separator: ",") } ?? "-"
+        let placeMs = (item["place_ms"] as? Double).map { String(Int($0.rounded())) } ?? "-"
         note(
             "FIRE rule=\(k + 1) cond=\(rule.condition) reaction=\(rule.reaction.name) frame=\(item["frame"] as? Int ?? 0)"
                 + " t=\(Self.decimals(tFire)) latency_ms=\(latencyMs) cell=\((item["cell"] as? Int).map(String.init) ?? "-")"
-                + " effect=\(edit) sound=\(item["sound"] as? String ?? "-") edit=\(edit) hold_ms=\(holdMs)")
+                + " effect=\(edit) sound=\(item["sound"] as? String ?? "-") edit=\(edit) hold_ms=\(holdMs)"
+                + " box=\(box) place_ms=\(placeMs)")
     }
 
     private func finishRun() async {
@@ -1534,7 +1685,7 @@ final class WatchModel {
         let now = LookDevice.sinceStart()
         let (screenPixels, scale) = Autoplay.screenFacts()
 
-        put("schema", "watch-run/4")
+        put("schema", "watch-run/5")
         put("mode", "watch")
         put("epoch", run.epoch)
         put("args", Array(CommandLine.arguments.dropFirst()))
@@ -1560,6 +1711,8 @@ final class WatchModel {
         put("cell_words", settings.cellWords)
         put("cell_prompt", settings.cells == .ask ? WatchPrompt.ask("<condition>", words: settings.cellWords) : nil)
         put("cell_max_tokens", settings.cells == .ask ? Self.askTokens : nil)
+        put("place_prompt", settings.cells == .box ? WatchPrompt.boxForm : nil)
+        put("place_max_tokens", settings.cells == .box ? Self.boxTokens : nil)
         put("grid", settings.grid)
         put("grid_style", settings.grid ? WatchGrid.style : nil)
         put("effect_s", WatchHold.seconds)
@@ -1630,6 +1783,12 @@ final class WatchModel {
         summary["cells_named"] = (0..<count).map { k in named.filter { $0.indices.contains(k) && $0[k] is Int }.count }
         summary["cell_ms"] = Self.orNull(Self.stats(run.frames.compactMap { $0["cell_ms"] as? Double }))
         summary["fires_with_cell"] = run.fires.filter { $0["cell"] is Int }.count
+        let boxed = run.frames.compactMap { $0["boxes"] as? [Any] }
+        summary["boxes_named"] = (0..<count).map { k in boxed.filter { $0.indices.contains(k) && $0[k] is [Int] }.count }
+        let asks = run.frames.flatMap { $0["box_asks"] as? [[String: Any]] ?? [] }
+        summary["place_ms"] = Self.orNull(Self.stats(asks.compactMap { $0["model_ms"] as? Double }))
+        summary["place_tokens"] = Self.orNull(Self.stats(asks.compactMap { ($0["output_tokens"] as? Int).map(Double.init) }))
+        summary["fires_with_box"] = run.fires.filter { $0["box"] is [Int] }.count
         var byEffect: [String: Int] = [:]
         var bySound: [String: Int] = [:]
         for fire in run.fires {
@@ -1682,12 +1841,13 @@ final class WatchModel {
 
     // MARK: - Helpers
 
-    /// A rule as the record keeps it.
+    /// A rule as the record keeps it (an effect's `sound`: the one it plays, its edit's own unless the rule names another).
     private static func ruleRecord(_ rule: WatchRule, number: Int) -> [String: Any] {
         var item: [String: Any] = [
             "i": number, "condition": rule.condition, "reaction": rule.reaction.name, "symbol": rule.symbol,
         ]
         if let detail = rule.reaction.detail { item["detail"] = detail }
+        if let sound = rule.reaction.effectSound { item["sound"] = sound.rawValue }
         return item
     }
 

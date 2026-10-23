@@ -1,16 +1,19 @@
 // WatchEffects — what an Effect rule does when it fires: the picture holds the frame the model
 // answered — the crop it saw — for 3 s, with a thin border, and the app edits that frame with Core
-// Image at the place the model names, while a short sound plays. The place is one of nine cells of
-// the picture (3×3, numbered 1–9 left to right, top to bottom) when the launch asks the model for it
-// (`-cells`), the whole picture otherwise. A video waits during the hold and then goes on from where
-// it stopped; the camera's and the example photos' live picture is covered. Three edits, one picture
-// rendered per screen frame (TimelineView, one Metal CIContext) — no image, no symbol, no words:
+// Image at the place the model names, while a short sound plays. The place is the box the model
+// outputs for the rule's words (`-cells box`, the default: the model's own grounding form), or one
+// of nine cells of the picture (3×3, numbered 1–9 left to right, top to bottom) with `-cells ask` /
+// `batch`; with `-cells none`, or when the answer holds no box, the whole picture. A video waits
+// during the hold and then goes on from where it stopped; the camera's and the example photos' live
+// picture is covered. Three edits, one picture rendered per screen frame (TimelineView, one Metal
+// CIContext) — no image, no symbol, no words:
 //
-//   ripple     a circular wave spreads from the place's middle and leaves the frame tinted blue (water)
-//   zoom       the frame zooms 1× → 2× toward the place's middle in 0.6 s and stays there (a car horn)
-//   spotlight  around the place the frame goes dark and grey in 0.4 s; the place stays as it was (bells)
+//   ripple     a circular wave spreads from the place's middle and leaves the frame tinted blue
+//   zoom       the frame zooms in 0.6 s to a window around the place (1.2–2.5×) and stays there
+//   spotlight  around the place the frame goes dark and grey in 0.4 s; the place stays as it was
 //
-// Each plays its sound (Sounds/<id>.m4a: water, horn, bells) with AVAudioPlayer. The sound files are
+// Each plays a sound with AVAudioPlayer — its own (ripple water, zoom horn, spotlight bells) or the
+// one its rule names (Sounds/<id>.m4a: water, horn, bells; or the system chime). The sound files are
 // not in the repository: tools/fetch_examples.sh downloads and cuts them into Sounds/, which the app
 // bundles; a build without one plays the system chime instead and the record says `fallback`.
 //
@@ -28,23 +31,42 @@ import ImageIO
 import Metal
 import SwiftUI
 
-/// Where the model says a rule's thing is: how the app asks (`-cells`), and the cell's place on the screen.
+/// Where the model says a rule's thing is: how the app asks (`-cells`), and the place on the screen.
 enum WatchCells {
-    /// `-cells none|batch|ask`.
+    /// `-cells box|none|batch|ask`.
     enum Form: String {
-        /// Not asked (the default): the prompt is the plain yes / no batch and an effect plays over the whole picture.
+        /// The default: a second question about the same frame for each effect rule that fires, in the model's own
+        /// grounding form (WatchPrompt.box), and the edit plays at the box it outputs.
+        case box
+        /// Not asked: the prompt is the plain yes / no batch and an effect plays over the whole picture.
         case off = "none"
         /// In the same prompt: each line answered yes also carries the cell's number.
         case batch
-        /// A second question about the same frame, for each rule that fires.
+        /// A second question about the same frame, for each rule that fires: a cell, as a number or two words.
         case ask
     }
 
-    /// The part of the picture's box an effect plays over — cell 1–9 of what the model saw, or all of it for no
-    /// cell — in points and in units of the box. The camera and a video fill the box and the model gets the same
-    /// crop, so the cells are the box's thirds; an example photo is fitted into the box whole (`photo` = its upright
-    /// size), so they are the fitted photo's thirds.
-    static func place(_ cell: Int?, box: CGSize, photo: CGSize?) -> (points: CGRect, unit: CGRect) {
+    /// Cell 1–9 as a rectangle in units of the frame the model got (x and y from the top left, 0–1): its third
+    /// each way; nil for no cell.
+    static func unit(cell: Int?) -> CGRect? {
+        guard let cell, (1...9).contains(cell) else { return nil }
+        return CGRect(x: Double((cell - 1) % 3) / 3, y: Double((cell - 1) / 3) / 3, width: 1.0 / 3, height: 1.0 / 3)
+    }
+
+    /// The model's box (left, top, right, bottom, per mille of the frame it got) as a rectangle in units of that
+    /// frame; nil for no box.
+    static func unit(box: [Int]?) -> CGRect? {
+        guard let box, box.count == 4 else { return nil }
+        return CGRect(
+            x: Double(box[0]) / 1000, y: Double(box[1]) / 1000, width: Double(box[2] - box[0]) / 1000,
+            height: Double(box[3] - box[1]) / 1000)
+    }
+
+    /// The part of the picture's box an effect plays over — `place`, a rectangle in units of the frame the model
+    /// got, or all of it for none — in points and in units of the picture's box. The camera and a video fill the box
+    /// and the model gets the same crop, so a place in units of the frame is the same in units of the box; an example
+    /// photo is fitted into the box whole (`photo` = its upright size), so it is a place in the fitted photo.
+    static func place(_ place: CGRect?, box: CGSize, photo: CGSize?) -> (points: CGRect, unit: CGRect) {
         var content = CGRect(origin: .zero, size: box)
         if let photo, photo.width > 0, photo.height > 0, box.width > 0, box.height > 0 {
             let fit = min(box.width / photo.width, box.height / photo.height)
@@ -53,12 +75,10 @@ enum WatchCells {
                 x: (box.width - size.width) / 2, y: (box.height - size.height) / 2, width: size.width, height: size.height)
         }
         var rect = content
-        if let cell, (1...9).contains(cell) {
-            let width = content.width / 3
-            let height = content.height / 3
+        if let place {
             rect = CGRect(
-                x: content.minX + CGFloat((cell - 1) % 3) * width, y: content.minY + CGFloat((cell - 1) / 3) * height,
-                width: width, height: height)
+                x: content.minX + place.minX * content.width, y: content.minY + place.minY * content.height,
+                width: place.width * content.width, height: place.height * content.height)
         }
         guard box.width > 0, box.height > 0 else { return (rect, CGRect(x: 0, y: 0, width: 1, height: 1)) }
         let unit = CGRect(
@@ -151,8 +171,8 @@ enum WatchGrid {
 struct WatchHold: Identifiable, Equatable {
     let id: Int
     let edit: WatchEffect
-    /// The cell the model named; nil = the whole picture.
-    let cell: Int?
+    /// Where the model said the thing is, in units of the frame (its box, or a cell's third); nil = the whole picture.
+    let place: CGRect?
     /// The frame as the model got it, and the orientation that turns it upright.
     let image: CGImage
     let orientation: CGImagePropertyOrientation
@@ -179,7 +199,9 @@ struct WatchHold: Identifiable, Equatable {
 
 /// The edits, in Core Image: a held frame turned upright and drawn at a size in pixels, and the picture `t` seconds
 /// into its hold. One per hold and size. Once its edit has settled (ripple after 2.4 s, zoom 0.6 s, spotlight 0.4 s)
-/// the last picture is kept.
+/// the last picture is kept. The place is a rectangle in units of the frame (the model's box, or a cell's third);
+/// with none, each edit plays as it did over the whole frame before the box: a wave from the middle, a 2× zoom
+/// toward the middle, the middle two thirds lit.
 @MainActor
 final class WatchEditor {
     /// One Metal context for every hold (Core Image's default one where there is no Metal device).
@@ -188,6 +210,9 @@ final class WatchEditor {
     static let rippleSeconds = 2.4
     static let zoomSeconds = 0.6
     static let spotlightSeconds = 0.4
+    /// The zoom's range: the picture over the window around the place, at least 1.2×, at most 2.5×.
+    static let zoomLeast = 1.2
+    static let zoomMost = 2.5
 
     let edit: WatchEffect
     /// The picture's size in pixels.
@@ -195,32 +220,61 @@ final class WatchEditor {
     /// The frame upright at its own size, and drawn at `size`.
     private let full: CIImage
     private let base: CIImage
-    /// The place in `size`'s pixels, Core Image's y running up: the cell, or the whole picture.
-    private let place: CGRect
+    /// The place in units of the frame, y from the top; nil = the whole picture.
+    private let place: CGRect?
     private var settled: CGImage?
 
     convenience init(_ hold: WatchHold, size: CGSize) {
-        self.init(image: hold.image, orientation: hold.orientation, edit: hold.edit, cell: hold.cell, size: size)
+        self.init(image: hold.image, orientation: hold.orientation, edit: hold.edit, place: hold.place, size: size)
     }
 
-    init(image: CGImage, orientation: CGImagePropertyOrientation, edit: WatchEffect, cell: Int?, size: CGSize) {
+    init(image: CGImage, orientation: CGImagePropertyOrientation, edit: WatchEffect, place: CGRect?, size: CGSize) {
         self.edit = edit
         self.size = size
         let upright = CIImage(cgImage: image).oriented(orientation)
         full = upright.transformed(by: CGAffineTransform(translationX: -upright.extent.minX, y: -upright.extent.minY))
         base = full.transformed(
             by: CGAffineTransform(scaleX: size.width / full.extent.width, y: size.height / full.extent.height))
-        place = Self.place(cell, in: size)
+        self.place = place
     }
 
-    /// Cell 1–9 of a picture (left to right, top to bottom) in Core Image's coordinates; the whole picture for none.
-    static func place(_ cell: Int?, in size: CGSize) -> CGRect {
-        guard let cell, (1...9).contains(cell) else { return CGRect(origin: .zero, size: size) }
-        let width = size.width / 3
-        let height = size.height / 3
+    /// A rectangle in units of the frame (y from the top) in the pixels of a picture of `size`, Core Image's y running up.
+    static func pixels(_ unit: CGRect, in size: CGSize) -> CGRect {
+        CGRect(
+            x: unit.minX * size.width, y: (1 - unit.maxY) * size.height, width: unit.width * size.width,
+            height: unit.height * size.height)
+    }
+
+    /// Where the zoom ends, in a picture of `size` (Core Image's y running up): the place widened by a quarter of its
+    /// width and height on each side, then made the picture's shape; the zoom = the picture over that window, kept
+    /// within 1.2–2.5×; the window's middle = the place's, moved in when the window would leave the picture. With no
+    /// place, 2× toward the middle.
+    static func zoomEnd(_ place: CGRect?, in size: CGSize) -> (middle: CGPoint, zoom: Double) {
+        guard let place else { return (CGPoint(x: size.width / 2, y: size.height / 2), 2) }
+        let box = pixels(place, in: size)
+        let wide = CGSize(width: box.width * 1.5, height: box.height * 1.5)
+        let aspect = size.width / size.height
+        let window =
+            wide.width >= wide.height * aspect
+            ? CGSize(width: wide.width, height: wide.width / aspect) : CGSize(width: wide.height * aspect, height: wide.height)
+        let zoom = min(max(Double(size.width / max(window.width, 1)), zoomLeast), zoomMost)
+        let half = CGSize(width: size.width / (2 * zoom), height: size.height / (2 * zoom))
+        let middle = CGPoint(
+            x: min(max(box.midX, half.width), size.width - half.width),
+            y: min(max(box.midY, half.height), size.height - half.height))
+        return (middle, zoom)
+    }
+
+    /// The window the zoom shows at `zoom` (1× → its end), in a picture of `size`: its middle moves from the picture's
+    /// to the end's as the zoom grows, so the window never leaves the picture.
+    static func zoomWindow(_ place: CGRect?, in size: CGSize, at p: Double) -> CGRect {
+        let end = zoomEnd(place, in: size)
+        let zoom = 1 + (end.zoom - 1) * p
+        let along = (1 - 1 / zoom) / (1 - 1 / end.zoom)  // 0 at 1×, 1 at the end
         return CGRect(
-            x: CGFloat((cell - 1) % 3) * width, y: size.height - CGFloat((cell - 1) / 3 + 1) * height, width: width,
-            height: height)
+            x: size.width / 2 + (end.middle.x - size.width / 2) * along - size.width / (2 * zoom),
+            y: size.height / 2 + (end.middle.y - size.height / 2) * along - size.height / (2 * zoom),
+            width: size.width / zoom, height: size.height / zoom)
     }
 
     /// The picture t seconds into the hold.
@@ -255,8 +309,26 @@ final class WatchEditor {
     /// Fast, then slower to the end: 1 − (1 − x)³.
     static func easeOut(_ x: Double) -> Double { 1 - pow(1 - x, 3) }
 
-    /// A cell's shorter side in pixels (the place's own when it is a cell).
-    private var cellSide: CGFloat { min(size.width, size.height) / 3 }
+    /// The ripple's wave: its middle (the place's) and its width (0.3 of the place's shorter side, at least 8 % of the
+    /// picture's; with no place a tenth of the picture's shorter side), in a picture of `size`, Core Image's y running up.
+    static func rippleWave(_ place: CGRect?, in size: CGSize) -> (middle: CGPoint, width: CGFloat) {
+        let short = min(size.width, size.height)
+        guard let place else { return (CGPoint(x: size.width / 2, y: size.height / 2), short / 3 * 0.3) }
+        let box = pixels(place, in: size)
+        return (CGPoint(x: box.midX, y: box.midY), max(min(box.width, box.height) * 0.3, short * 0.08))
+    }
+
+    /// The spotlight's lit rectangle (the place widened by a tenth of its width and height on each side, inside the
+    /// picture; with no place the middle two thirds) and its edge's blur (6 % of the picture's shorter side; with no
+    /// place 2 %), in a picture of `size`, Core Image's y running up.
+    static func spotlightLit(_ place: CGRect?, in size: CGSize) -> (lit: CGRect, sigma: Double) {
+        let extent = CGRect(origin: .zero, size: size)
+        let short = Double(min(size.width, size.height))
+        guard let place else { return (extent.insetBy(dx: size.width / 6, dy: size.height / 6), short / 3 * 0.06) }
+        let box = pixels(place, in: size)
+        let lit = box.insetBy(dx: -box.width * 0.10, dy: -box.height * 0.10).intersection(extent)
+        return (lit.isNull ? box : lit, short * 0.06)
+    }
 
     /// Water: a circular wave runs out from the place's middle (`time` 0 → 1 over 2.4 s) and leaves the frame a cold
     /// blue behind it (CIRippleTransition from the frame to a blue copy of it).
@@ -272,10 +344,11 @@ final class WatchEditor {
         wave.inputImage = base.clampedToExtent()
         wave.targetImage = blue.clampedToExtent()
         wave.shadingImage = Self.shading
-        wave.center = CGPoint(x: place.midX, y: place.midY)
+        let shape = Self.rippleWave(place, in: size)
+        wave.center = shape.middle
         wave.extent = base.extent
         wave.time = Float(time)
-        wave.width = Float(cellSide * 0.3)
+        wave.width = Float(shape.width)
         wave.scale = 50
         return wave.outputImage ?? blue
     }
@@ -293,36 +366,28 @@ final class WatchEditor {
         return light.outputImage?.cropped(to: CGRect(x: 0, y: 0, width: 128, height: 128)) ?? CIImage.empty()
     }()
 
-    /// A horn: the frame zoomed by 1 + p toward the place's middle. At 2× the window is half the frame each way,
-    /// centred on the place's middle, moved in when that would leave the frame; on the way the window's middle moves
-    /// from the frame's to there, so the window never leaves the frame. Drawn from the frame at its own size.
+    /// The frame zoomed toward the place: `p` 0 → 1 = 1× → the end's zoom (zoomEnd: the window around the place,
+    /// 1.2–2.5×); on the way the window's middle moves from the frame's to the end's, so the window never leaves the
+    /// frame. Drawn from the frame at its own size.
     private func zoom(_ p: Double) -> CIImage {
-        let width = full.extent.width
-        let height = full.extent.height
-        let zoom = 1 + p
-        let x = min(max(place.midX * width / size.width, width / 4), width * 3 / 4)
-        let y = min(max(place.midY * height / size.height, height / 4), height * 3 / 4)
-        let along = 2 * (1 - 1 / zoom)  // 0 at 1×, 1 at 2×
-        let window = CGRect(
-            x: width / 2 + (x - width / 2) * along - width / (2 * zoom),
-            y: height / 2 + (y - height / 2) * along - height / (2 * zoom), width: width / zoom, height: height / zoom)
+        let window = Self.zoomWindow(place, in: full.extent.size, at: p)
         let transform = CGAffineTransform(translationX: -window.minX, y: -window.minY)
             .concatenating(CGAffineTransform(scaleX: size.width / window.width, y: size.height / window.height))
         return full.clampedToExtent().transformed(by: transform)
     }
 
-    /// Bells: around the place the frame darkens (−1.6 EV) and loses its colour (saturation 0.1), the place stays as it
-    /// was, behind a soft edge (the place's mask blurred by 6 % of a cell's shorter side); `a` = how far it has come
-    /// (0 → 1 over 0.4 s). With no place, the middle two thirds of the frame stay lit.
+    /// Around the place the frame darkens (−1.6 EV) and loses its colour (saturation 0.1), the place (widened by a
+    /// tenth on each side) stays as it was, behind a soft edge (its mask blurred by 6 % of the picture's shorter side);
+    /// `a` = how far it has come (0 → 1 over 0.4 s). With no place, the middle two thirds of the frame stay lit.
     private func spotlight(_ a: Double) -> CIImage {
         let extent = base.extent
-        let lit = place == extent ? extent.insetBy(dx: extent.width / 6, dy: extent.height / 6) : place
+        let (lit, sigma) = Self.spotlightLit(place, in: size)
         let dark = base.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: -1.6])
             .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0.1])
         let mask = CIImage(color: .white).cropped(to: lit)
             .composited(over: CIImage(color: .black).cropped(to: extent))
             .clampedToExtent()
-            .applyingGaussianBlur(sigma: Double(cellSide) * 0.06)
+            .applyingGaussianBlur(sigma: sigma)
             .cropped(to: extent)
         let spot = base.applyingFilter(
             "CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: dark, kCIInputMaskImageKey: mask])
@@ -386,8 +451,8 @@ final class EffectSounds {
         Bundle.main.url(forResource: id, withExtension: "m4a", subdirectory: "Sounds")
     }
 
-    /// The effects' sounds this build has (for the log and the record).
-    nonisolated static var inBuild: [String] { WatchEffect.allCases.map(\.sound).filter { url($0) != nil } }
+    /// The effects' sound files this build has (for the log and the record).
+    nonisolated static var inBuild: [String] { WatchEffectSound.allCases.compactMap(\.file).filter { url($0) != nil } }
 
     /// Opens the players now, so the first fire does not wait for a file.
     func prepare(_ ids: [String]) {

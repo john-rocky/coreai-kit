@@ -14,7 +14,8 @@
 //
 // One rule per `|`, the condition before the first `=`, then the reaction: chime | glass | bell
 // (a sound), haptic, say:<text>, timer:<minutes>, count, log, effect:ripple | effect:zoom |
-// effect:spotlight.
+// effect:spotlight — an effect with its own sound (ripple water, zoom horn, spotlight bells), or
+// with another after a `/`: effect:spotlight/horn (water, horn, bells or chime).
 
 import AudioToolbox
 import Foundation
@@ -47,24 +48,36 @@ enum WatchEffect: String, Codable, CaseIterable, Identifiable {
 
     var title: String { rawValue.capitalized }
 
-    /// Its sound: Sounds/<sound>.m4a in the app (tools/fetch_examples.sh), the chime when the build
-    /// does not have it.
-    var sound: String {
+    /// Its own sound, which a rule plays unless it names another.
+    var sound: WatchEffectSound {
         switch self {
-        case .ripple: "water"
-        case .zoom: "horn"
-        case .spotlight: "bells"
+        case .ripple: .water
+        case .zoom: .horn
+        case .spotlight: .bells
         }
     }
 
-    /// What happens to the held frame, and its sound, for the editor.
+    /// What happens to the held frame, for the editor.
     var look: String {
         switch self {
-        case .ripple: "A wave spreads from the place and leaves the picture tinted blue, with the sound of running water."
-        case .zoom: "The picture zooms in on the place to twice its size, with a horn."
-        case .spotlight: "Everything around the place goes dark and grey, with bells."
+        case .ripple: "A wave spreads from the place and leaves the picture tinted blue."
+        case .zoom: "The picture zooms in on the place, up to 2.5 times its size."
+        case .spotlight: "Everything around the place goes dark and grey."
         }
     }
+}
+
+/// The sounds an effect can play: Sounds/<id>.m4a in the app (tools/fetch_examples.sh) — running water, a car horn,
+/// a church bell — or the system's chime. A build without a sound's file plays the chime for it.
+enum WatchEffectSound: String, Codable, CaseIterable, Identifiable {
+    case water, horn, bells, chime
+
+    var id: String { rawValue }
+
+    var title: String { rawValue.capitalized }
+
+    /// Its file's name in Sounds/ (without .m4a); the chime is the system's message tone and has none.
+    var file: String? { self == .chime ? nil : rawValue }
 }
 
 /// What a rule does when it fires (besides its symbol over the picture, which every rule but an
@@ -76,7 +89,13 @@ enum WatchReaction: Codable, Equatable {
     case timer(minutes: Double)
     case count
     case log
-    case effect(WatchEffect)
+    /// An edit and the sound it plays: nil = the edit's own (a rule kept by an earlier build has none).
+    case effect(WatchEffect, sound: WatchEffectSound? = nil)
+
+    /// An effect with a sound, kept without it when it is the edit's own: `effect:spotlight/bells` is `effect:spotlight`.
+    init(effect: WatchEffect, sound: WatchEffectSound) {
+        self = .effect(effect, sound: sound == effect.sound ? nil : sound)
+    }
 
     enum Kind: String, CaseIterable, Identifiable {
         case sound, haptic, say, timer, count, log, effect
@@ -133,26 +152,33 @@ enum WatchReaction: Codable, Equatable {
         }
     }
 
-    /// The text it speaks, its minutes, or its effect; nil for the others.
+    /// The text it speaks, its minutes, or its effect (and the sound, when it is not the edit's own); nil for the others.
     var detail: String? {
         switch self {
         case .say(let text): text
         case .timer(let minutes): Self.minutesText(minutes)
-        case .effect(let effect): effect.rawValue
+        case .effect(let effect, let sound): effect.rawValue + (sound.map { "/\($0.rawValue)" } ?? "")
         default: nil
         }
     }
 
     /// The effect it plays, nil for the other reactions.
     var effect: WatchEffect? {
-        if case .effect(let effect) = self { return effect }
+        if case .effect(let effect, _) = self { return effect }
         return nil
     }
 
-    /// The `-rules` form: "chime", "say:There is the lighthouse", "timer:3", "effect:ripple".
+    /// The sound its effect plays (the edit's own unless the rule names another), nil for the other reactions.
+    var effectSound: WatchEffectSound? {
+        if case .effect(let effect, let sound) = self { return sound ?? effect.sound }
+        return nil
+    }
+
+    /// The `-rules` form: "chime", "say:There is the lighthouse", "timer:3", "effect:ripple", "effect:spotlight/horn".
     var token: String { detail.map { "\(name):\($0)" } ?? name }
 
-    /// Reads one reaction of `-rules`; anything else plays the chime.
+    /// Reads one reaction of `-rules`; anything else plays the chime. An effect's unknown edit is ripple, an unknown
+    /// sound its edit's own.
     init(token: String) {
         let parts = token.split(separator: ":", maxSplits: 1).map { String($0) }
         let head = (parts.first ?? "").trimmingCharacters(in: .whitespaces).lowercased()
@@ -164,14 +190,17 @@ enum WatchReaction: Codable, Equatable {
         case "count": self = .count
         case "log": self = .log
         case "sound": self = .sound(WatchSound(rawValue: rest.lowercased()) ?? .chime)
-        case "effect": self = .effect(WatchEffect(rawValue: rest.lowercased()) ?? .ripple)
-        default:
-            if let effect = WatchEffect(rawValue: head) {
-                self = .effect(effect)
-            } else {
-                self = .sound(WatchSound(rawValue: head) ?? .chime)
-            }
+        case "effect": self = Self.parsedEffect(rest) ?? .effect(.ripple)
+        default: self = Self.parsedEffect(head) ?? .sound(WatchSound(rawValue: head) ?? .chime)
         }
+    }
+
+    /// "spotlight/horn" → Spotlight with the horn; "zoom" → Zoom with its own sound; nil when the edit is unknown.
+    private static func parsedEffect(_ text: String) -> WatchReaction? {
+        let parts = text.lowercased().split(separator: "/", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let effect = WatchEffect(rawValue: parts.first ?? "") else { return nil }
+        let sound = parts.count > 1 ? WatchEffectSound(rawValue: parts[1]) : nil
+        return WatchReaction(effect: effect, sound: sound ?? effect.sound)
     }
 
     /// 3 → "3", 0.5 → "0.5".
