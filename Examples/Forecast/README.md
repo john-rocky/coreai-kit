@@ -51,6 +51,8 @@ local Timestral bundle — a graph (`.aimodel` / `.aimodelc`) or a folder of the
 
 ## Notes
 
+- Entitlements (iOS): `com.apple.developer.kernel.increased-memory-limit` (`Forecast.entitlements`).
+  TimesFM 2.5 needs it on an iPhone 18 Pro: without it, the app aborted while TimesFM's graph was compiled at load.
 - TimesFM takes a fixed 2048-point context; `KitForecaster` front-pads and masks shorter series. Timestral runs one
   graph per context bucket and picks the smallest bucket that holds the series; the bucket, its rows per call and its
   input type are read from the bundle itself, so any exported form of the graph runs through the same code.
