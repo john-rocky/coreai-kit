@@ -1,0 +1,56 @@
+{
+  "comment": "The example photos of Examples/Cutout. tools/fetch_examples.sh downloads each one from `url`, checks its size in bytes and its sha256, and writes it to Examples/Cutout/Examples/<file>; the app bundles the photos from there (the ids and files CutoutModel.examples names). The repository holds no images, so this file and the script are the record. `lighthouse` and `chess` are Examples/Look's `scene` and `object` (CC0 1.0 by their Openverse records); `airplane` is a NASA photo (public domain: NASA images are not copyrighted in the United States; NASA asks that it not be used to imply its endorsement). None shows a person, a brand or a logo. `format`, `width`, `height`, `bytes` and `sha256` describe the file exactly as the URL serves it (no re-encode). `words` is what the app puts in the box when the photo is tapped.",
+  "examples": [
+    {
+      "id": "lighthouse",
+      "file": "lighthouse.jpg",
+      "words": "the lighthouse",
+      "shows": "a white lighthouse with a red base and a brown roof on rocks by the sea, dune grass in front, clear blue sky",
+      "url": "https://live.staticflickr.com/3894/33074457825_4bcdb8d03c_b.jpg",
+      "format": "jpeg",
+      "width": 1024,
+      "height": 683,
+      "bytes": 234622,
+      "sha256": "a3ac0166ec30d87ce574762960e389a886efcd2b82e47e71bd9e1d77145a15cd",
+      "source_page": "https://www.flickr.com/photos/66741228@N05/33074457825",
+      "openverse_record": "https://api.openverse.org/v1/images/bf0677b1-08c2-4d96-8dae-5f59e4640aa8/",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "creator": "Bonnie Moreland (free images)"
+    },
+    {
+      "id": "chess",
+      "file": "chess.jpg",
+      "words": "the light chess pieces",
+      "shows": "light wooden chess pieces (a queen, a king, bishops and pawns) on a worn wooden chessboard, close up; dark pieces out of focus behind",
+      "url": "https://cdn.stocksnap.io/img-thumbs/960w/NUAITIXILP.jpg",
+      "format": "jpeg",
+      "width": 960,
+      "height": 640,
+      "bytes": 525823,
+      "sha256": "0fe341097d5f4008cfee3b700e3e0ead2b5e506de276985bafeec06fe44e263d",
+      "source_page": "https://stocksnap.io/photo/chess-board-NUAITIXILP",
+      "openverse_record": "https://api.openverse.org/v1/images/0cecc55a-9c56-4702-bfe9-94ff5a5ec2c5/",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "creator": "Kristin Hardwick"
+    },
+    {
+      "id": "airplane",
+      "file": "airplane.jpg",
+      "words": "the airplane",
+      "shows": "NASA's Super Guppy cargo airplane approaching a runway over scrub and trees, seen from the front under a grey sky",
+      "url": "https://images-assets.nasa.gov/image/KSC-20170424-PH_SWW01_0007/KSC-20170424-PH_SWW01_0007~medium.jpg",
+      "format": "jpeg",
+      "width": 853,
+      "height": 1280,
+      "bytes": 65046,
+      "sha256": "56af2e1d84578196677b890e4728f2e57e67b9444ba0ad19cee23bca3c5f009b",
+      "source_page": "https://images.nasa.gov/details/KSC-20170424-PH_SWW01_0007",
+      "title": "Guppy Arrival for Orion EM-1 Crew Module Structural Test Article (Kennedy Space Center, 2017)",
+      "license": "public domain (NASA)",
+      "license_url": "https://www.nasa.gov/nasa-brand-center/images-and-media/",
+      "creator": "NASA"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+name: Cutout
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+# The engine runs on the system CoreAI framework directly (Sources/Engine): the only package is swift-transformers'
+# tokenizer. Run and Test config Release: the host's resize and the decoder loop are much slower unoptimized.
+packages:
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.3
+
+schemes:
+  Cutout:
+    build:
+      targets:
+        Cutout: all
+        CutoutUITests: [test]
+    run:
+      config: Release
+    test:
+      config: Release
+      targets:
+        - CutoutUITests
+
+targets:
+  Cutout:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+      # The three example photos, as a folder in the app bundle (Cutout.app/Examples/). They are not in the
+      # repository: tools/fetch_examples.sh downloads them here (README: Run it). The folder is, so the project builds
+      # without them.
+      - path: Examples
+        type: folder
+        buildPhase: resources
+        optional: true
+    dependencies:
+      - package: swift-transformers
+        product: Tokenizers
+      - sdk: CoreAI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.cutout
+        # Resolves from your shell: `export DEVELOPMENT_TEAM=XXXXXXXXXX` before `xcodegen generate`,
+        # or leave unset and pick your team in Xcode’s Signing & Capabilities tab.
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        # A 2.5 GB decoder, a 0.8 GB tower and the mask graphs specialize in one process: the increased memory limit.
+        CODE_SIGN_ENTITLEMENTS: Cutout.entitlements
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "Cutout adds the cut-outs you save to your photo library. It never reads your library."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Cutout sends a photo you take to a model that runs fully on-device. Nothing leaves your device."
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        # The model folder goes into the app's Documents (Finder › your iPhone › Files, or devicectl): README: Run it.
+        INFOPLIST_KEY_UIFileSharingEnabled: "YES"
+        INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
+
+  # The screen driven through its own controls on an iPhone, the Photos request answered (UITests/CutoutUITests.swift).
+  CutoutUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "27.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Cutout
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.cutout.uitests
+        TEST_TARGET_NAME: Cutout
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: "YES"
