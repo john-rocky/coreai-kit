@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Look loads MiniCPM-V 4.7 1B (1.9 GB of bundles): KitVisionModel loads the decoder engine,
+	     then specializes the vision tower in the same process. Without the increased memory limit
+	     that first tower specialization died on an iPhone 18 Pro with std::bad_alloc (VLChat,
+	     same model, same entitlement). -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>

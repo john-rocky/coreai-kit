@@ -1,0 +1,11 @@
+# The example photos are downloaded, not committed (README: Run it). The folder itself stays,
+# so the project's folder reference builds before they are there.
+/Examples/*
+!/Examples/.gitkeep
+# The example video and its original (tools/fetch_examples.sh; README: Example video): not bundled, not committed.
+/Videos/
+# The effect sounds (bundled from Sounds/) and their originals (tools/fetch_examples.sh; README: Reaction sounds): not
+# committed. Sounds/ stays, as Examples/ does, so the project builds before they are there.
+/Sounds/*
+!/Sounds/.gitkeep
+/SoundSources/

@@ -1,0 +1,87 @@
+name: Look
+options:
+  bundleIdPrefix: com.coreaikit
+  createIntermediateGroups: true
+
+packages:
+  coreai-kit:
+    path: ../..
+
+# Run and Test config Release: the engine's per-token host work is ~3x slower unoptimized, and the
+# numbers line on screen reports what this build measures. The UI test drives the same Release app.
+schemes:
+  Look:
+    build:
+      targets:
+        Look: all
+        LookUITests: [test]
+    run:
+      config: Release
+    test:
+      config: Release
+      targets:
+        - LookUITests
+
+targets:
+  Look:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    deploymentTarget:
+      iOS: "27.0"
+      macOS: "27.0"
+    sources:
+      - path: Sources
+      # The three example photos, as a folder in the app bundle (Look.app/Examples/). They are
+      # not in the repository: tools/fetch_examples.sh downloads them here (README: Run it). The
+      # folder is, so the project builds without them.
+      - path: Examples
+        type: folder
+        buildPhase: resources
+        optional: true
+      # The Watch screen's effect sounds (water.m4a, horn.m4a, bells.m4a), as a folder in the app bundle
+      # (Look.app/Sounds/). Not in the repository either: tools/fetch_examples.sh downloads and cuts them here
+      # (README: Reaction sounds). Without them an effect plays the system chime.
+      - path: Sounds
+        type: folder
+        buildPhase: resources
+        optional: true
+    dependencies:
+      - package: coreai-kit
+        product: CoreAIKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.look
+        # Resolves from your shell: `export DEVELOPMENT_TEAM=XXXXXXXXXX` before `xcodegen generate`,
+        # or leave unset and pick your team in Xcode’s Signing & Capabilities tab.
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        # The vision tower specializes beside the resident decoder — needs the increased memory limit.
+        CODE_SIGN_ENTITLEMENTS: Look.entitlements
+        SWIFT_VERSION: "6.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Look sends a photo you choose to a vision-language model that runs fully on-device. Nothing leaves your device."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Look shows what the camera sees to a vision-language model that runs fully on-device: a photo you take, or the frames the Watch screen checks. Nothing leaves your device."
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        SWIFT_APPROACHABLE_CONCURRENCY: "YES"
+        ENABLE_APP_SANDBOX: "NO"
+        ENABLE_HARDENED_RUNTIME: "NO"
+
+  # The screen driven through its own controls on an iPhone (UITests/LookUITests.swift).
+  LookUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "27.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Look
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.coreaikit.look.uitests
+        TEST_TARGET_NAME: Look
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: "YES"
