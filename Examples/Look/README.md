@@ -389,6 +389,14 @@ An alert that is already on the screen when the app starts keeps it from ever be
 that case the record also holds `scene_first_active_s` (when the app first became active, null if it
 never did) and `scene_at_record` (the phase when the record was written).
 
+Recording over USB from a Mac: quit FaceTime, and any other app that shows a camera preview, before you
+start. When a screen recorder lets go of the phone, macOS offers the phone as a Continuity Camera about
+2 s later; an open FaceTime picks it up within a fraction of a second, and the phone puts its full-screen
+Continuity Camera page over Look, which goes to the background (INACTIVE in the log). Pressing Disconnect
+on the phone lasts only until the next recorder lets go; turning Continuity Camera off on the phone stops
+it. Right after an install or a file push, the first attempt to open the phone's screen as a capture
+device may not find the phone; on this sample's takes, trying again 10 s later opened it each time.
+
 ### The watch screen
 
 `-watch 1` opens the app on the Watch screen. With `-seconds`, the app also runs a watch by itself: it
