@@ -5,6 +5,18 @@
 
 import Foundation
 
+/// Core AI rejects an AOT `.aimodelc` compiled for another chip with
+/// `AIModelError.incompatibleCompiledAssetArchitecture(device:asset:)`. That type is not in the
+/// framework's public interface, and its `localizedDescription` reads only "The operation
+/// couldn’t be completed. (CoreAIDelegates.AIModelError error 0.)", which tells the person
+/// holding the device nothing. Rethrow it with both chips named; any other error passes through.
+func describingLoadFailure(_ error: any Error) -> any Error {
+    let text = String(reflecting: error)
+    guard let range = text.range(of: "incompatibleCompiledAssetArchitecture") else { return error }
+    return CoreAIKitError.unsupportedDevice(
+        reason: "its files were compiled for a different chip \(text[range.upperBound...])")
+}
+
 public enum VisionError: Error, LocalizedError, Sendable {
     case functionNotFound(String)
     case statefulGraphUnsupported([String])
