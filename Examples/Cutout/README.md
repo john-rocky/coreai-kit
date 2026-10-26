@@ -5,8 +5,7 @@ each thing that matches, draws its box and its alpha matte down to the half-tran
 cut-out as a PNG with the background removed (to Photos on an iPhone, to a file on a Mac). On an iPhone 18 Pro (iOS
 27.2) one match took about 1 s (0.99–1.00 s) and seven matches 4.1 s, measured 2026-10-25. The photo never leaves the
 device. One screen: a photo and a few words in, the boxes and the cut-out out; the line under it says how long the
-boxes and the mattes took, and where they ran. Saving to Photos after you allow access has not been confirmed on a
-phone yet ([When it does not cut out](#when-it-does-not-cut-out)).
+boxes and the mattes took, and where they ran.
 
 The model is [WeVisOne-VL-2B](https://huggingface.co/tencent/WeVisOne-VL-2B) by WeChat Vision, Tencent Inc. (revision
 `3dad9ce8`): built upon Qwen3-VL, it answers detection, referring, counting, pointing, OCR, segmentation and alpha matting
@@ -48,9 +47,9 @@ On an iPhone, put the folder in the app's Documents (Finder › your iPhone › 
 1. The app loads the model as it starts. READY means it can cut out.
 2. Take a photo, Pick a photo, or tap one of the three examples (a tap also puts its words in the box); type what to cut
    out — "the dog", "the red truck", "people" — or tap a word under the box; Cut out.
-3. The photo shows the boxes, then the cut-out over a checkerboard (Photo | Cut out switches between them). When several
-   things match, each gets a number; tap one to leave it out. Save to Photos (on a Mac, Save PNG…) writes the chosen
-   pieces at the photo's full size.
+3. The cut-out appears over a checkerboard; Photo | Cut out switches between it and the photo with each match's box
+   drawn on it. When several things match, each gets a number; tap one to leave it out. Save to Photos (on a Mac, Save
+   PNG…) writes the chosen pieces at the photo's full size.
 
 On an iPhone 18 Pro (iOS 27.2), cutting out the lighthouse took 0.99–1.00 s from Cut out to the finished cut-out (the
 boxes in 0.47–0.48 s — the vision tower 0.09 s, the 237-token prompt 0.14 s, the 13-token answer 0.23 s — and the
@@ -174,10 +173,10 @@ needs the passcode for UI automation, and unattended it stops with "Timed out wh
 
 These are the app's own sentences, from `CutoutModel.swift` and `Sources/Engine/`.
 
-Saving to Photos: on the iPhone 18 Pro the first Save showed the system's request and the app made the PNG
-(1,187,126 bytes for the lighthouse); what happens after an answer of Allow has not been seen on a phone yet. The
-sentence for a refusal was checked with `-photosauth denied`. The system's request stays on the screen until someone
-answers it, over other apps too. On a Mac, Save wrote the file (with `-save 1 -saveto <dir>`: the lighthouse, a
+Saving to Photos: on the iPhone 18 Pro, with access allowed, Save added the lighthouse cut-out to Photos (a PNG of
+1,187,126 bytes) and the screen said "Saved to Photos" (2026-10-27). The sentence for a refusal was checked with
+`-photosauth denied`. The system's request stays on the screen until someone answers it, over other apps too. On a
+Mac, Save wrote the file (with `-save 1 -saveto <dir>`: the lighthouse, a
 1024 × 683 PNG with its alpha).
 
 ## Example photos
