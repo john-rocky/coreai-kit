@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Cutout specializes WeVisOne-VL-2B's 2.5 GB int8 decoder, its 0.8 GB vision tower and two small mask graphs in
+	     one process. On an iPhone, a decoder this size with a tower beside it needs the increased memory limit (the
+	     kit's VLChat and Look died with std::bad_alloc at the tower's specialization without it). -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>
