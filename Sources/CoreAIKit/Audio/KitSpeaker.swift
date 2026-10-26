@@ -121,9 +121,18 @@ public struct KitSpeaker: Sendable {
         }
     }
 
-    /// nil when this device can run the voice; otherwise why not, in a sentence for the user.
-    /// Answers without downloading anything, so a picker can mark the voice up front.
+    /// The catalog ids `init(catalog:)` has an engine for. The live catalog can list a voice
+    /// added after this kit was built; it gets a reason instead of failing on Load.
+    static let supportedCatalogIDs: Set<String> = [
+        "kokoro-82m", "vibevoice-realtime-0.5b", "voxcpm-0.5b", "voxcpm2-2b",
+    ]
+
+    /// nil when this app can run the voice on this device; otherwise why not, in a sentence for
+    /// the user. Answers without downloading anything, so a picker can mark the voice up front.
     public static func unavailableReason(for entry: CatalogEntry) -> String? {
+        guard supportedCatalogIDs.contains(entry.id) else {
+            return "\(entry.name) needs a newer version of this app."
+        }
         #if os(iOS)
         guard let architecture = iOSArchitecture(forCatalogID: entry.id) else { return nil }
         return DeviceArchitecture.unsupportedReason(forAOT: architecture, model: entry.name)
