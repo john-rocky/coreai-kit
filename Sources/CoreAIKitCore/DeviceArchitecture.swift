@@ -35,6 +35,22 @@ public enum DeviceArchitecture {
         "iPhone18": "h18p",
     ]
 
+    /// The devices that load an architecture's bundles, in words a user reads. Follows
+    /// `validated` (the `iPhone18` row covers the iPhone 17 family by the same rule).
+    static let deviceNames: [String: String] = [
+        "h18p": "iPhone 17 models",
+    ]
+
+    /// nil when this device loads `.aimodelc` bundles compiled for `architecture`; otherwise
+    /// one sentence naming the devices that do. Callers ask before downloading, so a model whose
+    /// iOS files are AOT-only for another chip is refused up front instead of failing after the
+    /// download with Core AI's `AIModelError error 0`.
+    public static func unsupportedReason(forAOT architecture: String, model name: String) -> String? {
+        if current == architecture { return nil }
+        let devices = deviceNames[architecture] ?? "other devices"
+        return "\(name)'s iPhone version is built for \(devices) only."
+    }
+
     /// Maps a `hw.machine` string ("iPhone18,1") to an architecture id, or nil.
     static func architecture(forMachine machine: String) -> String? {
         guard let comma = machine.firstIndex(of: ",") else { return nil }

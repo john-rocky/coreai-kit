@@ -46,6 +46,9 @@ public struct KitSpeaker: Sendable {
         guard let variant = entry.variant else {
             throw CoreAIKitError.modelNotInCatalog(id: id)
         }
+        if let reason = Self.unavailableReason(for: entry) {
+            throw CoreAIKitError.unsupportedDevice(reason: reason)
+        }
 
         // Kokoro is three stateless graph bundles + host glue at the repo root — no platform
         // dir, no tokenizer subtree (G2P rides the glue) — so it resolves its own subtrees.
@@ -107,6 +110,26 @@ public struct KitSpeaker: Sendable {
             self.engine = .voxcpm2(try await VoxCPM2TTS(paths: paths))
         }
         self.catalogID = entry.id
+    }
+
+    /// The AOT architecture a voice's iOS files are compiled for, or nil when they are portable
+    /// (`.aimodel`, specialized on the device). These ids load `<name>.h18p.aimodelc` on iOS.
+    static func iOSArchitecture(forCatalogID id: String) -> String? {
+        switch id {
+        case "voxcpm-0.5b", "voxcpm2-2b", "vibevoice-realtime-0.5b": return "h18p"
+        default: return nil
+        }
+    }
+
+    /// nil when this device can run the voice; otherwise why not, in a sentence for the user.
+    /// Answers without downloading anything, so a picker can mark the voice up front.
+    public static func unavailableReason(for entry: CatalogEntry) -> String? {
+        #if os(iOS)
+        guard let architecture = iOSArchitecture(forCatalogID: entry.id) else { return nil }
+        return DeviceArchitecture.unsupportedReason(forAOT: architecture, model: entry.name)
+        #else
+        return nil
+        #endif
     }
 
     /// Synthesizes one utterance (16 kHz mono for VoxCPM, 48 kHz for VoxCPM2, 24 kHz for

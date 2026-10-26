@@ -49,6 +49,9 @@ public struct KitDialogue: Sendable {
     ) async throws {
         let entry = try await ModelCatalog.entry(forID: id, expecting: .tts)
         guard let variant = entry.variant else { throw CoreAIKitError.modelNotInCatalog(id: id) }
+        if let reason = KitSpeaker.unavailableReason(for: entry) {
+            throw CoreAIKitError.unsupportedDevice(reason: reason)
+        }
         let bundles = try await store.download(
             entry.modelID(path: variant.path), progress: downloadProgress)
         let glue = try await store.download(

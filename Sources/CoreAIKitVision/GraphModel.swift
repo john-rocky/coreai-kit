@@ -44,7 +44,12 @@ public final class GraphModel: @unchecked Sendable {
         contentsOf url: URL, function name: String = "main",
         computeUnits: ComputeUnits = .gpu
     ) async throws {
-        let model = try await AIModel(contentsOf: url, options: computeUnits.specializationOptions)
+        let model: AIModel
+        do {
+            model = try await AIModel(contentsOf: url, options: computeUnits.specializationOptions)
+        } catch {
+            throw describingLoadFailure(error)
+        }
         guard let descriptor = model.functionDescriptor(for: name) else {
             throw VisionError.functionNotFound(name)
         }
