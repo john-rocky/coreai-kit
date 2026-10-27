@@ -1,5 +1,6 @@
-// CutoutView — the screen, dark, top to bottom: the state; the photo with the model's boxes, or the cut-out over a
-// checkerboard; the example photos with Pick a photo and Take a photo; what to cut out, with words to tap; Cut out /
+// CutoutView — the screen, dark, top to bottom: the state; the photo with the model's boxes, the cut-out over a
+// checkerboard, or the pieces lined up side by side; the example photos with Pick a photo and Take a photo; what to cut
+// out, with words to tap; Cut out /
 // Boxes only; Cut out, Save and Stop; the pieces the model found (tap one to leave it out of the PNG); the numbers line;
 // the model and the device it ran on.
 //
@@ -86,11 +87,17 @@ struct CutoutView: View {
                 RoundedRectangle(cornerRadius: 12).fill(Palette.surface)
                 if let photo = model.photo {
                     let fit = Self.fitted(CGSize(width: photo.rgb.width, height: photo.rgb.height), in: geo.size)
-                    if model.showCutout, let cut = model.cutoutImage {
+                    if model.display == .cutout, let cut = model.cutoutImage {
                         Checkerboard().frame(width: fit.width, height: fit.height).position(x: fit.midX, y: fit.midY)
                         Image(decorative: cut, scale: 1).resizable()
                             .frame(width: fit.width, height: fit.height).position(x: fit.midX, y: fit.midY)
                             .accessibilityIdentifier("cutout.image")
+                    } else if model.display == .lineup, let sheet = model.lineupImage {
+                        let s = Self.fitted(CGSize(width: sheet.width, height: sheet.height), in: geo.size)
+                        Checkerboard().frame(width: s.width, height: s.height).position(x: s.midX, y: s.midY)
+                        Image(decorative: sheet, scale: 1).resizable()
+                            .frame(width: s.width, height: s.height).position(x: s.midX, y: s.midY)
+                            .accessibilityIdentifier("lineup.image")
                     } else {
                         Image(decorative: photo.display, scale: 1).resizable()
                             .frame(width: fit.width, height: fit.height).position(x: fit.midX, y: fit.midY)
@@ -105,13 +112,14 @@ struct CutoutView: View {
                     VStack {
                         HStack {
                             Spacer()
-                            Picker("View", selection: $model.showCutout) {
-                                Text("Photo").tag(false)
-                                Text("Cut out").tag(true)
+                            Picker("View", selection: $model.display) {
+                                Text("Photo").tag(CutoutModel.Display.photo)
+                                Text("Cut out").tag(CutoutModel.Display.cutout)
+                                Text("Lined up").tag(CutoutModel.Display.lineup)
                             }
                             .pickerStyle(.segmented)
                             .labelsHidden()
-                            .frame(width: 170)
+                            .frame(width: 250)
                             .padding(8)
                             .accessibilityIdentifier("view.switch")
                         }

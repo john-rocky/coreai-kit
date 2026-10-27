@@ -1,8 +1,9 @@
 // cutout-cli — the headless shell of Cutout on macOS: the same Sources/Engine code and Sources/QuickStart.swift the app
 // ships, no Xcode project and no device.
 //
-//   cutout-cli run --models <folder> --image <file> --words "the dog" [--task cutout|boxes] [--out <dir>]
-//       one request: the answer, the boxes, a PNG per instance and the combined PNG in <out>
+//   cutout-cli run --models <folder> --image <file> --words "the dog" [--task cutout|boxes] [--out <dir>] [--lineup]
+//       one request: the answer, the boxes, a PNG per instance and the combined PNG in <out> (with --lineup also
+//       lineup.png, the instances side by side as the app's Lined up saves them)
 //   cutout-cli fixture --models <folder> --rows <rows.json> --out <dir> [--forms pad-fp16,s1-fp32]
 //       [--graph-a32 <asset> --graph-b32 <asset>] [--kv 1024] [--max-new 768] [--alpha]
 //       every row in every form (Engine/Fixture.swift)
@@ -97,6 +98,10 @@ struct CLI {
             }
             if !probs.isEmpty {
                 try CutoutImage.png(img, alpha: CutoutImage.combinedAlpha(probs)).write(to: dir.appendingPathComponent("cutout.png"))
+            }
+            if flag("--lineup"), let sheet = CutoutImage.lineup(img, logits: r.instances.compactMap(\.logits)) {
+                try CutoutImage.png(rgba: sheet.rgba, width: sheet.width, height: sheet.height)
+                    .write(to: dir.appendingPathComponent("lineup.png"))
             }
             try writeJSON(["answer": r.response, "boxes": r.instances.map(\.box), "labels": r.instances.map(\.label),
                            "seconds": r.seconds, "ids": r.generation.ids], dir.appendingPathComponent("run.json"))

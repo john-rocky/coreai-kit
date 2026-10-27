@@ -6,13 +6,14 @@
 // `-autoplay 1` waits for READY (the model loads when the app starts), then — once `-trigger <file>` exists and `delay`
 // seconds have passed — taps an example photo (`-example lighthouse|chess|airplane`, or opens `-image <file>`), puts
 // `-words "…"` in the box (the example's own words without it), picks `-task boxes` when asked, taps Cut out and waits
-// for the answer; `-view photo` leaves the boxes on the screen instead of the cut-out; `-save 1` taps Save and waits
-// for the outcome. Each press calls the function its button calls, so the run is the screen's own path.
+// for the answer; `-view photo` leaves the boxes on the screen instead of the cut-out; `-lineup <s>` switches to Lined up
+// <s> seconds after the answer; `-save 1` taps Save (`-gap` seconds later) and waits for the outcome. Each press calls
+// the function its button calls, or sets the state its switch sets, so the run is the screen's own path.
 //
-// `-log 1` appends START / READY / PICK / WORDS / RUN / DONE / SAVE lines (ERROR when a step fails) to
+// `-log 1` appends START / READY / PICK / WORDS / RUN / DONE / LINEUP / SAVE lines (ERROR when a step fails) to
 // Documents/cutout-autoplay.log and writes each request to Documents/cutout-run-<epoch>.json: the step times, the answer,
 // the boxes, the memory footprint and the thermal state. `-frames 1` writes the screen as PNGs to
-// Documents/frames/<epoch>/ at READY, PICK, the answer and SAVE. `-quit 1` exits after the record.
+// Documents/frames/<epoch>/ at READY, PICK, the answer, LINEUP and SAVE. `-quit 1` exits after the record.
 //
 // Checks that use the same code without the buttons (Engine/Fixture.swift, `WeVisOneDecoder.tailBench`):
 //   -fixture <rows.json in Documents>   every row through the request code; outputs in Documents/fixture/<form>/<id>/
@@ -127,9 +128,17 @@ final class Autoplay {
         try? await Task.sleep(for: .seconds(gap))
         write("RUN")
         await screen.cutOut()?.value
-        if defaults.string(forKey: "view") == "photo" { screen.showCutout = false }
+        if defaults.string(forKey: "view") == "photo" { screen.display = .photo }
         try? await Task.sleep(for: .milliseconds(400))
         frame("answer")
+        if defaults.object(forKey: "lineup") != nil, screen.phase == .done {
+            try? await Task.sleep(for: .seconds(max(0, defaults.double(forKey: "lineup") - 0.4)))
+            screen.display = .lineup
+            let size = screen.lineupImage.map { "\($0.width)x\($0.height)" } ?? "-"
+            write("LINEUP pieces=\(screen.pieces.filter(\.selected).count) sheet=\(size)")
+            try? await Task.sleep(for: .milliseconds(400))
+            frame("lineup")
+        }
         if defaults.bool(forKey: "save") {
             try? await Task.sleep(for: .seconds(gap))
             write("SAVE tap")
