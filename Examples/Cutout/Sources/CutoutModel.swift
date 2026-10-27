@@ -1,6 +1,7 @@
 // CutoutModel — one photo + the words for what to cut out → the boxes the model writes, a matte per box, and the cut-out
-// saved as a PNG with transparency. The buttons in CutoutView and the recording harness in Autoplay call the same
-// functions: pickExample(_:), pick(_:), setWords(_:), cutOut(), toggle(_:), save(), stop().
+// (or the pieces lined up side by side) saved as a PNG with transparency. The buttons in CutoutView and the recording
+// harness in Autoplay call the same functions and set the same state: pickExample(_:), pick(_:), setWords(_:),
+// cutOut(), toggle(_:), display, save(), stop().
 //
 // The model loads when the app starts (READY) from the model folder (README: Run it): WeVisOne-VL-2B's decoder, its
 // vision tower with the mask decoder's taps, and the two mask graphs, on the system CoreAI framework (Sources/Engine).
@@ -120,7 +121,15 @@ final class CutoutModel {
     var tokens = 0
     /// The cut-out of the chosen pieces over transparency, at most 1024 px on its long side (the screen's copy).
     var cutoutImage: CGImage?
-    var showCutout = true
+    /// The chosen pieces apart, side by side on one transparent sheet (the screen's copy, from the same 1024 px photo).
+    var lineupImage: CGImage?
+    /// What the picture shows once the cut-out is done: the photo with the boxes, the cut-out in place, or the pieces
+    /// lined up. Save writes the cut-out, or the lined-up sheet while that is showing.
+    enum Display: Hashable {
+        case photo, cutout, lineup
+    }
+
+    var display: Display = .cutout
     var saveLine: String?
     var boxSeconds: Double?
     var matteSeconds: Double?
@@ -247,6 +256,7 @@ final class CutoutModel {
         answer = ""
         tokens = 0
         cutoutImage = nil
+        lineupImage = nil
         saveLine = nil
         boxSeconds = nil
         matteSeconds = nil
@@ -337,15 +347,40 @@ final class CutoutModel {
         Task { await composeCutout() }
     }
 
-    /// The screen's cut-out: the chosen pieces' matte over the photo, at most 1024 px on the long side, premultiplied.
+    /// The screen's cut-out: the chosen pieces' matte over the photo, at most 1024 px on the long side, premultiplied;
+    /// and the same pieces lined up.
     private func composeCutout() async {
-        guard let photo, task == .cutout else { cutoutImage = nil; return }
+        guard let photo, task == .cutout else { cutoutImage = nil; lineupImage = nil; return }
         let chosen = pieces.filter(\.selected).compactMap(\.logits)
-        guard !chosen.isEmpty else { cutoutImage = nil; return }
+        guard !chosen.isEmpty else { cutoutImage = nil; lineupImage = nil; return }
         let display = photo.display
-        cutoutImage = await Task.detached(priority: .userInitiated) {
-            Self.preview(display, logits: chosen)
+        let (cut, sheet) = await Task.detached(priority: .userInitiated) {
+            (Self.preview(display, logits: chosen), Self.lineupPreview(display, logits: chosen))
         }.value
+        cutoutImage = cut
+        lineupImage = sheet
+    }
+
+    /// The chosen pieces lined up from the photo at most `maxSide` px on its long side (drawn as `preview` draws it).
+    nonisolated static func lineupPreview(_ display: CGImage, logits: [[Float]], maxSide: Int = 1024) -> CGImage? {
+        let scale = min(1, Double(maxSide) / Double(max(display.width, display.height)))
+        let w = max(1, Int((Double(display.width) * scale).rounded())), h = max(1, Int((Double(display.height) * scale).rounded()))
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(display, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = ctx.data else { return nil }
+        let px = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        var rgb = [UInt8](repeating: 0, count: w * h * 3)
+        for i in 0..<(w * h) {
+            rgb[i * 3] = px[i * 4]
+            rgb[i * 3 + 1] = px[i * 4 + 1]
+            rgb[i * 3 + 2] = px[i * 4 + 2]
+        }
+        guard let sheet = CutoutImage.lineup(RGB8Image(width: w, height: h, pixels: rgb), logits: logits) else { return nil }
+        return CutoutImage.cgImage(rgba: sheet.rgba, width: sheet.width, height: sheet.height)
     }
 
     nonisolated static func preview(_ display: CGImage, logits: [[Float]], maxSide: Int = 1024) -> CGImage? {
@@ -372,7 +407,8 @@ final class CutoutModel {
 
     // MARK: - Save
 
-    /// The PNG of the chosen pieces at the photo's full size: Photos on the phone, a file on the Mac.
+    /// The PNG of the chosen pieces from the photo at its full size — the cut-out in place, or the pieces lined up while
+    /// Lined up is showing: Photos on the phone, a file on the Mac.
     @discardableResult
     func save() -> Task<Void, Never>? {
         guard phase == .done, task == .cutout, let photo else { return nil }
@@ -384,12 +420,20 @@ final class CutoutModel {
         saveLine = "Saving…"
         let rgb = photo.rgb
         let injected = injectedPhotosDenied
+        let lineup = display == .lineup
+        let kind = lineup ? "lineup" : "cutout"
         return Task {
             let tp = ContinuousClock.now
             let png: Data
             do {
                 png = try await Task.detached(priority: .userInitiated) {
-                    try CutoutImage.png(rgb, alpha: Alpha.combined8(chosen, width: rgb.width, height: rgb.height))
+                    if lineup {
+                        guard let sheet = CutoutImage.lineup(rgb, logits: chosen) else {
+                            throw CutoutError.image("no piece to line up")
+                        }
+                        return try CutoutImage.png(rgba: sheet.rgba, width: sheet.width, height: sheet.height)
+                    }
+                    return try CutoutImage.png(rgb, alpha: Alpha.combined8(chosen, width: rgb.width, height: rgb.height))
                 }.value
             } catch {
                 saveLine = "Could not make the PNG: \(error.localizedDescription)"
@@ -398,16 +442,16 @@ final class CutoutModel {
             }
             let pngSeconds = Self.seconds(ContinuousClock.now - tp)
             #if os(iOS)
-            let outcome = await Self.saveToPhotos(png, injectedDenied: injected)
+            let outcome = await Self.saveToPhotos(png, name: "\(kind).png", injectedDenied: injected)
             saveLine = outcome.line
-            onSaved?("\(outcome.record) bytes=\(png.count) png_s=\(String(format: "%.3f", pngSeconds))")
+            onSaved?("\(outcome.record) view=\(kind) bytes=\(png.count) png_s=\(String(format: "%.3f", pngSeconds))")
             #else
-            let url = await Self.chooseFile()
+            let url = await Self.chooseFile(prefix: kind)
             if let url {
                 do {
                     try png.write(to: url)
                     saveLine = "Saved \(url.lastPathComponent) (\(png.count / 1024) KB)"
-                    onSaved?("saved file=\(url.path) bytes=\(png.count) png_s=\(String(format: "%.3f", pngSeconds))")
+                    onSaved?("saved file=\(url.path) view=\(kind) bytes=\(png.count) png_s=\(String(format: "%.3f", pngSeconds))")
                 } catch {
                     saveLine = "Could not write the file: \(error.localizedDescription)"
                     onSaved?("error file \(error.localizedDescription)")
@@ -426,7 +470,7 @@ final class CutoutModel {
     }
 
     /// Adds the PNG to Photos (add-only access: the app never reads the library).
-    nonisolated static func saveToPhotos(_ png: Data, injectedDenied: Bool) async -> SaveOutcome {
+    nonisolated static func saveToPhotos(_ png: Data, name: String, injectedDenied: Bool) async -> SaveOutcome {
         var status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
         if injectedDenied { status = .denied }
         if status == .notDetermined { status = await PHPhotoLibrary.requestAuthorization(for: .addOnly) }
@@ -440,7 +484,7 @@ final class CutoutModel {
             try await PHPhotoLibrary.shared().performChanges {
                 let request = PHAssetCreationRequest.forAsset()
                 let options = PHAssetResourceCreationOptions()
-                options.originalFilename = "cutout.png"
+                options.originalFilename = name
                 request.addResource(with: .photo, data: png, options: options)
                 box.id = request.placeholderForCreatedAsset?.localIdentifier
             }
@@ -452,8 +496,8 @@ final class CutoutModel {
 
     #if os(macOS)
     /// The Mac's save panel; `-saveto <dir>` writes there instead (a script).
-    static func chooseFile() async -> URL? {
-        let name = "cutout-\(Int(Date().timeIntervalSince1970)).png"
+    static func chooseFile(prefix: String) async -> URL? {
+        let name = "\(prefix)-\(Int(Date().timeIntervalSince1970)).png"
         if let dir = UserDefaults.standard.string(forKey: "saveto") {
             return URL(fileURLWithPath: dir).appending(path: name)
         }

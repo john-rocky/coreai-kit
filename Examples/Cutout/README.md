@@ -1,11 +1,12 @@
 # Cutout — cut out what you name in a photo, with its soft edge, on the device
 
-Pick one photo and type what to cut out — "the dog", "the red truck", "people": on the device, WeVisOne-VL-2B finds
-each thing that matches, draws its box and its alpha matte down to the half-transparent edge, and Save writes the
-cut-out as a PNG with the background removed (to Photos on an iPhone, to a file on a Mac). On an iPhone 18 Pro (iOS
-27.2) one match took about 1 s (0.99–1.00 s) and seven matches 4.1 s, measured 2026-10-25. The photo never leaves the
-device. One screen: a photo and a few words in, the boxes and the cut-out out; the line under it says how long the
-boxes and the mattes took, and where they ran.
+Pick one photo and type what to cut out — "the dog", "the red truck", "people": on the device, WeVisOne-VL-2B finds each
+thing that matches, draws its box and its alpha matte down to the half-transparent edge, and Save writes the cut-out as
+a PNG with the background removed (to Photos on an iPhone, to a file on a Mac); Lined up sets the pieces side by side on
+one sheet, and Save then writes that sheet. On an iPhone 18 Pro (iOS 27.2) one match took about 1 s (0.99–1.00 s) and
+seven matches 4.1 s, measured 2026-10-25. The photo never leaves the device. One screen: a photo and a few words in, the
+boxes, the cut-out and the pieces lined up out; the line under it says how long the boxes and the mattes took, and where
+they ran.
 A 14.6 s clip of the app on an iPhone 18 Pro — a kitten and a puppy, "the kitten", only the kitten cut out and saved
 to Photos — is
 [in coreai-assets](https://github.com/john-rocky/coreai-assets/blob/main/demos/wevisone-vl-2b-cutout-iphone-20261027.mp4).
@@ -50,9 +51,11 @@ On an iPhone, put the folder in the app's Documents (Finder › your iPhone › 
 1. The app loads the model as it starts. READY means it can cut out.
 2. Take a photo, Pick a photo, or tap one of the three examples (a tap also puts its words in the box); type what to cut
    out — "the dog", "the red truck", "people" — or tap a word under the box; Cut out.
-3. The cut-out appears over a checkerboard; Photo | Cut out switches between it and the photo with each match's box
-   drawn on it. When several things match, each gets a number; tap one to leave it out. Save to Photos (on a Mac, Save
-   PNG…) writes the chosen pieces at the photo's full size.
+3. The cut-out appears over a checkerboard; Photo | Cut out | Lined up switches between it, the photo with each match's
+   box drawn on it, and the pieces apart: each cropped to its matte and set side by side on one sheet at the photo's
+   scale, bottoms on one line (more than four pieces wrap into rows). When several things match, each gets a number;
+   tap one to leave it out. Save to Photos (on a Mac, Save PNG…) writes the chosen pieces from the photo at its full
+   size: the cut-out, or the lined-up sheet while Lined up is showing.
 
 On an iPhone 18 Pro (iOS 27.2), cutting out the lighthouse took 0.99–1.00 s from Cut out to the finished cut-out (the
 boxes in 0.47–0.48 s — the vision tower 0.09 s, the 237-token prompt 0.14 s, the 13-token answer 0.23 s — and the
@@ -69,9 +72,9 @@ decoder, the 0.81 GB tower and the two mask graphs specialize in one process.
 ## The screen
 
 Top to bottom: the state (LOADING, READY, WORKING, DONE, NONE, STOPPED, FAILED) and what is happening; the photo with
-the boxes, or the cut-out; the three examples, Pick a photo and Take a photo; what to cut out, and words to tap; Cut out
-| Boxes only; Cut out, Save and Stop; the pieces found (or the model's answer when it found nothing); the numbers line;
-the model, the device, the OS and the app version.
+the boxes, the cut-out, or the pieces lined up; the three examples, Pick a photo and Take a photo; what to cut out, and
+words to tap; Cut out | Boxes only; Cut out, Save and Stop; the pieces found (or the model's answer when it found
+nothing); the numbers line; the model, the device, the OS and the app version.
 
 Boxes only asks the model to find the things (the package's detection prompt) and draws their boxes, without mattes.
 Pick a photo opens the system photo picker, which runs outside the app and needs no permission. Take a photo asks for
@@ -142,8 +145,9 @@ xcrun devicectl device process launch --device <udid> com.coreaikit.cutout -- \
 | `-example lighthouse` | `lighthouse`, `chess` or `airplane` |
 | `-task boxes` | Boxes only |
 | `-view photo` | leave the boxes on the screen instead of the cut-out |
+| `-lineup 2.5` | switch to Lined up 2.5 s after the answer (`-save 1` then saves the sheet) |
 | `-save 1` | tap Save at the end (on a Mac, `-saveto <dir>` instead of the save panel) |
-| `-frames 1` | write the screen as PNGs to `Documents/frames/<epoch>/`: READY, the pick, the words, the answer, the save |
+| `-frames 1` | write the screen as PNGs to `Documents/frames/<epoch>/`: READY, the pick, the words, the answer, Lined up, the save |
 | `-log 1` | append the steps to `Documents/cutout-autoplay.log` and write `Documents/cutout-run-<epoch>-<ms>.json` per request: the step times, the answer, the boxes, the memory footprint, the thermal state |
 | `-models <folder>` | the model folder (a path, or a name in Documents) |
 | `-docs <dir>` | where the log, the records and the frames go instead of Documents |
@@ -154,7 +158,8 @@ xcrun devicectl device process launch --device <udid> com.coreaikit.cutout -- \
 | `-photosauth denied` | Save behaves as if Photos access were off (the screen's sentence for that case; the record says it was set this way) |
 
 `swift run cutout-cli run --models <folder> --image x.jpg --words "the dog" --out <dir>` does one request on a Mac
-without Xcode (`CLI/main.swift`; also `fixture`, `tail`, `bench` and `boxpe`). `UITests/CutoutUITests.swift` runs the
+without Xcode (`CLI/main.swift`; `--lineup` also writes the lined-up sheet; also `fixture`, `tail`, `bench` and
+`boxpe`). `UITests/CutoutUITests.swift` runs the
 lighthouse example and answers the system's Photos request (allow, or decline); on a phone the first UI test session
 needs the passcode for UI automation, and unattended it stops with "Timed out while enabling automation mode".
 
