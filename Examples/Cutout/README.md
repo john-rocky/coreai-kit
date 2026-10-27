@@ -7,9 +7,9 @@ one sheet, and Save then writes that sheet. On an iPhone 18 Pro (iOS 27.2) one m
 seven matches 4.1 s, measured 2026-10-25. The photo never leaves the device. One screen: a photo and a few words in, the
 boxes, the cut-out and the pieces lined up out; the line under it says how long the boxes and the mattes took, and where
 they ran.
-A 14.6 s clip of the app on an iPhone 18 Pro — a kitten and a puppy, "the kitten", only the kitten cut out and saved
-to Photos — is
-[in coreai-assets](https://github.com/john-rocky/coreai-assets/blob/main/demos/wevisone-vl-2b-cutout-iphone-20261027.mp4).
+A 14.5 s clip of the app on an iPhone 18 Pro — jack-o'-lanterns among small uncarved pumpkins, "every carved pumpkin",
+the three carved ones cut out, lined up on one sheet and saved to Photos — is
+[in coreai-assets](https://github.com/john-rocky/coreai-assets/blob/main/demos/wevisone-vl-2b-pumpkins-iphone-20261027.mp4).
 
 The model is [WeVisOne-VL-2B](https://huggingface.co/tencent/WeVisOne-VL-2B) by WeChat Vision, Tencent Inc. (revision
 `3dad9ce8`): built upon Qwen3-VL, it answers detection, referring, counting, pointing, OCR, segmentation and alpha matting
@@ -183,9 +183,10 @@ These are the app's own sentences, from `CutoutModel.swift` and `Sources/Engine/
 
 Saving to Photos: on the iPhone 18 Pro, with access allowed, Save added the lighthouse cut-out to Photos (a PNG of
 1,187,126 bytes) and the screen said "Saved to Photos" (2026-10-27). The sentence for a refusal was checked with
-`-photosauth denied`. The system's request stays on the screen until someone answers it, over other apps too. On a
-Mac, Save wrote the file (with `-save 1 -saveto <dir>`: the lighthouse, a
-1024 × 683 PNG with its alpha).
+`-photosauth denied`. Lined up saves the same way: on the same phone the three carved pumpkins' sheet went to Photos as
+a PNG of 4,580,227 bytes, and a one-piece sheet with `-photosauth denied` got the refusal's sentence (2026-10-27). The
+system's request stays on the screen until someone answers it, over other apps too. On a Mac, Save wrote the file (with
+`-save 1 -saveto <dir>`: the lighthouse, a 1024 × 683 PNG with its alpha).
 
 ## Example photos
 
