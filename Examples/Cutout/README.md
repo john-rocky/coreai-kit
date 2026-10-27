@@ -6,6 +6,9 @@ cut-out as a PNG with the background removed (to Photos on an iPhone, to a file 
 27.2) one match took about 1 s (0.99–1.00 s) and seven matches 4.1 s, measured 2026-10-25. The photo never leaves the
 device. One screen: a photo and a few words in, the boxes and the cut-out out; the line under it says how long the
 boxes and the mattes took, and where they ran.
+A 14.6 s clip of the app on an iPhone 18 Pro — a kitten and a puppy, "the kitten", only the kitten cut out and saved
+to Photos — is
+[in coreai-assets](https://github.com/john-rocky/coreai-assets/blob/main/demos/wevisone-vl-2b-cutout-iphone-20261027.mp4).
 
 The model is [WeVisOne-VL-2B](https://huggingface.co/tencent/WeVisOne-VL-2B) by WeChat Vision, Tencent Inc. (revision
 `3dad9ce8`): built upon Qwen3-VL, it answers detection, referring, counting, pointing, OCR, segmentation and alpha matting
