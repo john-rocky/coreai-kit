@@ -25,6 +25,15 @@ policy.
   (`"prefill_pad_tail": true`) feeds what is left of a prompt after its full chunks as one call instead of up
   to 63 single steps (LFM3-1.7B, 1,000-token prompt: 0.692 → 0.500 s to the first token on an M4 Max). All
   lockfiles follow.
+- **Tool calling for LFM3** — `KitLanguageModel` declares `.toolCalling` for a bundle whose vocab carries LFM3's
+  `<function=` / `<parameter=` tokens and renders the tool turns the way LFM3's chat template does (`<tools>` lines
+  in `json.dumps` form, XML `<tool_call>` calls, `<tool_response>` results, reasoning replayed inside the tool loop),
+  then parses the model's XML calls with values typed by the tool's schema. The render equals transformers'
+  `apply_chat_template` string and ids on 30 conversations; LFM2.5 bundles still take no tools.
+- **Streams that start inside a thinking block** — when a rendered prompt ends with an open thinking marker
+  (LFM3's template with thinking on ends `<think>`), `ChatSession` and `KitLanguageModel` parse the reply as
+  thinking until the close marker, so the reasoning no longer reaches the answer text. A prompt that ends anywhere
+  else parses as before.
 - **MiniCPM-V 4.7 1B** — catalog id `minicpm-v-4.7-1b` (`kind: vlm`), loaded by `KitVisionModel` through the new
   `VLModelID.miniCPMV47` / `VLArchitecture.miniCPMV47`: OpenBMB's 4.6 vision tower (448 px, 64 image tokens) in front
   of a decoder that places the image on a canvas (M-RoPE over T, H and W) with an untied head, answering with

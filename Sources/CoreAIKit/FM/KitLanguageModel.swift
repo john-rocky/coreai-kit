@@ -21,7 +21,9 @@ import Tokenizers
 /// absence of LFM's pythonic `<|tool_call_start|>` / `<|tool_call_end|>` tokens. LFM bundles
 /// are ChatML-framed too but emit a pythonic call syntax this Hermes-only path can't parse,
 /// so advertising `.toolCalling` for them would silently never fire — they're excluded.
-/// (In practice this is the qwen3 family today.) Plain chat works on every bundle via its
+/// (In practice this is the qwen3 family today.) LFM3 is the exception: its vocab carries the
+/// XML call tokens `<function=` / `<parameter=`, and it gets its own dialect
+/// (`LFM3ToolDialect`) and `.toolCalling`. Plain chat works on every bundle via its
 /// own chat template. Guided generation (`session.respond(generating:)`) is declared when
 /// the engine exposes per-step logits — load with `engineVariant: .sequential`; the
 /// default pipelined engine samples on-GPU and rejects schema requests with
@@ -42,13 +44,17 @@ public struct KitLanguageModel: LanguageModel {
     /// but emit `<|tool_call_start|>[…]` calls this Hermes-only path can't parse, so they are
     /// excluded rather than advertising a `.toolCalling` capability that would never fire.
     let supportsHermesTools: Bool
+    /// Whether tool calling uses LFM3's dialect (XML calls through `<function=` / `<parameter=`
+    /// tokens). Checked before the Hermes refusal, which LFM3's vocab — it keeps LFM2.5's
+    /// `<|tool_call_start|>` pair — would otherwise trip.
+    let supportsLFM3Tools: Bool
     /// Vocabulary size from bundle metadata; sizes the grammar bitmask for guided
     /// generation (derived from the tokenizer when nil).
     let vocabSize: Int?
 
     public var capabilities: LanguageModelCapabilities {
         var capabilities: [LanguageModelCapabilities.Capability] = []
-        if supportsHermesTools {
+        if supportsHermesTools || supportsLFM3Tools {
             capabilities.append(.toolCalling)
         }
         if profile.rules.contains(where: { $0.kind == .thinking }) {
@@ -67,6 +73,7 @@ public struct KitLanguageModel: LanguageModel {
             modelID: modelID,
             profile: profile,
             supportsHermesTools: supportsHermesTools,
+            supportsLFM3Tools: supportsLFM3Tools,
             vocabSize: vocabSize)
     }
 
@@ -117,6 +124,7 @@ public struct KitLanguageModel: LanguageModel {
             tokenizer.convertTokenToId("<|im_start|>") != nil
             && tokenizer.convertTokenToId("<|tool_call_start|>") == nil
             && tokenizer.convertTokenToId("<|tool_call_end|>") == nil
+        self.supportsLFM3Tools = LFM3ToolDialect.probe(tokenizer)
         self.vocabSize = vocabSize
     }
 }

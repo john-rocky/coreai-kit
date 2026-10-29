@@ -22,8 +22,12 @@ struct StreamingTagParser {
     private var activeRule: Int?
     private var pending = ""
 
-    init(profile: OutputProfile) {
+    /// - Parameter insideRule: the rule the stream starts inside — a prompt that ends in an open
+    ///   thinking section (`OutputProfile.openThinkingRule(afterPrompt:tokenizer:)`); nil starts
+    ///   outside every section.
+    init(profile: OutputProfile, insideRule: Int? = nil) {
         self.profile = profile
+        self.activeRule = insideRule
     }
 
     mutating func consume(_ delta: String) -> [Event] {

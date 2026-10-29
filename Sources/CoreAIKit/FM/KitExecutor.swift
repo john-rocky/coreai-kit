@@ -40,6 +40,7 @@ public struct KitExecutor: LanguageModelExecutor {
         let modelID: String
         let profile: OutputProfile
         let supportsHermesTools: Bool
+        let supportsLFM3Tools: Bool
         let vocabSize: Int?
 
         public static func == (lhs: Configuration, rhs: Configuration) -> Bool {
@@ -55,6 +56,7 @@ public struct KitExecutor: LanguageModelExecutor {
     private let modelID: String
     private let profile: OutputProfile
     private let supportsHermesTools: Bool
+    private let supportsLFM3Tools: Bool
     private let vocabSize: Int?
     private let state = TurnState()
 
@@ -64,6 +66,7 @@ public struct KitExecutor: LanguageModelExecutor {
         self.modelID = configuration.modelID
         self.profile = configuration.profile
         self.supportsHermesTools = configuration.supportsHermesTools
+        self.supportsLFM3Tools = configuration.supportsLFM3Tools
         self.vocabSize = configuration.vocabSize
     }
 
@@ -147,7 +150,8 @@ public struct KitExecutor: LanguageModelExecutor {
             tools: tools,
             requireToolCall: mode == .required,
             tokenizer: tokenizer,
-            supportsHermesTools: supportsHermesTools)
+            supportsHermesTools: supportsHermesTools,
+            supportsLFM3Tools: supportsLFM3Tools)
         let promptTokens = rendered.tokens
 
         // 3) KV fast path: rewind the engine to the longest shared prefix, then feed the
@@ -236,7 +240,11 @@ public struct KitExecutor: LanguageModelExecutor {
         // 5) Stream: incremental UTF-8-safe detok (StreamingDetokenizer — holds only a
         //    trailing in-progress character, so a stray invalid byte cannot starve the
         //    turn) feeding the tag parser; text goes out the moment it decodes.
-        var parser = StreamingTagParser(profile: profile)
+        // A prompt that ends in an open thinking section (LFM3's template with thinking on ends
+        // `…<think>`) makes the first generated text reasoning.
+        var parser = StreamingTagParser(
+            profile: profile,
+            insideRule: profile.openThinkingRule(afterPrompt: promptTokens, tokenizer: tokenizer))
         var detok = StreamingDetokenizer { [tokenizer = self.tokenizer] in
             tokenizer.decode(tokens: $0)
         }
@@ -288,7 +296,11 @@ public struct KitExecutor: LanguageModelExecutor {
         //    consecutive .toolCalls events form one transcript entry, so a multi-call
         //    turn lands as a single ToolCalls entry.
         if !toolPayloads.isEmpty {
-            let calls = try toolPayloads.flatMap(Self.parseToolCalls)
+            let calls = try toolPayloads.flatMap { payload in
+                supportsLFM3Tools
+                    ? try LFM3ToolDialect.parseToolCalls(payload, tools: tools)
+                    : try Self.parseToolCalls(payload)
+            }
             for call in calls {
                 await channel.send(
                     .toolCalls(
@@ -352,7 +364,8 @@ public struct KitExecutor: LanguageModelExecutor {
             tools: tools,
             requireToolCall: mode == .required,
             tokenizer: tokenizer,
-            supportsHermesTools: supportsHermesTools)
+            supportsHermesTools: supportsHermesTools,
+            supportsLFM3Tools: supportsLFM3Tools)
         let promptTokens = rendered.tokens
 
         // 3) KV reuse: same rewind-then-full-feed contract as the vanilla path (the
