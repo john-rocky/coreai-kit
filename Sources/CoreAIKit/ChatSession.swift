@@ -27,6 +27,12 @@ public actor ChatSession {
         public var temperature: Double? = 0.7
         public var maxResponseTokens: Int = 2048
         public var systemPrompt: String? = nil
+        /// Reasoning switch for models whose chat template reads `enable_thinking` (Qwen3, LFM3):
+        /// rendered into the template as that variable. `nil` leaves the template's own default
+        /// (thinking on for those models); `false` renders the template's thinking-off prompt
+        /// (LFM3 closes it as `<think></think>`), so the whole response budget goes to the answer.
+        /// A template that does not read the variable renders the same prompt either way.
+        public var enableThinking: Bool? = nil
         /// Engine to load the bundle with. The default `.auto` picks the fastest engine
         /// (GPU-pipelined for dynamic models); guided generation needs `.sequential`.
         public var engineVariant: EngineVariant = .auto
@@ -61,6 +67,22 @@ public actor ChatSession {
         var i = 0
         while i < n, a[i] == b[i] { i += 1 }
         return i
+    }
+
+    /// One turn's prompt ids through the bundle's chat template, with the generation prompt.
+    /// `enableThinking` goes into the template as `enable_thinking`; nil renders the template's
+    /// own default, unchanged from a call without the variable.
+    static func renderChatTemplate(
+        _ messages: [[String: any Sendable]], tokenizer: any Tokenizer, enableThinking: Bool?
+    ) throws -> [Int32] {
+        guard let enableThinking else {
+            return try tokenizer.applyChatTemplate(messages: messages).map(Int32.init)
+        }
+        return try tokenizer.applyChatTemplate(
+            messages: messages, chatTemplate: nil, addGenerationPrompt: true,
+            truncation: false, maxLength: nil, tools: nil,
+            additionalContext: ["enable_thinking": enableThinking]
+        ).map(Int32.init)
     }
 
     /// Display name from the bundle metadata.
@@ -344,7 +366,9 @@ public actor ChatSession {
             let full: [Int32]
             switch runtime.promptRenderer {
             case .chatTemplate:
-                full = try runtime.tokenizer.applyChatTemplate(messages: rendered).map(Int32.init)
+                full = try Self.renderChatTemplate(
+                    rendered, tokenizer: runtime.tokenizer,
+                    enableThinking: configuration.enableThinking)
             case .gemma(let arch):
                 // The Gemma 4 bundles ship the stock tokenizer with no embedded chat
                 // template; the turn format is emitted explicitly instead.
