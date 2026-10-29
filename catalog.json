@@ -180,6 +180,19 @@
       "engine": "pipelined"
     },
     {
+      "id": "lfm3-1.7b",
+      "name": "LFM3 1.7B",
+      "repo": "mlboydaisuke/LFM3-1.7B-CoreAI",
+      "kind": "chat",
+      "variants": {
+        "macos": {
+          "path": "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym"
+        }
+      },
+      "thinking": true,
+      "engine": "pipelined"
+    },
+    {
       "id": "granite-4.0-h-1b",
       "name": "Granite 4.0-H 1B",
       "repo": "mlboydaisuke/granite-4.0-h-CoreAI",

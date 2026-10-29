@@ -421,6 +421,19 @@ public struct ModelCatalog: Sendable, Codable {
                         sizeMB: 3655),
                 ],
                 thinking: true, engine: "pipelined"),
+            // macOS only until an iPhone gate has run. Thinking is on by default (the template's
+            // prompt ends `<think>`, `Configuration.enableThinking = false` closes it); tool calls take
+            // LFM3ToolDialect. Not published yet, so no size and no pin: gen-builtin-pins.py and the two
+            // pin tests fail on purpose (pin-catalog.py --check only warns while the repo is missing).
+            // After the upload: add the revision to catalog.json, give this variant a `sizeMB:`, run
+            // measure-catalog-sizes.py --write --only lfm3-1.7b, then gen-builtin-pins.py.
+            CatalogEntry(
+                id: "lfm3-1.7b", name: "LFM3 1.7B",
+                repo: "mlboydaisuke/LFM3-1.7B-CoreAI", kind: .chat,
+                variants: [
+                    "macos": .init(path: "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym"),
+                ],
+                thinking: true, engine: "pipelined"),
             CatalogEntry(
                 id: "granite-4.0-h-1b", name: "Granite 4.0-H 1B",
                 repo: "mlboydaisuke/granite-4.0-h-CoreAI", kind: .chat,
