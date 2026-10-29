@@ -3,13 +3,14 @@
 // Two paths, picked per turn:
 // * No tools anywhere: the bundle tokenizer's own chat template
 //   (`applyChatTemplate(messages:)`) — correct for every model family.
-// * Tools in play (definitions enabled, or tool turns in history): the Qwen/Hermes
-//   tool-calling ChatML dialect — `<tools>` advertised in the system message, calls
-//   replayed as `<tool_call>` turns, results as `<tool_response>` — which requires a
-//   ChatML-speaking model. Adapted from the coreai-model-zoo ZooFMProvider.
+// * Tools in play (definitions enabled, or tool turns in history): LFM3's own dialect when the
+//   vocab carries its XML call tokens (`LFM3ToolDialect`), else the Qwen/Hermes tool-calling
+//   ChatML dialect — `<tools>` advertised in the system message, calls replayed as
+//   `<tool_call>` turns, results as `<tool_response>` — which requires a ChatML-speaking model.
+//   Adapted from the coreai-model-zoo ZooFMProvider.
 //
-// Reasoning entries are never replayed (matches upstream chat templates, which strip
-// historic thinking).
+// Reasoning entries are not replayed on the Hermes path (matches upstream chat templates, which
+// strip historic thinking); LFM3's dialect replays them inside the tool loop, as its template does.
 
 import Foundation
 import FoundationModels
@@ -27,7 +28,8 @@ enum TranscriptRenderer {
         tools: [Transcript.ToolDefinition],
         requireToolCall: Bool,
         tokenizer: any Tokenizer,
-        supportsHermesTools: Bool
+        supportsHermesTools: Bool,
+        supportsLFM3Tools: Bool = false
     ) throws -> Rendered {
         let hasToolHistory = transcript.contains { entry in
             switch entry {
@@ -40,6 +42,12 @@ enum TranscriptRenderer {
             let messages = templateMessages(from: transcript)
             let tokens = try tokenizer.applyChatTemplate(messages: messages).map(Int32.init)
             return Rendered(tokens: tokens, usedToolDialect: false)
+        }
+
+        if supportsLFM3Tools {
+            let text = LFM3ToolDialect.render(
+                transcript: transcript, tools: tools, requireToolCall: requireToolCall)
+            return Rendered(tokens: tokenizer.encode(text: text).map(Int32.init), usedToolDialect: true)
         }
 
         guard supportsHermesTools else {

@@ -272,7 +272,7 @@ The catalog's `sizeMB` measures `ios/`; an `ios-<arch>/` can be larger, and
 
 `KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession` —
 the same FoundationModels API you use for Apple's built-in model — and adds what the stock
-`CoreAILanguageModel` adapter lacks: **tool calling** (ChatML/Hermes models) and
+`CoreAILanguageModel` adapter lacks: **tool calling** (ChatML/Hermes models and LFM3) and
 **guided generation** (sequential engines).
 
 ```swift
@@ -305,7 +305,7 @@ What each provider honestly advertises:
 
 | | `KitLanguageModel` (text) | `KitVisionModel` (VL) |
 |---|---|---|
-| Tool calling | ChatML/Hermes models — the qwen3 family (LFM's pythonic dialect is not parsed) | not in v1, by design |
+| Tool calling | ChatML/Hermes models — the qwen3 family — and LFM3's XML calls (LFM2.5's pythonic dialect is not parsed) | not in v1, by design |
 | Reasoning | thinking models stream `.reasoning` | Qwen3-VL thinks by default |
 | Guided generation | sequential engines only (`engineVariant: .sequential`) | not in v1, by design |
 | Vision | — | one image per session; every turn re-prefills the full prompt (the vision encode is reused while the image is unchanged) |

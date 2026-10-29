@@ -419,7 +419,13 @@ public actor ChatSession {
             }
 
             let requestStart = SuspendingClock.now
-            var parser = StreamingTagParser(profile: runtime.outputProfile)
+            // A prompt that ends in an open thinking section (LFM3's template with thinking on ends
+            // `…<think>`) makes the first generated text thinking. Constrained turns start at the JSON.
+            var parser = StreamingTagParser(
+                profile: runtime.outputProfile,
+                insideRule: schema == nil
+                    ? runtime.outputProfile.openThinkingRule(afterPrompt: full, tokenizer: runtime.tokenizer)
+                    : nil)
             var content = ""
             var thinking = ""
             var window: [SuspendingClock.Instant] = []

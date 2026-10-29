@@ -75,6 +75,23 @@ public struct OutputProfile: Sendable, Equatable {
         ],
         defaultText: .suppress)
 
+    /// The thinking rule a rendered prompt leaves open: the prompt ends with that rule's open
+    /// marker followed by nothing but newlines (LFM3's template with thinking on ends `…<think>`,
+    /// Qwen3.5's with `enable_thinking` true `…<think>\n`), so generation starts inside the
+    /// section and its first marker is the close one. nil when the prompt ends anywhere else — a
+    /// closed `<think></think>`, or no marker — so every such stream parses as before.
+    func openThinkingRule(atEndOf prompt: String) -> Int? {
+        var tail = Substring(prompt)
+        while let last = tail.last, last.isNewline { tail = tail.dropLast() }
+        return rules.firstIndex { $0.kind == .thinking && tail.hasSuffix($0.open) }
+    }
+
+    /// `openThinkingRule(atEndOf:)` on the decoded tail of a tokenized prompt (a marker and the
+    /// newlines after it are a few tokens).
+    func openThinkingRule(afterPrompt tokens: [Int32], tokenizer: any Tokenizer) -> Int? {
+        openThinkingRule(atEndOf: tokenizer.decode(tokens: tokens.suffix(8).map(Int.init)))
+    }
+
     /// Picks the profile by probing the tokenizer vocab for marker tokens (markers only
     /// exist as dedicated tokens on models trained to emit them).
     public static func detect(probing tokenizer: any Tokenizer) -> OutputProfile {
