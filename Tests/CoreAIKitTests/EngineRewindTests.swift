@@ -57,6 +57,25 @@ struct EngineRewindTests {
     }
 }
 
+/// Where ChatSession and KitExecutor ask the engine for the next turn's checkpoint
+/// (`InferenceOptions.checkpointAfter`): past the last turn-end token before the final token.
+struct LastTurnEndTests {
+    @Test func pastTheLastFinishedMessage() {
+        // [user … <end>] [generation prompt …]: the checkpoint goes after the user's <end>
+        #expect(lastTurnEnd(of: [5, 9, 6, 9, 7, 8], turnEnds: [9]) == 4)
+    }
+
+    /// A turn-end token as the final token is not the boundary (the generation feeds that one).
+    @Test func notTheFinalToken() {
+        #expect(lastTurnEnd(of: [5, 9, 6, 9], turnEnds: [9]) == 2)
+    }
+
+    @Test func withoutAFinishedMessageBeforeTheFinalToken() {
+        #expect(lastTurnEnd(of: [5, 6, 7, 8], turnEnds: [9]) == 3)
+        #expect(lastTurnEnd(of: [5], turnEnds: [9]) == nil)
+    }
+}
+
 // MARK: - Fake
 
 private final class ResetLog: Sendable {
