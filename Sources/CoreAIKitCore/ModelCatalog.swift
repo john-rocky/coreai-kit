@@ -431,7 +431,7 @@ public struct ModelCatalog: Sendable, Codable {
                 id: "lfm3-1.7b", name: "LFM3 1.7B",
                 repo: "mlboydaisuke/LFM3-1.7B-CoreAI", kind: .chat,
                 variants: [
-                    "macos": .init(path: "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym"),
+                    "macos": .init(path: "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64"),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
