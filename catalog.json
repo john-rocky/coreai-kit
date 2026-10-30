@@ -187,6 +187,10 @@
       "variants": {
         "macos": {
           "path": "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64"
+        },
+        "ios": {
+          "path": "ios",
+          "engine": "static-shape"
         }
       },
       "thinking": true,

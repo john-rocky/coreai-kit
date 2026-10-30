@@ -113,10 +113,16 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// path it is `ios/`'s; an iPhone that takes the repo's `ios-<arch>/` instead
         /// (`ModelID.subtrees`) can download more.
         public let sizeMB: Int?
+        /// Engine hint for this platform's bundle when it is not the entry's `engine`: an iPhone
+        /// variant holding the static Neural Engine form of a model whose Mac bundle runs on the
+        /// pipelined engine says "static-shape". nil = the entry's `engine`. A kit built before
+        /// this key ignores it and loads with the entry's.
+        public let engine: String?
 
-        public init(path: String, sizeMB: Int? = nil) {
+        public init(path: String, sizeMB: Int? = nil, engine: String? = nil) {
             self.path = path
             self.sizeMB = sizeMB
+            self.engine = engine
         }
     }
 
@@ -137,6 +143,7 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     /// runtime's chunk threshold drops to 1 on load) and the hybrid ones (extra conv/SSM
     /// states) only load on the pipelined engine — "sequential" validates exactly 2 states
     /// and rejects them. Official-recipe bundles (dynamic shapes) leave this nil (auto).
+    /// A variant that names its own `engine` overrides this one on its platform (`resolvedEngine`).
     public let engine: String?
     /// For a `decision` entry: the prompt form its readout needs, by the raw value of
     /// `Decision.Format` — `decider` (plain `Context:` / `Options:` rows), `slot` (a slot head
@@ -185,7 +192,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         self.assets = assets
     }
 
-    static var platformKey: String {
+    /// This platform's key in `variants`: "ios" on iOS, "macos" elsewhere.
+    public static var platformKey: String {
         #if os(iOS)
         return "ios"
         #else
@@ -195,6 +203,15 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
 
     /// The variant for this platform, or nil if the model is not published here.
     public var variant: Variant? { variants[Self.platformKey] }
+
+    /// The engine hint for this platform: the variant's own `engine` when it names one, else the
+    /// entry's. What a `catalog:` loader hands to the engine choice.
+    public var resolvedEngine: String? { resolvedEngine(for: Self.platformKey) }
+
+    /// The engine hint for the variant keyed `platform` ("macos" / "ios"), by the same rule.
+    public func resolvedEngine(for platform: String) -> String? {
+        variants[platform]?.engine ?? engine
+    }
 
     /// `ModelID` for this platform, or nil if the model is not published here.
     public var modelID: ModelID? {
@@ -421,17 +438,23 @@ public struct ModelCatalog: Sendable, Codable {
                         sizeMB: 3655),
                 ],
                 thinking: true, engine: "pipelined"),
-            // macOS only until an iPhone gate has run. Thinking is on by default (the template's
-            // prompt ends `<think>`, `Configuration.enableThinking = false` closes it); tool calls take
-            // LFM3ToolDialect. Not published yet, so no size and no pin: gen-builtin-pins.py and the two
-            // pin tests fail on purpose (pin-catalog.py --check only warns while the repo is missing).
-            // After the upload: add the revision to catalog.json, give this variant a `sizeMB:`, run
+            // Thinking is on by default (the template's prompt ends `<think>`,
+            // `Configuration.enableThinking = false` closes it); tool calls take LFM3ToolDialect.
+            // The iPhone variant is the static Neural Engine form, compiled per iPhone generation
+            // into the repo's `ios-<arch>/` (`ios-h19p/` for the iPhone 18 Pro at this upload;
+            // no `ios/`), so a phone of any other
+            // generation finds no bundle. It names its own engine; the entry's "pipelined" is the
+            // Mac bundle's, and what a kit without `Variant.engine` reads. Not published yet, so no
+            // size and no pin: gen-builtin-pins.py and the two pin tests fail on purpose
+            // (pin-catalog.py --check only warns while the repo is missing). After the upload: add
+            // the revision to catalog.json, give the variants a `sizeMB:`, run
             // measure-catalog-sizes.py --write --only lfm3-1.7b, then gen-builtin-pins.py.
             CatalogEntry(
                 id: "lfm3-1.7b", name: "LFM3 1.7B",
                 repo: "mlboydaisuke/LFM3-1.7B-CoreAI", kind: .chat,
                 variants: [
                     "macos": .init(path: "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64"),
+                    "ios": .init(path: "ios", engine: "static-shape"),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
