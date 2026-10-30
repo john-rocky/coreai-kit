@@ -111,7 +111,8 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// fetches for this entry, sibling subtrees its loader resolves included. Measured at the
         /// pinned revision by `scripts/measure-catalog-sizes.py`, never typed by hand. For an `ios`
         /// path it is `ios/`'s; an iPhone that takes the repo's `ios-<arch>/` instead
-        /// (`ModelID.subtrees`) can download more.
+        /// (`ModelID.subtrees`) can download more. A repo with no `ios/` is measured by its largest
+        /// `ios-<arch>/`.
         public let sizeMB: Int?
         /// Engine hint for this platform's bundle when it is not the entry's `engine`: an iPhone
         /// variant holding the static Neural Engine form of a model whose Mac bundle runs on the
