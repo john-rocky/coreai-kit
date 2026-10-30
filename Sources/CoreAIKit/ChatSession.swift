@@ -137,12 +137,23 @@ public actor ChatSession {
             return
         }
         var configuration = configuration
-        if configuration.engineVariant == .auto {
-            configuration.engineVariant = EngineVariant(catalogHint: entry.engine)
-        }
+        configuration.engineVariant = Self.engineVariant(
+            for: entry, requested: configuration.engineVariant)
         try await self.init(
             model: model, store: store, configuration: configuration,
             downloadProgress: downloadProgress)
+    }
+
+    /// The engine a `catalog:` load runs: an explicit `requested` wins; `.auto` takes the catalog's
+    /// hint for `platform`, the variant's own before the entry's
+    /// (`CatalogEntry.resolvedEngine(for:)`), so an iPhone variant on the static-shape engine loads
+    /// on it while the Mac bundle stays on the entry's.
+    static func engineVariant(
+        for entry: CatalogEntry, requested: EngineVariant,
+        platform: String = CatalogEntry.platformKey
+    ) -> EngineVariant {
+        guard requested == .auto else { return requested }
+        return EngineVariant(catalogHint: entry.resolvedEngine(for: platform))
     }
 
     /// Downloads the model if needed (cached afterwards), then loads it.

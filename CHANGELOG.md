@@ -36,6 +36,11 @@ policy.
   else parses as before.
 - **LFM3 1.7B** — catalog id `lfm3-1.7b` (`kind: chat`, macOS), the zoo's int8 bundle on the pipelined engine: it
   thinks by default and calls tools through `LFM3ToolDialect`.
+- **An engine hint per platform** — a catalog variant may name its own `engine` (`CatalogEntry.Variant.engine`), which
+  wins over the entry's on that platform (`CatalogEntry.resolvedEngine`); `ChatSession(catalog:)`, `TypedDecisions` and
+  `KitTextNormalizer` load with it. `lfm3-1.7b` gains an iPhone variant on the static-shape engine: the Neural Engine
+  form, compiled per iPhone generation into the repo's `ios-<arch>/` (`ios-h19p/` for the iPhone 18 Pro at this upload;
+  no `ios/`). A kit without the key reads the entry's `engine` ("pipelined", the Mac bundle's).
 - **`ChatSession.Configuration.enableThinking`** — renders `enable_thinking` into the bundle's chat template
   (`nil`, the default, leaves the template's own default); `false` gives LFM3 and the Qwen3 family their thinking-off
   prompt, so the response budget goes to the answer.
