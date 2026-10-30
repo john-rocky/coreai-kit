@@ -22,7 +22,10 @@ What "a first run downloads" means: `ModelStore` fetches every file under a path
 included. A loader downloads the variant's path plus the subtrees it pairs with it: a vision
 tower, the PLE tables beside a Gemma 4 decoder, TTS glue and a tokenizer, an audio encoder.
 The two tables below are those subtrees, read off the loaders. A new multi-bundle entry needs
-its loader's subtrees added to them; until then only its variant path is measured. A path named
+its loader's subtrees added to them; until then only its variant path is measured. On an iPhone,
+a variant whose path is `ios` downloads the repo's `ios-<arch>/` for the phone's architecture
+before `ios/` (`ModelID.subtrees`); a repo with no `ios/` (LFM3 1.7B ships `ios-h19p/` alone) is
+measured by its largest `ios-<arch>/`, the biggest download a phone can make there. A path named
 here that is missing at the pinned revision fails every mode, so a renamed subtree cannot shrink
 a number silently.
 
@@ -134,6 +137,26 @@ def files_under(path: str, files: dict[str, int]) -> dict[str, int]:
             if not path or name == path or name.startswith(path + "/")}
 
 
+def iphone_arch_subtrees(files: dict[str, int]) -> dict[str, dict[str, int]]:
+    """The repo's top-level `ios-<arch>/` directories and their files: what ModelStore takes on an
+    iPhone of that architecture, before `ios/`, for a variant whose path is `ios`."""
+    out: dict[str, dict[str, int]] = {}
+    for name, size in files.items():
+        top, _, rest = name.partition("/")
+        if top.startswith("ios-") and rest:
+            out.setdefault(top, {})[name] = size
+    return out
+
+
+def iphone_fallback(path: str, files: dict[str, int]) -> dict[str, int]:
+    """For a variant path `ios` with nothing under `ios/`: the largest `ios-<arch>/`, since a phone
+    then downloads the subtree of its own architecture or nothing. Empty for any other path."""
+    if path.strip("/") != "ios":
+        return {}
+    subtrees = iphone_arch_subtrees(files)
+    return max(subtrees.values(), key=lambda f: sum(f.values())) if subtrees else {}
+
+
 def repo_files(repo: str, revision: str) -> dict[str, int]:
     """{path: bytes} for every file in the repo at `revision` (the listing
     `huggingface_hub.HfApi().repo_info(..., files_metadata=True)` makes)."""
@@ -212,7 +235,7 @@ def main() -> int:
         for key, variant in entry["variants"].items():
             fetched: dict[str, int] = {}
             for path in downloaded_paths(entry, key):
-                under = files_under(path, files)
+                under = files_under(path, files) or iphone_fallback(path, files)
                 if not under:
                     broken.append(f"{entry['id']} {key}: nothing at '{path}' "
                                   f"@ {entry['revision'][:12]}")
