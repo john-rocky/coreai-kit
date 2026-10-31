@@ -183,14 +183,17 @@
       "id": "lfm3-1.7b",
       "name": "LFM3 1.7B",
       "repo": "mlboydaisuke/LFM3-1.7B-CoreAI",
+      "revision": "8621dc42f2a6f25b1ad3f955aab39d608dbdfef4",
       "kind": "chat",
       "variants": {
         "macos": {
-          "path": "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64"
+          "path": "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64",
+          "sizeMB": 2720
         },
         "ios": {
           "path": "ios",
-          "engine": "static-shape"
+          "engine": "static-shape",
+          "sizeMB": 2164
         }
       },
       "thinking": true,
