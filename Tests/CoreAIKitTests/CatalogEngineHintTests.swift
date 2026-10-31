@@ -66,7 +66,8 @@ struct CatalogEngineHintTests {
         for catalog in [shipped, ModelCatalog.builtin] {
             let lfm3 = try #require(catalog.entry(id: "lfm3-1.7b"))
             #expect(lfm3.engine == "pipelined")
-            #expect(lfm3.variants["ios"] == CatalogEntry.Variant(path: "ios", engine: "static-shape"))
+            #expect(lfm3.variants["ios"]?.path == "ios")
+            #expect(lfm3.variants["ios"]?.engine == "static-shape")
             #expect(lfm3.resolvedEngine(for: "ios") == "static-shape")
             #expect(lfm3.resolvedEngine(for: "macos") == "pipelined")
             // An entry whose variants name no engine: the entry's on both platforms.

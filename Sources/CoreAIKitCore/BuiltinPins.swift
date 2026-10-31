@@ -41,6 +41,7 @@ enum BuiltinPins {
         "lfm2.5-8b-a1b": "1e494ef6dd5c499e18d5c1730ddf4bda76b9e039",
         "lfm2.5-vl-3b": "a47ab9b270c17dcd71bbb48a147daf7c18072e0e",
         "lfm2.5-vl-450m": "f6648f9c65402a4d5c280cae41b672f977e74e3a",
+        "lfm3-1.7b": "8621dc42f2a6f25b1ad3f955aab39d608dbdfef4",
         "llada-8b": "25c94549f6a8298798818db23cfbff8ccddaecd8",
         "melband-roformer-vocal": "0c7aca92db7341f7be579aa00fa1231442c7cb7c",
         "mineru2.5-pro": "ff454af73b7ba95da3bfd8df3c40d08fdb98521e",

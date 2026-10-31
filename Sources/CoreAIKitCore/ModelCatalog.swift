@@ -445,17 +445,15 @@ public struct ModelCatalog: Sendable, Codable {
             // into the repo's `ios-<arch>/` (`ios-h19p/` for the iPhone 18 Pro at this upload;
             // no `ios/`), so a phone of any other
             // generation finds no bundle. It names its own engine; the entry's "pipelined" is the
-            // Mac bundle's, and what a kit without `Variant.engine` reads. Not published yet, so no
-            // size and no pin: gen-builtin-pins.py and the two pin tests fail on purpose
-            // (pin-catalog.py --check only warns while the repo is missing). After the upload: add
-            // the revision to catalog.json, give the variants a `sizeMB:`, run
-            // measure-catalog-sizes.py --write --only lfm3-1.7b, then gen-builtin-pins.py.
+            // Mac bundle's, and what a kit without `Variant.engine` reads.
             CatalogEntry(
                 id: "lfm3-1.7b", name: "LFM3 1.7B",
                 repo: "mlboydaisuke/LFM3-1.7B-CoreAI", kind: .chat,
                 variants: [
-                    "macos": .init(path: "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64"),
-                    "ios": .init(path: "ios", engine: "static-shape"),
+                    "macos": .init(
+                        path: "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64",
+                        sizeMB: 2720),
+                    "ios": .init(path: "ios", sizeMB: 2164, engine: "static-shape"),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
