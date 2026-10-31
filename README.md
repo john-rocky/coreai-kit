@@ -265,6 +265,9 @@ architecture (`AIModel.deviceArchitectureName`) when the repository has one, and
 does not, at the cost of one more listing.
 A copy already on disk is used, whichever folder it is.
 Any other path downloads as named, and a Mac never looks for an architecture folder.
+A repo with no `ios/` lists the architectures it has folders for in the variant's `architectures`,
+so `CatalogEntry.unavailableReason` can tell an iPhone it has no bundle before anything downloads,
+and `catalog:` initializers throw `unsupportedDevice` instead of starting the download.
 The catalog's `sizeMB` measures `ios/`, or the largest `ios-<arch>/` when a repo has no `ios/`;
 an `ios-<arch>/` beside an `ios/` can be larger, and
 `ModelStore.remoteSize(of:)` gives the figure for the device it runs on.

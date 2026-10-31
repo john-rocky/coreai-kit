@@ -193,7 +193,10 @@
         "ios": {
           "path": "ios",
           "engine": "static-shape",
-          "sizeMB": 2164
+          "sizeMB": 2164,
+          "architectures": [
+            "h19p"
+          ]
         }
       },
       "thinking": true,

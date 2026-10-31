@@ -41,6 +41,12 @@ policy.
   `KitTextNormalizer` load with it. `lfm3-1.7b` gains an iPhone variant on the static-shape engine: the Neural Engine
   form, compiled per iPhone generation into the repo's `ios-<arch>/` (`ios-h19p/` for the iPhone 18 Pro at this upload;
   no `ios/`). A kit without the key reads the entry's `engine` ("pipelined", the Mac bundle's).
+- **Which iPhones have a bundle, before the download** — an `ios` variant in a repo with no `ios/` lists the
+  architectures it has an `ios-<arch>/` for (`CatalogEntry.Variant.architectures`; `lfm3-1.7b` lists `h19p`).
+  `CatalogEntry.unavailableReason` reads it, and the architecture of a path inside an `ios-<arch>/` folder, against
+  the device's (`AIModel.deviceArchitectureName`): nil when the phone has a bundle, the Mac, or a phone Core AI does
+  not name, else a sentence for a picker. `ModelCatalog.entry(forID:)`, which every `catalog:` initializer rides,
+  throws `unsupportedDevice` with it before any download. A kit without the key ignores it.
 - **`ChatSession.Configuration.enableThinking`** — renders `enable_thinking` into the bundle's chat template
   (`nil`, the default, leaves the template's own default); `false` gives LFM3 and the Qwen3 family their thinking-off
   prompt, so the response budget goes to the answer.

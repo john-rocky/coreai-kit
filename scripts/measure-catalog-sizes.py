@@ -27,7 +27,9 @@ a variant whose path is `ios` downloads the repo's `ios-<arch>/` for the phone's
 before `ios/` (`ModelID.subtrees`); a repo with no `ios/` (LFM3 1.7B ships `ios-h19p/` alone) is
 measured by its largest `ios-<arch>/`, the biggest download a phone can make there. A path named
 here that is missing at the pinned revision fails every mode, so a renamed subtree cannot shrink
-a number silently.
+a number silently. Such a variant's `architectures` must list exactly the repo's `ios-<arch>/`
+folders at the pin (a phone reads it to show "not on this device" before a download), and a repo
+with an `ios/` lists none; a list that disagrees fails every mode too.
 
 Summing the whole repo is not a substitute for the tables: several repos publish quantisations
 side by side that no loader fetches. qwen3.5-0.8B's holds 10.9 GB at its pin for a 1.3 GB
@@ -157,6 +159,19 @@ def iphone_fallback(path: str, files: dict[str, int]) -> dict[str, int]:
     return max(subtrees.values(), key=lambda f: sum(f.values())) if subtrees else {}
 
 
+def architectures_problem(variant: dict, files: dict[str, int]) -> str | None:
+    """Why an `ios` variant's `architectures` disagrees with the repo, or None. The list is the
+    repo's `ios-<arch>/` folders when it has no `ios/`, and absent when it has one."""
+    if variant["path"].strip("/") != "ios":
+        return "architectures on a path other than 'ios'" if "architectures" in variant else None
+    declared = variant.get("architectures")
+    if files_under("ios", files):
+        return None if declared is None else f"architectures {declared} beside an ios/"
+    folders = sorted(match[1] for top in iphone_arch_subtrees(files)
+                     if (match := re.fullmatch(r"ios-(h[0-9][A-Za-z0-9]*)", top)))
+    return None if declared == folders else f"architectures {declared}, the repo has {folders}"
+
+
 def repo_files(repo: str, revision: str) -> dict[str, int]:
     """{path: bytes} for every file in the repo at `revision` (the listing
     `huggingface_hub.HfApi().repo_info(..., files_metadata=True)` makes)."""
@@ -233,6 +248,8 @@ def main() -> int:
             unreadable.append(f"{entry['id']}: {error}")
             continue
         for key, variant in entry["variants"].items():
+            if problem := architectures_problem(variant, files):
+                broken.append(f"{entry['id']} {key}: {problem} @ {entry['revision'][:12]}")
             fetched: dict[str, int] = {}
             for path in downloaded_paths(entry, key):
                 under = files_under(path, files) or iphone_fallback(path, files)

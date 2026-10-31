@@ -97,6 +97,11 @@ like `qwen3-0.6b`, `qwen3.5-2b`, `youtu-llm-2b`, `lfm2.5-1.2b` — lowercase, hy
   `scripts/measure-catalog-sizes.py --write` measures it at the pinned revision and writes
   catalog.json and the built-in literal together; CI's `--check` fails on a figure more than 2%
   off. A multi-bundle entry also needs its loader's subtrees in that script's tables.
+- An `ios` variant in a repo with **no `ios/`** lists the architectures it has an `ios-<arch>/`
+  for in `architectures` (`["h19p"]` while only `ios-h19p/` is uploaded), and the list grows
+  with each folder uploaded. It is what an iPhone reads to show "not on this device" before a
+  download (`CatalogEntry.unavailableReason`); a variant without it is offered to every iPhone.
+  `scripts/measure-catalog-sizes.py` fails when the list and the repo's folders at the pin differ.
 
 ## What breaks on a real device
 
