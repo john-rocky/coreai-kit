@@ -120,11 +120,19 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
         /// (MiniCPM5's `ios-ane-h18p`), says "static-shape". nil = the entry's `engine`. A kit built
         /// before this key ignores it and loads with the entry's.
         public let engine: String?
+        /// For a variant whose path is `ios` in a repo with no `ios/`: the iPhone architectures
+        /// (`h19p` is the iPhone 18 Pro) whose `ios-<arch>/` the repo has, the only phones with a
+        /// bundle (`CatalogEntry.unavailableReason`). nil = the repo has `ios/`, which every iPhone
+        /// can load, or the path names its own folder. A kit built before this key ignores it.
+        public let architectures: [String]?
 
-        public init(path: String, sizeMB: Int? = nil, engine: String? = nil) {
+        public init(
+            path: String, sizeMB: Int? = nil, engine: String? = nil, architectures: [String]? = nil
+        ) {
             self.path = path
             self.sizeMB = sizeMB
             self.engine = engine
+            self.architectures = architectures
         }
     }
 
@@ -266,6 +274,56 @@ public struct CatalogEntry: Sendable, Identifiable, Codable, Hashable {
     public func modelID(path: String) -> ModelID {
         ModelID(repo, path: path, revision: revision ?? "main")
     }
+
+    /// nil when this device has a bundle of this entry to load (or the catalog cannot tell);
+    /// otherwise why not, in a sentence for the user. Read from the catalog alone, so a picker can
+    /// mark the model before any download, by the rule `ModelStore` downloads by
+    /// (`ModelID.subtrees`): on an iPhone, a variant whose path is `ios` and that lists
+    /// `architectures` has a bundle on those architectures only, and a path inside an
+    /// `ios-<arch>/` folder (graphs compiled for one iPhone generation) on that one only. An
+    /// iPhone whose architecture Core AI does not name, and every Mac, get nil.
+    public var unavailableReason: String? {
+        unavailableReason(platform: Self.platformKey, deviceArchitecture: ModelStore.deviceArchitecture)
+    }
+
+    /// `unavailableReason` for the variant keyed `platform` on a device of `deviceArchitecture`.
+    func unavailableReason(platform: String, deviceArchitecture: String?) -> String? {
+        guard platform == ModelID.iPhoneSubtree, let deviceArchitecture,
+            let variant = variants[platform]
+        else { return nil }
+        let built: [String]
+        if variant.path == ModelID.iPhoneSubtree, let listed = variant.architectures {
+            built = listed
+        } else if let folder = Self.architecture(ofFolderIn: variant.path) {
+            built = [folder]
+        } else {
+            return nil
+        }
+        guard !built.contains(deviceArchitecture) else { return nil }
+        let phones = built.compactMap { Self.iPhoneNames[$0] }
+        let named = phones.count == built.count && !phones.isEmpty
+            ? phones.joined(separator: " and ") : "other iPhones"
+        return "\(name)'s iPhone version is built for \(named) only."
+    }
+
+    /// The iPhone an architecture's bundles were compiled on, in words a user reads: a row per
+    /// architecture a catalog bundle is compiled for, naming the phone it was checked on.
+    static let iPhoneNames: [String: String] = [
+        "h18p": "the iPhone 17 Pro",
+        "h19p": "the iPhone 18 Pro",
+    ]
+
+    /// The architecture of a path's first component when it is an `ios-<arch>/` folder
+    /// (`ios-h18p/nemotron_3_nano_4b_decode_int8hu` → `h18p`); nil for any other folder
+    /// (`ios`, `ios-frontend`, `ios-ane-h18p`, `gpu-pipelined`).
+    static func architecture(ofFolderIn path: String) -> String? {
+        let first = path.split(separator: "/", maxSplits: 1).first.map(String.init) ?? ""
+        guard first.hasPrefix("ios-h") else { return nil }
+        let arch = first.dropFirst("ios-".count)
+        guard arch.count > 1, arch.dropFirst().first?.isNumber == true,
+            arch.allSatisfy({ $0.isLetter || $0.isNumber }) else { return nil }
+        return String(arch)
+    }
 }
 
 extension CatalogEntry {
@@ -353,7 +411,9 @@ public struct ModelCatalog: Sendable, Codable {
     /// Resolves a catalog id against the live catalog (built-in snapshot offline) to an entry
     /// available on this platform. This is what the `catalog:` model initializers ride, so a
     /// card's id works verbatim: unknown id and wrong-platform failures throw with the id in
-    /// the message instead of surfacing as a download error.
+    /// the message instead of surfacing as a download error, and an iPhone the entry has no
+    /// bundle for (`CatalogEntry.unavailableReason`) gets `unsupportedDevice` before a byte
+    /// downloads.
     public static func entry(
         forID id: String, expecting kind: CatalogEntry.Kind? = nil, from url: URL = defaultURL
     ) async throws -> CatalogEntry {
@@ -365,6 +425,9 @@ public struct ModelCatalog: Sendable, Codable {
         }
         guard entry.modelID != nil else {
             throw CoreAIKitError.modelNotAvailableOnPlatform(id: id)
+        }
+        if let reason = entry.unavailableReason {
+            throw CoreAIKitError.unsupportedDevice(reason: reason)
         }
         return entry
     }
@@ -484,8 +547,8 @@ public struct ModelCatalog: Sendable, Codable {
             // `Configuration.enableThinking = false` closes it); tool calls take LFM3ToolDialect.
             // The iPhone variant is the static Neural Engine form, compiled per iPhone generation
             // into the repo's `ios-<arch>/` (`ios-h19p/` for the iPhone 18 Pro at this upload;
-            // no `ios/`), so a phone of any other
-            // generation finds no bundle. It names its own engine; the entry's "pipelined" is the
+            // no `ios/`), so a phone of any other generation finds no bundle: `architectures`
+            // says so before the download. It names its own engine; the entry's "pipelined" is the
             // Mac bundle's, and what a kit without `Variant.engine` reads.
             CatalogEntry(
                 id: "lfm3-1.7b", name: "LFM3 1.7B",
@@ -494,7 +557,8 @@ public struct ModelCatalog: Sendable, Codable {
                     "macos": .init(
                         path: "gpu-pipelined/lfm3_1_7b_decode_int8hu_block32_sym_pf64",
                         sizeMB: 2720),
-                    "ios": .init(path: "ios", sizeMB: 2164, engine: "static-shape"),
+                    "ios": .init(
+                        path: "ios", sizeMB: 2164, engine: "static-shape", architectures: ["h19p"]),
                 ],
                 thinking: true, engine: "pipelined"),
             CatalogEntry(
