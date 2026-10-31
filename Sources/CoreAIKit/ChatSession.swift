@@ -31,7 +31,8 @@ public actor ChatSession {
         /// rendered into the template as that variable. `nil` leaves the template's own default
         /// (thinking on for those models); `false` renders the template's thinking-off prompt
         /// (LFM3 closes it as `<think></think>`), so the whole response budget goes to the answer.
-        /// A template that does not read the variable renders the same prompt either way.
+        /// For a template that does not read the variable (LFM2.5 2.6B, Nanbeige4.1 3B), `false`
+        /// closes an empty think block after the generation prompt instead.
         public var enableThinking: Bool? = nil
         /// Engine to load the bundle with. The default `.auto` picks the fastest engine
         /// (GPU-pipelined for dynamic models); guided generation needs `.sequential`.
@@ -71,18 +72,26 @@ public actor ChatSession {
 
     /// One turn's prompt ids through the bundle's chat template, with the generation prompt.
     /// `enableThinking` goes into the template as `enable_thinking`; nil renders the template's
-    /// own default, unchanged from a call without the variable.
+    /// own default, unchanged from a call without the variable. A template that reads the flag
+    /// keeps its own thinking-off form, written once. For one that does not (`false` renders the
+    /// default's ids), `false` appends `KitTextNormalizer.closedThink` unless the prompt already
+    /// ends with it, so the model does not open a think block of its own: the rule every turn
+    /// with thinking off followed before templates were trusted with the flag.
     static func renderChatTemplate(
         _ messages: [[String: any Sendable]], tokenizer: any Tokenizer, enableThinking: Bool?
     ) throws -> [Int32] {
-        guard let enableThinking else {
-            return try tokenizer.applyChatTemplate(messages: messages).map(Int32.init)
-        }
-        return try tokenizer.applyChatTemplate(
+        let plain = { try tokenizer.applyChatTemplate(messages: messages).map(Int32.init) }
+        guard let enableThinking else { return try plain() }
+        var ids = try tokenizer.applyChatTemplate(
             messages: messages, chatTemplate: nil, addGenerationPrompt: true,
             truncation: false, maxLength: nil, tools: nil,
             additionalContext: ["enable_thinking": enableThinking]
         ).map(Int32.init)
+        if !enableThinking, try ids == plain() {
+            let tail = KitTextNormalizer.closedThink(tokenizer)
+            if !tail.isEmpty, !ids.suffix(tail.count).elementsEqual(tail) { ids += tail }
+        }
+        return ids
     }
 
     /// Display name from the bundle metadata.

@@ -49,7 +49,8 @@ policy.
   throws `unsupportedDevice` with it before any download. A kit without the key ignores it.
 - **`ChatSession.Configuration.enableThinking`** — renders `enable_thinking` into the bundle's chat template
   (`nil`, the default, leaves the template's own default); `false` gives LFM3 and the Qwen3 family their thinking-off
-  prompt, so the response budget goes to the answer.
+  prompt, so the response budget goes to the answer. On a template that does not read the variable (LFM2.5 2.6B,
+  Nanbeige4.1 3B), `false` closes an empty think block after the generation prompt instead.
 - **MiniCPM-V 4.7 1B** — catalog id `minicpm-v-4.7-1b` (`kind: vlm`), loaded by `KitVisionModel` through the new
   `VLModelID.miniCPMV47` / `VLArchitecture.miniCPMV47`: OpenBMB's 4.6 vision tower (448 px, 64 image tokens) in front
   of a decoder that places the image on a canvas (M-RoPE over T, H and W) with an untied head, answering with
