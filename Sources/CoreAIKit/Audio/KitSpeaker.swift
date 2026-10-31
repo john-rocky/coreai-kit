@@ -148,6 +148,10 @@ public struct KitSpeaker: Sendable {
         "audio8-tts-preview-0.6b", "kokoro-82m", "vibevoice-realtime-0.5b", "voxcpm-0.5b", "voxcpm2-2b",
     ]
 
+    /// Voices `init(catalog:)` has an engine for that a picker does not offer on an iPhone yet:
+    /// Audio8-TTS is gated on the Mac and has not been measured on an iPhone.
+    static let notYetOnIPhone: Set<String> = ["audio8-tts-preview-0.6b"]
+
     /// nil when this app can run the voice on this device; otherwise why not, in a sentence for
     /// the user. Answers without downloading anything, so a picker can mark the voice up front.
     public static func unavailableReason(for entry: CatalogEntry) -> String? {
@@ -155,6 +159,7 @@ public struct KitSpeaker: Sendable {
             return "\(entry.name) needs a newer version of this app."
         }
         #if os(iOS)
+        if notYetOnIPhone.contains(entry.id) { return "\(entry.name) needs a newer version of this app." }
         guard let architecture = iOSArchitecture(forCatalogID: entry.id) else { return nil }
         return DeviceArchitecture.unsupportedReason(forAOT: architecture, model: entry.name)
         #else
