@@ -241,7 +241,8 @@ public actor TypedDecisions {
         let letters = try LetterListPrompt.Layout.read(bundleAt: url)
         let runtime = try await ModelRuntime(
             bundleAt: url,
-            engineVariant: Self.resolveEngine(configuration.engineVariant, hint: entry.engine))
+            engineVariant: Self.resolveEngine(
+                configuration.engineVariant, hint: entry.resolvedEngine))
         try self.init(
             runtime: runtime, configuration: configuration, id: id,
             maxContextLength: bundle.maxContextLength,

@@ -27,6 +27,13 @@ public actor ChatSession {
         public var temperature: Double? = 0.7
         public var maxResponseTokens: Int = 2048
         public var systemPrompt: String? = nil
+        /// Reasoning switch for models whose chat template reads `enable_thinking` (Qwen3, LFM3):
+        /// rendered into the template as that variable. `nil` leaves the template's own default
+        /// (thinking on for those models); `false` renders the template's thinking-off prompt
+        /// (LFM3 closes it as `<think></think>`), so the whole response budget goes to the answer.
+        /// For a template that does not read the variable (LFM2.5 2.6B, Nanbeige4.1 3B), `false`
+        /// closes an empty think block after the generation prompt instead.
+        public var enableThinking: Bool? = nil
         /// Engine to load the bundle with. The default `.auto` picks the fastest engine
         /// (GPU-pipelined for dynamic models); guided generation needs `.sequential`.
         public var engineVariant: EngineVariant = .auto
@@ -61,6 +68,30 @@ public actor ChatSession {
         var i = 0
         while i < n, a[i] == b[i] { i += 1 }
         return i
+    }
+
+    /// One turn's prompt ids through the bundle's chat template, with the generation prompt.
+    /// `enableThinking` goes into the template as `enable_thinking`; nil renders the template's
+    /// own default, unchanged from a call without the variable. A template that reads the flag
+    /// keeps its own thinking-off form, written once. For one that does not (`false` renders the
+    /// default's ids), `false` appends `KitTextNormalizer.closedThink` unless the prompt already
+    /// ends with it, so the model does not open a think block of its own: the rule every turn
+    /// with thinking off followed before templates were trusted with the flag.
+    static func renderChatTemplate(
+        _ messages: [[String: any Sendable]], tokenizer: any Tokenizer, enableThinking: Bool?
+    ) throws -> [Int32] {
+        let plain = { try tokenizer.applyChatTemplate(messages: messages).map(Int32.init) }
+        guard let enableThinking else { return try plain() }
+        var ids = try tokenizer.applyChatTemplate(
+            messages: messages, chatTemplate: nil, addGenerationPrompt: true,
+            truncation: false, maxLength: nil, tools: nil,
+            additionalContext: ["enable_thinking": enableThinking]
+        ).map(Int32.init)
+        if !enableThinking, try ids == plain() {
+            let tail = KitTextNormalizer.closedThink(tokenizer)
+            if !tail.isEmpty, !ids.suffix(tail.count).elementsEqual(tail) { ids += tail }
+        }
+        return ids
     }
 
     /// Display name from the bundle metadata.
@@ -115,12 +146,23 @@ public actor ChatSession {
             return
         }
         var configuration = configuration
-        if configuration.engineVariant == .auto {
-            configuration.engineVariant = EngineVariant(catalogHint: entry.engine)
-        }
+        configuration.engineVariant = Self.engineVariant(
+            for: entry, requested: configuration.engineVariant)
         try await self.init(
             model: model, store: store, configuration: configuration,
             downloadProgress: downloadProgress)
+    }
+
+    /// The engine a `catalog:` load runs: an explicit `requested` wins; `.auto` takes the catalog's
+    /// hint for `platform`, the variant's own before the entry's
+    /// (`CatalogEntry.resolvedEngine(for:)`), so an iPhone variant on the static-shape engine loads
+    /// on it while the Mac bundle stays on the entry's.
+    static func engineVariant(
+        for entry: CatalogEntry, requested: EngineVariant,
+        platform: String = CatalogEntry.platformKey
+    ) -> EngineVariant {
+        guard requested == .auto else { return requested }
+        return EngineVariant(catalogHint: entry.resolvedEngine(for: platform))
     }
 
     /// Downloads the model if needed (cached afterwards), then loads it.
@@ -344,7 +386,9 @@ public actor ChatSession {
             let full: [Int32]
             switch runtime.promptRenderer {
             case .chatTemplate:
-                full = try runtime.tokenizer.applyChatTemplate(messages: rendered).map(Int32.init)
+                full = try Self.renderChatTemplate(
+                    rendered, tokenizer: runtime.tokenizer,
+                    enableThinking: configuration.enableThinking)
             case .gemma(let arch):
                 // The Gemma 4 bundles ship the stock tokenizer with no embedded chat
                 // template; the turn format is emitted explicitly instead.
@@ -424,7 +468,13 @@ public actor ChatSession {
             }
 
             let requestStart = SuspendingClock.now
-            var parser = StreamingTagParser(profile: runtime.outputProfile)
+            // A prompt that ends in an open thinking section (LFM3's template with thinking on ends
+            // `…<think>`) makes the first generated text thinking. Constrained turns start at the JSON.
+            var parser = StreamingTagParser(
+                profile: runtime.outputProfile,
+                insideRule: schema == nil
+                    ? runtime.outputProfile.openThinkingRule(afterPrompt: full, tokenizer: runtime.tokenizer)
+                    : nil)
             var content = ""
             var thinking = ""
             var window: [SuspendingClock.Instant] = []

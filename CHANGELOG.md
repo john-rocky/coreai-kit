@@ -25,6 +25,32 @@ policy.
   (`"prefill_pad_tail": true`) feeds what is left of a prompt after its full chunks as one call instead of up
   to 63 single steps (LFM3-1.7B, 1,000-token prompt: 0.692 → 0.500 s to the first token on an M4 Max). All
   lockfiles follow.
+- **Tool calling for LFM3** — `KitLanguageModel` declares `.toolCalling` for a bundle whose vocab carries LFM3's
+  `<function=` / `<parameter=` tokens and renders the tool turns the way LFM3's chat template does (`<tools>` lines
+  in `json.dumps` form, XML `<tool_call>` calls, `<tool_response>` results, reasoning replayed inside the tool loop),
+  then parses the model's XML calls with values typed by the tool's schema. The render equals transformers'
+  `apply_chat_template` string and ids on 30 conversations; LFM2.5 bundles still take no tools.
+- **Streams that start inside a thinking block** — when a rendered prompt ends with an open thinking marker
+  (LFM3's template with thinking on ends `<think>`), `ChatSession` and `KitLanguageModel` parse the reply as
+  thinking until the close marker, so the reasoning no longer reaches the answer text. A prompt that ends anywhere
+  else parses as before.
+- **LFM3 1.7B** — catalog id `lfm3-1.7b` (`kind: chat`, macOS), the zoo's int8 bundle on the pipelined engine: it
+  thinks by default and calls tools through `LFM3ToolDialect`.
+- **An engine hint per platform** — a catalog variant may name its own `engine` (`CatalogEntry.Variant.engine`), which
+  wins over the entry's on that platform (`CatalogEntry.resolvedEngine`); `ChatSession(catalog:)`, `TypedDecisions` and
+  `KitTextNormalizer` load with it. `lfm3-1.7b` gains an iPhone variant on the static-shape engine: the Neural Engine
+  form, compiled per iPhone generation into the repo's `ios-<arch>/` (`ios-h19p/` for the iPhone 18 Pro at this upload;
+  no `ios/`). A kit without the key reads the entry's `engine` ("pipelined", the Mac bundle's).
+- **Which iPhones have a bundle, before the download** — an `ios` variant in a repo with no `ios/` lists the
+  architectures it has an `ios-<arch>/` for (`CatalogEntry.Variant.architectures`; `lfm3-1.7b` lists `h19p`).
+  `CatalogEntry.unavailableReason` reads it, and the architecture of a path inside an `ios-<arch>/` folder, against
+  the device's (`AIModel.deviceArchitectureName`): nil when the phone has a bundle, the Mac, or a phone Core AI does
+  not name, else a sentence for a picker. `ModelCatalog.entry(forID:)`, which every `catalog:` initializer rides,
+  throws `unsupportedDevice` with it before any download. A kit without the key ignores it.
+- **`ChatSession.Configuration.enableThinking`** — renders `enable_thinking` into the bundle's chat template
+  (`nil`, the default, leaves the template's own default); `false` gives LFM3 and the Qwen3 family their thinking-off
+  prompt, so the response budget goes to the answer. On a template that does not read the variable (LFM2.5 2.6B,
+  Nanbeige4.1 3B), `false` closes an empty think block after the generation prompt instead.
 - **MiniCPM-V 4.7 1B** — catalog id `minicpm-v-4.7-1b` (`kind: vlm`), loaded by `KitVisionModel` through the new
   `VLModelID.miniCPMV47` / `VLArchitecture.miniCPMV47`: OpenBMB's 4.6 vision tower (448 px, 64 image tokens) in front
   of a decoder that places the image on a canvas (M-RoPE over T, H and W) with an untied head, answering with

@@ -135,6 +135,73 @@ final class StreamingTagParserTests: XCTestCase {
         XCTAssertEqual(j.response, "open ended")
     }
 
+    // MARK: - think prefill (the prompt ends inside an open think block)
+
+    private func collect(
+        _ chunks: [String], profile: OutputProfile, prompt: String
+    ) -> [StreamingTagParser.Event] {
+        var parser = StreamingTagParser(
+            profile: profile, insideRule: profile.openThinkingRule(atEndOf: prompt))
+        var events: [StreamingTagParser.Event] = []
+        for chunk in chunks { events += parser.consume(chunk) }
+        events += parser.flush()
+        return events
+    }
+
+    /// LFM3's template with thinking on ends `<think>`; Qwen3.5's with enable_thinking true
+    /// `<think>\n`. A closed block or no marker leaves the parser where it always started.
+    func testOpenThinkingRuleReadsThePromptEnd() {
+        let profile = OutputProfile.thinkTags()
+        XCTAssertEqual(profile.openThinkingRule(atEndOf: "<|im_start|>assistant\n<think>"), 0)
+        XCTAssertEqual(profile.openThinkingRule(atEndOf: "<|im_start|>assistant\n<think>\n"), 0)
+        XCTAssertNil(profile.openThinkingRule(atEndOf: "<|im_start|>assistant\n<think></think>"))
+        XCTAssertNil(profile.openThinkingRule(atEndOf: "<|im_start|>assistant\n<think>\n\n</think>\n\n"))
+        XCTAssertNil(profile.openThinkingRule(atEndOf: "<|im_start|>assistant\n"))
+        XCTAssertNil(OutputProfile.plain.openThinkingRule(atEndOf: "<think>"))
+        XCTAssertEqual(
+            OutputProfile.thinkTags(open: "<|reasoning_start|>", close: "<|reasoning_end|>")
+                .openThinkingRule(atEndOf: "assistant\n<|reasoning_start|>"), 0)
+    }
+
+    func testThinkPrefillThenAnswer() {
+        let j = joined(collect(
+            ["思考は", "ここまで。</think>答えは 42。"], profile: .thinkTags(),
+            prompt: "<|im_start|>assistant\n<think>"))
+        XCTAssertEqual(j.thinking, "思考はここまで。")
+        XCTAssertEqual(j.response, "答えは 42。")
+    }
+
+    func testThinkPrefillCloseSplitAcrossChunks() {
+        let j = joined(collect(
+            ["17 と 25 を足す", "</th", "ink>", "42"], profile: .thinkTags(),
+            prompt: "<|im_start|>assistant\n<think>"))
+        XCTAssertEqual(j.thinking, "17 と 25 を足す")
+        XCTAssertEqual(j.response, "42")
+    }
+
+    func testThinkPrefillWithoutCloseFlushesAsThinking() {
+        let j = joined(collect(
+            ["考えが", "終わらない"], profile: .thinkTags(), prompt: "<|im_start|>assistant\n<think>"))
+        XCTAssertEqual(j.thinking, "考えが終わらない")
+        XCTAssertEqual(j.response, "")
+    }
+
+    func testThinkingOffPromptAnswersInText() {
+        let j = joined(collect(
+            ["42"], profile: .thinkTags(), prompt: "<|im_start|>assistant\n<think></think>"))
+        XCTAssertEqual(j.response, "42")
+        XCTAssertEqual(j.thinking, "")
+    }
+
+    func testThinkPrefillThenToolCall() {
+        let j = joined(collect(
+            ["key alpha</think>", "<tool_call>\n<function=lookup_secret>\n</function>\n</tool_call>"],
+            profile: .thinkTags(), prompt: "<|im_start|>assistant\n<think>"))
+        XCTAssertEqual(j.thinking, "key alpha")
+        XCTAssertEqual(j.tools, ["\n<function=lookup_secret>\n</function>\n"])
+        XCTAssertEqual(j.response, "")
+    }
+
     // MARK: - edges
 
     func testEmptyFlush() {

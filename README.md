@@ -265,14 +265,18 @@ architecture (`AIModel.deviceArchitectureName`) when the repository has one, and
 does not, at the cost of one more listing.
 A copy already on disk is used, whichever folder it is.
 Any other path downloads as named, and a Mac never looks for an architecture folder.
-The catalog's `sizeMB` measures `ios/`; an `ios-<arch>/` can be larger, and
+A repo with no `ios/` lists the architectures it has folders for in the variant's `architectures`,
+so `CatalogEntry.unavailableReason` can tell an iPhone it has no bundle before anything downloads,
+and `catalog:` initializers throw `unsupportedDevice` instead of starting the download.
+The catalog's `sizeMB` measures `ios/`, or the largest `ios-<arch>/` when a repo has no `ios/`;
+an `ios-<arch>/` beside an `ios/` can be larger, and
 `ModelStore.remoteSize(of:)` gives the figure for the device it runs on.
 
 ## Works with Apple's FoundationModels API
 
 `KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession` —
 the same FoundationModels API you use for Apple's built-in model — and adds what the stock
-`CoreAILanguageModel` adapter lacks: **tool calling** (ChatML/Hermes models) and
+`CoreAILanguageModel` adapter lacks: **tool calling** (ChatML/Hermes models and LFM3) and
 **guided generation** (sequential engines).
 
 ```swift
@@ -305,7 +309,7 @@ What each provider honestly advertises:
 
 | | `KitLanguageModel` (text) | `KitVisionModel` (VL) |
 |---|---|---|
-| Tool calling | ChatML/Hermes models — the qwen3 family (LFM's pythonic dialect is not parsed) | not in v1, by design |
+| Tool calling | ChatML/Hermes models — the qwen3 family — and LFM3's XML calls (LFM2.5's pythonic dialect is not parsed) | not in v1, by design |
 | Reasoning | thinking models stream `.reasoning` | Qwen3-VL thinks by default |
 | Guided generation | sequential engines only (`engineVariant: .sequential`) | not in v1, by design |
 | Vision | — | one image per session; every turn re-prefills the full prompt (the vision encode is reused while the image is unchanged) |
@@ -395,7 +399,7 @@ See `docs/GETTING_STARTED.md`.
 ## How the catalog is verified — and how you re-check it yourself
 
 The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 79 catalog entries:
+this is *what was checked, by whom, and can you check it again.* All 80 catalog entries:
 
 - **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
   that were gated — never "whatever is on `main` today." CI re-checks every pin
