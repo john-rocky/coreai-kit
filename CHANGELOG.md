@@ -9,6 +9,22 @@ policy.
 
 ### Added
 
+- **Chats on a hybrid model resume from a checkpoint** — on Qwen3.5, LFM2.5, LFM3 and Granite 4 the
+  recurrent state cannot be cut back, so every `ChatSession` turn and every `KitLanguageModel` call used to
+  re-prefill the whole conversation. Both now ask the engine to checkpoint the state at the end of the prompt's
+  last finished message (`InferenceOptions.checkpointAfter`, just past the last turn-end token such as
+  `<|im_end|>`; the engine saves it while it prefills, without a call of its own, on the chunk grid of a
+  chunked `prefill`). The next turn rewinds to the checkpoint, or keeps everything when it extends the previous
+  prompt, and prefills only what follows. On an M4 Max (2026-10-30), turn 2 of a conversation about a
+  1,584-token document on LFM3-1.7B: 837.8 ms to the first token with the history re-prefilled, 38.6 ms from
+  the checkpoint; replies identical in both ways on LFM3-1.7B, Qwen3.5-0.8B and LFM2.5-1.2B. On an iPhone 17 Pro,
+  Qwen3.5-0.8B: 19.8 → 3.2 s on a 484-token conversation, replies identical. A first turn costs nothing
+  measurable. A template that rewrites the earlier history, and the sequential engine, re-prefill as before.
+- **coreai-models pinned to `0.2.9-zoo`** (was `0.2.8-zoo`) for the checkpoint above. It also brings the padded
+  last chunk: a bundle whose metadata declares that its `prefill` function takes a padded chunk
+  (`"prefill_pad_tail": true`) feeds what is left of a prompt after its full chunks as one call instead of up
+  to 63 single steps (LFM3-1.7B, 1,000-token prompt: 0.692 → 0.500 s to the first token on an M4 Max). All
+  lockfiles follow.
 - **MiniCPM-V 4.7 1B** — catalog id `minicpm-v-4.7-1b` (`kind: vlm`), loaded by `KitVisionModel` through the new
   `VLModelID.miniCPMV47` / `VLArchitecture.miniCPMV47`: OpenBMB's 4.6 vision tower (448 px, 64 image tokens) in front
   of a decoder that places the image on a canvas (M-RoPE over T, H and W) with an untied head, answering with

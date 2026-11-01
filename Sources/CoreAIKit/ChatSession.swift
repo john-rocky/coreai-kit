@@ -400,7 +400,12 @@ public actor ChatSession {
                     inferenceEngine: runtime.engine,
                     samplingConfiguration: sampling,
                     options: InferenceOptions(
-                        maxTokens: configuration.maxResponseTokens, includeLogits: false),
+                        maxTokens: configuration.maxResponseTokens, includeLogits: false,
+                        // On an engine that checkpoints (a hybrid's recurrent state): at the end of
+                        // the prompt's last message, where the next turn's rewind returns instead
+                        // of re-prefilling the whole history (EngineRewind.swift).
+                        checkpointAfter: runtime.engine.supportsCheckpoint
+                            ? lastTurnEnd(of: full, turnEnds: turnEndTokenIDs(runtime.tokenizer)) : nil),
                     // Chat templates end turns with a dedicated marker that tokenizer_config's
                     // eos doesn't always cover (gemma-3: eos = <eos>, turns end with
                     // <end_of_turn> — generation would run to maxTokens spewing the marker).
@@ -408,7 +413,7 @@ public actor ChatSession {
                     // UNK-vocab false positive); duplicates of eos dedupe inside StopSequences.
                     stopSequences: StopSequences(
                         for: runtime.tokenizer,
-                        additionalSequences: ["<end_of_turn>", "<|im_end|>", "<|eot_id|>", "<turn|>"]
+                        additionalSequences: turnEndMarkers
                             .compactMap { marker in
                                 guard let id = runtime.tokenizer.convertTokenToId(marker),
                                     runtime.tokenizer.convertIdToToken(id) == marker

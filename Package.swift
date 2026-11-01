@@ -33,7 +33,13 @@ let package = Package(
         .trait(name: "Xet", description: "Enable Xet transport for model downloads.")
     ],
     dependencies: [
-        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.8-zoo is
+        // Community fork of apple/coreai-models (unaffiliated with Apple). 0.2.9-zoo is
+        // 0.2.8-zoo with the pipelined engine's checkpoint of a hybrid model's recurrent state
+        // (InferenceEngine.checkpoint() and InferenceOptions.checkpointAfter, on the chunk grid
+        // of a chunked "prefill"): ChatSession and KitLanguageModel resume each turn from the
+        // end of the prompt's last message instead of re-prefilling the history. It also feeds
+        // a prompt's last partial chunk as one padded "prefill" call when the bundle declares
+        // it. 0.2.8-zoo is
         // 0.2.7-zoo with upstream's x86_64 guard on the Float16 code of three files: 0.2.6-zoo's
         // macOS 26 floor makes a Release (universal) app build compile the fork for x86_64,
         // which has no Float16, and those files failed there (the arm64 code is unchanged).
@@ -59,7 +65,7 @@ let package = Package(
         // descriptor; garbled text at temperature > 0 under pipelined decode).
         // For local engine work swap in .package(path: "../coreai-models") — branch
         // zoo-0.4 matches this tag.
-        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.8-zoo"),
+        .package(url: "https://github.com/john-rocky/coreai-models", exact: "0.2.9-zoo"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
         .package(
             url: "https://github.com/huggingface/swift-huggingface.git",

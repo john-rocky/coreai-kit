@@ -199,13 +199,19 @@ public struct KitExecutor: LanguageModelExecutor {
         let (relay, relayContinuation) = AsyncThrowingStream<Int32, any Error>.makeStream()
         let engine = self.engine
         let eosForPump = tokenizer.eosTokenId
+        let turnEnds = turnEndTokenIDs(tokenizer)
         let pump = Task {
             var ids: [Int32] = []
             do {
+                // On an engine that checkpoints (a hybrid's recurrent state): at the end of the
+                // prompt's last message, where the next turn's rewind returns (EngineRewind.swift).
                 let stream = try await engine.generate(
                     with: promptTokens,
                     samplingConfiguration: sampling,
-                    inferenceOptions: InferenceOptions(maxTokens: maxTokens))
+                    inferenceOptions: InferenceOptions(
+                        maxTokens: maxTokens,
+                        checkpointAfter: engine.supportsCheckpoint
+                            ? lastTurnEnd(of: promptTokens, turnEnds: turnEnds) : nil))
                 for try await output in stream {
                     ids.append(output.tokenId)
                     relayContinuation.yield(output.tokenId)
