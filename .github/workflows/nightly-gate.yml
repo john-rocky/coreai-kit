@@ -28,9 +28,9 @@ jobs:
         # lands in /Applications/Xcode.app and the beta stays put.
         run: ./scripts/check-xcode-pin.sh
       - name: Build
-        run: python3 scripts/with-gpu-lock.py -- swift build
+        run: python3 scripts/with-gpu-lock.py --timeout 1200 -- swift build
       - name: Unit tests
-        run: python3 scripts/with-gpu-lock.py -- swift test
+        run: python3 scripts/with-gpu-lock.py --timeout 1200 -- swift test
       - name: Catalog pins present
         run: python3 scripts/pin-catalog.py --check
       - name: Built-in fallback carries the same pins
