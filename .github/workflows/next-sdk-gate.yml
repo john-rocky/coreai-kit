@@ -78,7 +78,7 @@ jobs:
           set -o pipefail
           cd Examples/ChatDemo
           rc=0
-          python3 ../../scripts/with-gpu-lock.py -- \
+          python3 ../../scripts/with-gpu-lock.py --timeout 2400 -- \
             swift run chat-cli --model qwen3-0.6b --prompt "Reply with one short sentence: what are you?" \
             2>&1 | tee /tmp/next-sdk-gate.out || rc=$?
 

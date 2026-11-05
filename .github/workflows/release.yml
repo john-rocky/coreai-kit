@@ -56,7 +56,7 @@ jobs:
       - name: Build
         # Serialized on the machine-wide GPU lock like every other job here: the runner is
         # also the measurement machine, and a concurrent build shows up in the numbers.
-        run: python3 scripts/with-gpu-lock.py -- swift build -c release --product systemone
+        run: python3 scripts/with-gpu-lock.py --timeout 1800 -- swift build -c release --product systemone
 
       - name: Sign
         run: |
