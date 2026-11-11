@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/tag/john-rocky/coreai-kit?label=release)](https://github.com/john-rocky/coreai-kit/releases)
 
-Download a tested Core AI model and run it in your Swift app. Core AI is Apple's on-device ML runtime in iOS 27 / macOS 27 and the successor to Core ML. CoreAIKit picks the build for your device, downloads it from Hugging Face and caches it.
+Download a tested Core AI model and run it in your Swift app. Core AI is Apple's on-device ML runtime in iOS 27 / macOS 27 and the successor to Core ML. CoreAIKit picks the build for your device, downloads it from Hugging Face and caches it. On an iPhone 17 Pro on 2026-09-23, the catalog's laya multilingual model made a [typed decision](Examples/Decide/README.md) in about 70 ms.
 
 > Community package, not affiliated with Apple. Requires Xcode 27, and macOS 27 / iOS 27 to run models (real device; the CoreAI framework is not in the iOS Simulator SDK). An app can deploy to macOS 26 / iOS 26 and check `#available(macOS 27, iOS 27, *)` before using them.
 
