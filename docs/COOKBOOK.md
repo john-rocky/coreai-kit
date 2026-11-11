@@ -463,7 +463,7 @@ model calls when it decides to — is `Examples/DocChat` (own index) and
 ```swift
 import CoreAIOps
 
-let text    = try await CoreAI.transcribe(memoURL)              // Whisper v3 turbo
+let text    = try await CoreAI.transcribe(memoURL)              // Apple's on-device transcriber
 let meeting = try await CoreAI.transcribeMeeting(callURL)       // diarize + per-turn ASR
 print(meeting.text)                                             // one line per speaker turn
 let scene   = try await CoreAI.describeAudio(clipURL)           // sounds, music, setting

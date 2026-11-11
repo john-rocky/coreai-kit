@@ -1,36 +1,57 @@
 # CoreAIKit
 
-[![CI](https://github.com/john-rocky/coreai-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/ci.yml)
-[![Nightly build + pins](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml)
-[![Next-SDK models](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjohn-rocky%2Fcoreai-kit%2Fgate-status%2Fnext-sdk.json)](https://github.com/john-rocky/coreai-kit/actions/workflows/next-sdk-gate.yml)
 [![Release](https://img.shields.io/github/v/tag/john-rocky/coreai-kit?label=release)](https://github.com/john-rocky/coreai-kit/releases)
 
-Download a tested Core AI model and run it in your Swift app. CoreAIKit handles model
-selection, download and caching, with chat, vision and speech examples by
-**Daisuke Majima (MLBoy)**.
+Download a tested Core AI model and run it in your Swift app. Core AI is Apple's on-device ML runtime in iOS 27 / macOS 27 and the successor to Core ML. CoreAIKit picks the build for your device, downloads it from Hugging Face and caches it.
 
-> Community package — not affiliated with Apple. Requires Xcode 27, and macOS 27 / iOS 27 to
-> run models (real device; the CoreAI framework is not in the iOS Simulator SDK). An app can
-> deploy to macOS 26 / iOS 26 and check `#available(macOS 27, iOS 27, *)` before using them.
+> Community package, not affiliated with Apple. Requires Xcode 27, and macOS 27 / iOS 27 to run models (real device; the CoreAI framework is not in the iOS Simulator SDK). An app can deploy to macOS 26 / iOS 26 and check `#available(macOS 27, iOS 27, *)` before using them.
 
-The entry below uses **Qwen3 0.6B** (`qwen3-0.6b`): approximately **352 MB on Mac**
-(the iPhone bundle is approximately **456 MB**), downloaded from Hugging Face on first
-use and cached. Keep at least 1 GB of free disk for the starter. No Python, conversion,
-API key or bundled model weights are needed.
+| | | |
+|:---:|:---:|:---:|
+| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/chat-youtu.gif" alt="On-device chat" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/ocr-glm.jpg" alt="Document OCR" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/depth-da3.jpg" alt="Depth estimation" width="250"> |
+| `ChatSession`: Youtu-LLM-2B | `CoreAI.read`: GLM-OCR | `CoreAI.estimateDepth`: Depth Anything 3 |
 
-**0.7.3 targets Xcode 27 (`27A266a`) on macOS 27 (`26A428`), the release builds.** See the
-[validation record](docs/GETTING_STARTED.md#release-041-validation) for the tested Mac,
-OS/SDK builds and model revisions of the 0.4.1 train; 0.4.2, 0.5.0, 0.6.0, 0.7.0, 0.7.1, 0.7.2 and 0.7.3 re-ran the same gates on the release
-toolchain (CHANGELOG). Device rows were measured on the iOS 27 RC (24A435).
+I recorded these on an iPhone 17 Pro in July 2026. There are more in [the gallery](docs/gallery.md).
+
+## What you can call
+
+Most tasks take one line. CoreAIKit finds the model and caches it for you:
+
+```swift
+import CoreAIOps
+
+let text  = try await CoreAI.transcribe(voiceMemoURL)   // speech → text (SpeechAnalyzer)
+let tldr  = try await CoreAI.summarize(text)            // also: extract / translate / redact …
+let boxes = try await CoreAI.detect(in: photo)          // [Detection] — RF-DETR, no NMS
+let reply = try await CoreAI.speak(tldr)                // text → speech (PCM + sample rate)
+```
+
+`CoreAI` here comes from this package's `CoreAIOps` module. It is not Apple's framework. For control over the model, use `ChatSession`, `KitLanguageModel`, `KitVisionModel` or `GraphModel` from the same package.
 
 ## Quickstart
 
-In Xcode, use **File → Add Package Dependencies…**, paste
-`https://github.com/john-rocky/coreai-kit`, choose **Exact Version: 0.7.3**, and add the
-**CoreAIKit** product to your app target. If App Sandbox is enabled on your macOS
-target, enable **Signing & Capabilities → App Sandbox → Outgoing Connections (Client)**
-for first-use model downloads ([network client entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.client)).
-For a Swift package:
+The first run uses **Qwen3 0.6B** (`qwen3-0.6b`), about 352 MB on a Mac and 456 MB on an iPhone. It downloads on first use and then stays cached, so keep at least 1 GB of disk free. There is nothing to convert and no API key.
+
+To try it on your Mac without a project, paste this:
+
+```bash
+git clone --branch 0.7.3 --depth 1 https://github.com/john-rocky/coreai-kit.git
+cd coreai-kit
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # Xcode 27 (27A266a)
+swift run -c release --package-path Examples/ChatDemo chat-cli \
+  --model qwen3-0.6b --prompt "What is the capital of Japan?"
+```
+
+You'll see a download, a pause while the model loads, and then a reply that mentions Tokyo. I tested 0.7.3 with the release builds of Xcode 27 (`27A266a`) and macOS 27 (`26A428`). If your Xcode 27 app has another name, set `DEVELOPER_DIR` to its `Contents/Developer` folder.
+
+To add it to your app:
+
+1. In Xcode, use **File → Add Package Dependencies…** and paste `https://github.com/john-rocky/coreai-kit`.
+2. Choose **Exact Version: 0.7.3**.
+3. Add the **CoreAIOps** product to your target for the one-line calls. It includes **CoreAIKit**, which is enough if you only want `ChatSession`.
+4. If App Sandbox is on for your macOS target, turn on **Signing & Capabilities → App Sandbox → Outgoing Connections (Client)** so the model can download ([network client entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.client)).
+
+In a Swift package, the same dependency looks like this:
 
 ```swift
 .package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.3")
@@ -38,8 +59,7 @@ For a Swift package:
 .product(name: "CoreAIKit", package: "coreai-kit")
 ```
 
-Stream your first reply from an async throwing function. The built-in catalog fixes
-the model revision to the one shipped with this package:
+For a chat that keeps its history, use `ChatSession` from an async function:
 
 ```swift
 import CoreAIKit
@@ -53,386 +73,50 @@ for try await event in await chat.streamResponse(to: "What is the capital of Jap
 }
 ```
 
-Expect a first-use download, a loading pause, then a reply mentioning Tokyo. Text can
-vary between runs. In SwiftUI, call this from `.task` with `do`/`catch` and append the
-response deltas to your view state. Keep the session for follow-up questions.
+In SwiftUI, call this from `.task` with `do`/`catch` and append the response deltas to your view state. Keep the session for follow-up questions. The full app is [ChatDemo](Examples/ChatDemo).
 
-**Run the same release on your Mac:**
-
-```bash
-git clone --branch 0.7.3 --depth 1 https://github.com/john-rocky/coreai-kit.git
-cd coreai-kit
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # Xcode 27 (27A266a)
-swift run -c release --package-path Examples/ChatDemo chat-cli \
-  --model qwen3-0.6b --prompt "What is the capital of Japan?"
-```
-
-Set `DEVELOPER_DIR` to your installed **Xcode 27 `27A266a`** application's `Contents/Developer`
-directory if its name differs. [ChatDemo](Examples/ChatDemo) provides the app and the
-copyable Swift function. [Getting started](docs/GETTING_STARTED.md) covers a second
-turn, FoundationModels and download progress.
-
-If it stops at build, download or load, start with the
-[observed errors and fixes](https://github.com/john-rocky/coreai-model-zoo/blob/main/knowledge/coreai-error-index.md).
-For a reproducible bug, [open an issue](https://github.com/john-rocky/coreai-kit/issues/new)
-with package version, model ID/revision, OS/SDK build and the error text.
-
-## System One, on device
-
-A typed decision — a text, a question with fixed answers, each answer's probability, nothing
-generated — is what the hosted System One APIs sell by the call. The same call runs on the
-device with a catalog model: `CoreAI.decide` in Swift (`CoreAI.systemOne` for the hosted
-request and response forms), or `systemone serve` for everything else. It answers `POST /v1/systemone` in the hosted request and answer forms, so a client
-written for the hosted endpoint is switched by its base URL and nothing else changes:
-
-```bash
-brew install john-rocky/tap/systemone && systemone serve     # http://127.0.0.1:8090/v1/systemone
-brew services start systemone                                 # the same, kept running by launchd
-export TYPESAFE_BASE_URL=http://127.0.0.1:8090               # the official SDKs read this; other clients have their own base-URL setting
-```
-
-`systemone` is one signed, notarized 21 MB binary with no Swift toolchain behind it. The first
-`serve` downloads MiniCPM5 2B (2.7 GB) into `~/Library/Application Support/CoreAIKit/Models`;
-after that `brew services start` answers `/health` 0.7–4.6 s later (M4 Max; the spread is
-how much of the 2.7 GB is still in the file cache, and the model load is most of it). `systemone ask
---state "…" --noul "…"` is one decision from the shell (`--json` for the wire form),
-`systemone models` says what can decide and what is downloaded. From source it is
-`swift run -c release systemone serve`, or `decide-cli serve` in `Examples/Decide`.
-`systemone mcp` is the same decisions as a Model Context Protocol server on stdio:
-`claude mcp add systemone -- "$(brew --prefix)/bin/systemone" mcp` (Codex: `codex mcp add …`;
-Cursor: `~/.cursor/mcp.json`) and the agent's own sessions get a `decide` tool.
-
-MiniCPM5 2B answers a question in about 40–65 ms after the state is read once (M4 Max), and
-its decisions track the published full-precision readout (141/144 argmax on the authored
-fixture). Ten whole uses — a form that fills from a copied email, a contract checklist, a
-folder sorter, a car the model drives, a CSV with the columns you ask for, a command guard
-for a coding agent, context compression, as-you-type reading — are in
-[`Examples/Decide`](Examples/Decide), with the question shapes that read correctly on a 2B
-model and the ones that did not. [docs/SYSTEM_ONE.md](docs/SYSTEM_ONE.md) is the one-page map.
-
-## Use your model with FoundationModels
-
-`KitLanguageModel` adapts **chat bundles** to Apple's `LanguageModelSession`. The
-catalog also contains other task kinds; vision uses `KitVisionModel`, and speech has
-its own API. For a repeatable two-turn example, select this release's built-in pin:
-
-```swift
-import FoundationModels
-import CoreAIKit
-
-guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
-    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
-}
-let model = try await KitLanguageModel(model: modelID)
-let session = LanguageModelSession(model: model)
-let first = try await session.respond(to: "Remember: my secret word is ORCHID. Confirm briefly.")
-let second = try await session.respond(to: "What is my secret word? Reply with only that word.")
-print(first.content, second.content)
-```
-
-The second answer should recall ORCHID. Tool calling requires a compatible
-ChatML/Hermes model; guided generation requires a sequential engine. See the
-[capability limits](#works-with-apples-foundationmodels-api).
-
-After chat, [Speak](Examples/Speak) adds one concrete capability: VoxCPM 0.5B text to
-speech, producing a mono WAV with a fixed voice. It has a separate model download.
-
-## Two layers, one package
-
-**Task ops** when you want the result in one line — like a Vision framework request, the
-model is resolved (and cached) behind the op:
-
-```swift
-import CoreAIOps
-
-let text  = try await CoreAI.transcribe(voiceMemoURL)   // speech → text (Apple's, 0 bytes)
-let tldr  = try await CoreAI.summarize(text)            // also: extract / translate / redact …
-let boxes = try await CoreAI.detect(in: photo)          // [Detection] — RF-DETR, no NMS
-let reply = try await CoreAI.speak(tldr)                // text → speech (PCM + sample rate)
-```
-
-Twenty-four ops, one shape — the [Cookbook](docs/COOKBOOK.md) maps every "I want to …" to
-its snippet. Adding the one `CoreAIOps` product is enough: it re-exports the model
-layer, so the `import` above also covers everything below. First-use downloads are
-observable process-wide (`CoreAI.onDownload { … }`) and prefetchable behind a loading
-UI (`try await CoreAI.prepare(.transcribe, .caption)`) — and answerable before you offer
-the feature at all:
-
-```swift
-switch await CoreAI.capability(.transcribeMeeting) {
-case .ready:                     showButton()          // nothing to fetch
-case .needsDownload(let bytes):  showPrompt(bytes)     // "Meeting notes needs 238 MB"
-case .needsSystemAssets:         showFirstRunNotice()  // the OS's bytes, not the app's
-case .insufficientStorage, .unsupportedDevice: hideFeature()
-}
-```
-
-`swift run coreai-doctor path/to/YourApp` totals it for a whole app before you ship.
-
-**Model-level APIs** when you want control — `ChatSession` (the quickstart above),
-`KitLanguageModel` / `KitVisionModel` behind `LanguageModelSession`, `GraphModel` for any
-`.aimodel`. Both layers are the same package, so starting with an op and dropping down
-later is a refactor, not a rewrite.
-
-## See it running
-
-**[Watch the 0.4.1 Mac demo](https://github.com/john-rocky/coreai-assets/blob/main/kit/coreaikit-0.4.1-mac.mp4):
-Qwen3 0.6B chat → VoxCPM 0.5B speech.** Recorded on a Mac Studio M4 Max with the
-public exact `0.4.1` examples and Xcode 27 beta 5 (`27A5237l`). Builds and model downloads
-are omitted; the video shows cached runs. The [reproduction record](https://github.com/john-rocky/coreai-assets/blob/main/kit/coreaikit-0.4.1-mac.md)
-includes commands, model pins, and recording details. The separate
-[release evidence](https://github.com/john-rocky/coreai-kit/releases/tag/0.4.1)
-includes the empty-cache first download, two-turn chat, and Japanese streaming checks.
-
-Earlier real-device captures (July 2026; iPhone 17 Pro / M4 Max). These illustrate
-other capabilities and are not 0.4.1 validation evidence. Captions lead
-with the one-line call where a task op covers it; each cell links to the kit example —
-or zoo app — that runs the same model. (Media lives in
-[coreai-assets](https://github.com/john-rocky/coreai-assets), so cloning this repo stays fast.)
-
-| | | |
-|:---:|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/chat-youtu.gif" alt="On-device chat" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/transcribe-whisper.gif" alt="Speech-to-text" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/diarize-sortformer.gif" alt="Speaker diarization" width="250"> |
-| `ChatSession` — chat, Youtu-LLM-2B<br>[`ChatDemo`](Examples/ChatDemo) | `CoreAI.transcribe` — Whisper v3 turbo<br>[`Transcribe`](Examples/Transcribe) | `CoreAI.transcribeMeeting` — Sortformer + Parakeet<br>[`Meeting`](Examples/Meeting) |
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/vlm-holo2.gif" alt="Computer-use VLM" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/agent-fastcontext.gif" alt="Repo-exploration agent" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/detect-rfdetr.jpg" alt="Object detection" width="250"> |
-| `KitVisionModel` — screen VLM, Holo2-4B<br>[`VLChat`](Examples/VLChat) | Repo agent — FastContext-4B<br>[zoo `CoreAIChat`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChat) | `CoreAI.detect` — RF-DETR nano, no NMS<br>[`DetectCamera`](Examples/DetectCamera) |
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/seg-sam3.jpg" alt="Promptable segmentation" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/depth-da3.jpg" alt="Depth estimation" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/sr-adcsr.jpg" alt="Super-resolution" width="250"> |
-| Segmentation — SAM 3<br>[zoo](https://github.com/john-rocky/coreai-model-zoo) | `CoreAI.estimateDepth` — Depth Anything 3<br>[`DepthCamera`](Examples/DepthCamera) | `CoreAI.upscale` — AdcSR ×4<br>[`UpscaleDemo`](Examples/UpscaleDemo) |
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/pii-gliner2.jpg" alt="PII redaction" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/ocr-glm.jpg" alt="Document OCR" width="250"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/bitcpm.gif" alt="Ternary LLM" width="250"> |
-| `CoreAI.redact` — PII, GLiNER2<br>[`InfoExtract`](Examples/InfoExtract) | `CoreAI.read` — GLM-OCR 0.9B, ~4 s/page<br>[`ReadDoc`](Examples/ReadDoc) | 1.58-bit ternary — BitCPM-8B in ~2.1 GB<br>[zoo `CoreAIChat`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChat) |
-
-| | |
-|:---:|:---:|
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/imagegen-glm.jpg" alt="Text-to-image" width="390"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/edit-flux.jpg" alt="In-context image editing" width="390"> |
-| Text→image — GLM-Image<br>[zoo `CoreAIImageGen`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIImageGen) | In-context edit — FLUX.2 klein<br>[zoo `CoreAIImageGen`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIImageGen) |
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/t2v-ltx.gif" alt="Text-to-video" width="390"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/splat-tripo.gif" alt="Photo to 3D gaussian splat" width="390"> |
-| Text→video — LTX-Video 2B<br>[zoo `CoreAIVideo`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIVideo) | Photo→3D splat — TripoSplat<br>[zoo `TripoSplatMac`](https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/TripoSplatMac) |
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/dllm-llada.gif" alt="Diffusion LLM" width="390"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/readdoc-mineru.gif" alt="Document parsing" width="390"> |
-| Diffusion LLM (parallel denoise) — LLaDA-8B<br>[`DiffuseChat`](Examples/DiffuseChat) | `CoreAI.read` — MinerU2.5, doc→Markdown<br>[`ReadDoc`](Examples/ReadDoc) |
-
-<p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/forecast-timesfm.jpg" alt="Time-series forecasting" width="720"><br><code>CoreAI.forecast</code> — TimesFM 2.5, ~25 ms/forecast on iPhone · <a href="Examples/Forecast"><code>Forecast</code></a></p>
-
-<p align="center"><img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/coder-ornith.gif" alt="Agentic coding on Mac" width="720"><br>Agentic coding — Ornith-1.0-9B on M4 Max · <a href="https://github.com/john-rocky/coreai-model-zoo/tree/main/apps/CoreAIChatMac">zoo <code>CoreAIChatMac</code></a></p>
-
-## Projects using CoreAIKit
-
-- [AnyDecisionModel](https://github.com/mattt/AnyDecisionModel) — a Swift package for typed
-  decisions from language models (probabilities, choices, and scores). Since 0.4.0 its
-  `CoreAIDecisionModel`, enabled by the package's `CoreAI` trait, runs a Core AI language
-  bundle through CoreAIKit's `TypedDecisions` API
-  ([release notes](https://github.com/mattt/AnyDecisionModel/releases/tag/0.4.0)).
-
-## Model downloads and storage
-
-ModelStore uses [swift-huggingface](https://github.com/huggingface/swift-huggingface)
-for Hub requests and file downloads.
-Files download over HTTP by default.
-The `Xet` package trait is off by default;
-enable it to download large files over Xet, with HTTP fallback:
-
-```swift
-.package(url: "https://github.com/john-rocky/coreai-kit", exact: "<version>", traits: ["Xet"])
-```
-
-The trait forwards to swift-huggingface, so swift-xet is compiled only when an app
-opts in.
-The package manifest requires Swift 6.1 or later to declare the trait.
-For private or gated repositories on `https://huggingface.co`, the client reads
-credentials from the standard Hugging Face environment variables and token files,
-including `HF_TOKEN` and the token saved by `hf auth login`.
-The account must have access to the repository.
-`ModelStore(hubBaseURL:)` selects a mirror; it does not receive those credentials.
-
-Complete bundles stay in
-`Application Support/CoreAIKit/Models/<org>/<name>/<revision>/<variant>/`,
-independent of the endpoint.
-ModelStore does not read or write the shared Hugging Face file cache,
-so each file is stored once.
-Each download stages all files before it installs the bundle with one rename.
-Installed bundles are excluded from iCloud backup.
-A transport failure can use a complete cached copy of the same variant under
-another revision.
-Concurrent callers share one download; only the first caller receives progress.
-HTTP downloads, and Xet downloads when the trait is on, report byte progress during
-the transfer.
-
-A model with no path takes its platform's folder: `macos/` on a Mac, `ios/` on an iPhone.
-`ios/` holds the JIT graphs, which every iPhone generation specializes on its first load.
-A repository can also carry `ios-<arch>/`: the same bundle with the graphs compiled for one
-generation (`ios-h18p/` for the iPhone 17 Pro, `ios-h19p/` for the 18 Pro).
-On an iPhone, a model whose path is `ios`, left nil or named, downloads the folder for its own
-architecture (`AIModel.deviceArchitectureName`) when the repository has one, and `ios/` when it
-does not, at the cost of one more listing.
-A copy already on disk is used, whichever folder it is.
-Any other path downloads as named, and a Mac never looks for an architecture folder.
-A repo with no `ios/` lists the architectures it has folders for in the variant's `architectures`,
-so `CatalogEntry.unavailableReason` can tell an iPhone it has no bundle before anything downloads,
-and `catalog:` initializers throw `unsupportedDevice` instead of starting the download.
-The catalog's `sizeMB` measures `ios/`, or the largest `ios-<arch>/` when a repo has no `ios/`;
-an `ios-<arch>/` beside an `ios/` can be larger, and
-`ModelStore.remoteSize(of:)` gives the figure for the device it runs on.
-
-## Works with Apple's FoundationModels API
-
-`KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession` —
-the same FoundationModels API you use for Apple's built-in model — and adds what the stock
-`CoreAILanguageModel` adapter lacks: **tool calling** (ChatML/Hermes models and LFM3) and
-**guided generation** (sequential engines).
-
-```swift
-import FoundationModels
-import CoreAIKit
-
-guard let modelID = ModelCatalog.builtin.entry(id: "qwen3-0.6b")?.modelID else {
-    throw CoreAIKitError.modelNotAvailableOnPlatform(id: "qwen3-0.6b")
-}
-let model = try await KitLanguageModel(model: modelID)   // downloads once, then cached
-let session = LanguageModelSession(model: model, tools: [WeatherTool()])
-let answer = try await session.respond(to: "What's the weather in Tokyo?")
-```
-
-`KitVisionModel` does the same for vision-language models — attach an image to the prompt:
-
-```swift
-let vlm = try await KitVisionModel(catalog: "qwen3-vl-2b")   // decoder + vision tower
-let session = LanguageModelSession(model: vlm)
-let answer = try await session.respond(to: Prompt {
-    Attachment(cgImage)
-    "What is in this photo?"
-})
-```
-
-Your `Tool` implementations, `@Generable` types, streaming snapshots, and transcripts work
-unchanged. See `Examples/FMToolDemo`, `Examples/GuidedDemo`, and `Examples/VLChat`.
-
-What each provider honestly advertises:
-
-| | `KitLanguageModel` (text) | `KitVisionModel` (VL) |
-|---|---|---|
-| Tool calling | ChatML/Hermes models — the qwen3 family — and LFM3's XML calls (LFM2.5's pythonic dialect is not parsed) | not in v1, by design |
-| Reasoning | thinking models stream `.reasoning` | Qwen3-VL thinks by default |
-| Guided generation | sequential engines only (`engineVariant: .sequential`) | not in v1, by design |
-| Vision | — | one image per session; every turn re-prefills the full prompt (the vision encode is reused while the image is unchanged) |
-
-Compared with Apple's stock `CoreAILanguageModel` adapter, this provider adds tool
-calling, per-turn usage events (including `Usage.Input.cachedTokenCount`), and a KV
-fast path that rewinds to the longest shared prefix with the previous turn
-(`reset(to:)` + the engine's implicit prefix caching) instead of re-prefilling the
-whole transcript — including across a divergence, e.g. a re-rendered transcript.
-
-## What's inside
-
-| Product | What it gives you |
-|---|---|
-| `CoreAIKit` | `VoiceActivityDetector` (where speech starts and stops), `ModelStore` (download/cache), `ModelCatalog` (live model list), `ChatSession` (streaming chat + live stats + guided generation), `KitLanguageModel` (FoundationModels provider with tool calling + guided generation) |
-| `CoreAIKitVision` | `GraphModel` (run any `.aimodel`), `ImageTextEncoder` (CLIP), `DepthEstimator`, `CameraFeed`, `LiveVision` (camera → model, with the frame policy and thermal governor already written), `KitTracker` (detections → stable ids across frames), image preprocessing |
-| `CoreAIKitEmbeddings` | `TextEmbedder` (EmbeddingGemma, 768-d normalized) for on-device search and RAG |
-| `CoreAIKitUI` | SwiftUI components: `ModelPickerBar`, `ChatTranscriptView`, `StatsBar` |
-| `CoreAIOps` | Twenty-five anchored task-level ops — text (`CoreAI.summarize`, `.extract` typed by `@Generable`, `.translate`, `.proofread`, `.tidyTranscript` (raw dictation → written text), `.redact`, `.decide` (typed yes/no, choice and score decisions with probabilities, nothing generated — about a text, or an image with `decide(image:…)`)), audio (`.transcribe`, `.transcribeMeeting`, `.describeAudio`, `.speak`, `.compose`, `.separate`), image (`.caption`, `.detect`, `.read`, `.upscale`, `.estimateDepth`), plus `.recognizeAction`, `.search`, `.forecast` — each resolving a catalog model behind a stable API ([Cookbook](docs/COOKBOOK.md)). Live camera: `CoreAI.watch()` / `.watchDepth()` per frame, `CoreAI.watch(for: .label("person"))` to run an expensive model only on the frames that matter |
-
-Beyond this package: [**coreai-model-zoo**](https://github.com/john-rocky/coreai-model-zoo) is
-where the models and their conversion recipes live, and
-[**awesome-core-ai**](https://github.com/john-rocky/awesome-core-ai) tracks the wider Core AI
-ecosystem — Apple's own tooling, other people's converters, sample apps, and benchmarks.
+If something fails, check [the errors I have hit and their fixes](https://github.com/john-rocky/coreai-model-zoo/blob/main/knowledge/coreai-error-index.md). For a reproducible bug, [open an issue](https://github.com/john-rocky/coreai-kit/issues/new) with the package version, model ID and revision, OS and SDK build, and the error text.
 
 ## Examples
 
-Task ops
+| To try | Open | What it does |
+|---|---|---|
+| Every one-line call | [OpsGallery](Examples/OpsGallery) | Pick an input, run the call, see the result (iPhone and Mac) |
+| Chat | [ChatDemo](Examples/ChatDemo) | A multiplatform chat app in about 150 lines |
+| Tool calling | [FMToolDemo](Examples/FMToolDemo) | Local tools behind `LanguageModelSession` (`swift run`) |
+| Image chat | [VLChat](Examples/VLChat) | Ask Qwen3-VL about an image (iPhone and Mac) |
+| Object detection | [DetectCamera](Examples/DetectCamera) | Real-time RF-DETR on the camera (iOS) |
+| Document reading | [ReadDoc](Examples/ReadDoc) | A whole page to Markdown with GLM-OCR or MinerU2.5 |
+| Speech to text | [Transcribe](Examples/Transcribe) | Whisper large-v3-turbo, Qwen3-ASR and Parakeet TDT |
+| Text to speech | [Speak](Examples/Speak) | Kokoro and VoxCPM |
+| Search your notes | [DocChat](Examples/DocChat) | Embeddings, a retrieval tool and a local LLM (`swift run`) |
 
-- `Examples/OpsGallery` — every one-shot op as a card: pick an input, run the one-line call, see the result (iPhone + Mac)
-- `Examples/OpsDemo` — task-level ops: one voice memo → transcript, summary, typed action items, translation, spoken reply; or one image → caption, detections, OCR (`swift run`)
+The table shows 9 of the 35 example apps. The rest are in [the full list](docs/examples.md).
 
-Text & chat
+## How the catalog is checked
 
-- `Examples/ChatDemo` — multiplatform chat app (~150 lines)
-- `Examples/DiffuseChat` — diffusion LLM chat: watch LLaDA-8B denoise all tokens in parallel (Mac)
-- `Examples/FMToolDemo` — local tool calling behind `LanguageModelSession` (`swift run`)
-- `Examples/GuidedDemo` — guided generation: schema-valid JSON by construction (`swift run`)
-- `Examples/InfoExtract` — schema-driven extraction / PII redaction with GLiNER2 (iPhone + Mac)
-- `Examples/TextClassify` — zero-shot text classification: labels named at call time, several questions in one forward (GLiNER2.5-Decide, `swift run`)
+All 80 catalog entries use a fixed Hugging Face revision. Before an entry joins the catalog, I compare its output with the original model on fixed inputs and run it on real hardware. The recipe that built each one is in [coreai-model-zoo](https://github.com/john-rocky/coreai-model-zoo). Don't take my word for it: [the verification page](docs/verification.md) has the commands to check them yourself.
 
-Typed decisions — the System One shape, on device
+## Works with Apple's FoundationModels API
 
-- `Examples/Decide` — a text and a typed question in, the answer with its probability out, nothing generated; a chat model zero-shot (`minicpm5-2b`) or a model trained for decisions (`decider-0.8b`; `openthai-systemone` — Thai + English, up to 255 options, an abstain probability; `apus-decision-v1-4b` — browser actions and workflow steps, English + Chinese, Mac; `qwen3.5-2b-decision` — a calibrated 2B, English, plain-text prompt, iPhone-sized; `system-one-scorer-4b` — a scoring head, one row per option, English, Mac, CC BY-NC 4.0; `decider-2b-vision` — questions about an image, `CoreAI.decide(image:…)`, every question read in one pass; `clef-flash` — every question of a request read at once by a joint head, a text, JSON or one image as the state, Mac, its own catalog kind `jointDecision`: `KitClefDecider`, `decide-cli` and `/v1/systemone` with `images`; `kev-0.8b` and `kev-4b` — Jared Palmer's decision models, each question its own row read by a pointer head, a text or JSON state, 0.8B on iPhone and Mac, 4B on Mac, their own catalog kind `rowDecision`: `KitKevDecider`, `decide-cli` and `/v1/systemone`; `d1-omni-600m` — Liquid AI's decision model over a text, JSON, images or a voice clip, each question its own row read at its option markers, iPhone and Mac, its own catalog kind `omniDecision`: `KitD1OmniDecider`, `decide-cli` and `/v1/systemone` with `images` or `audio`; `d1-3b` — Liquid AI's 3B decision model over a text, JSON or pictures, each question its own row read at its last token, the Mac's fp16 decoder and the iPhone's int8 one (the iPhone app needs increased-memory-limit), its own catalog kind `tokenDecision`: `KitD1Decider`, `decide-cli` and `/v1/systemone` with `images`). Ten whole uses from the same sources on iPhone and Mac: copy an email and a checkout form fills at once, a contract read as a checklist, a folder sorted by what needs you, a car the model drives lane by lane, a CSV with the columns you ask for, a command guard for a coding agent (also a Claude Code hook), tool results dropped from an agent's context by relevance, tone / intent / emoji as you type (`swift run decide-cli` is the headless door; `decide-cli serve` is a `/v1/systemone` endpoint for a client written for the hosted API)
+`KitLanguageModel` plugs compatible Core AI chat bundles into the system `LanguageModelSession`, the same API you use for Apple's built-in model. It adds tool calling and guided generation. With `KitVisionModel`, you can attach an image to the prompt for a vision-language model. The code and the limits are in [Using FoundationModels with CoreAIKit](docs/foundationmodels.md).
 
-Vision
+## Typed decisions, on device
 
-- `Examples/VLChat` — local **VLM** image chat (Qwen3-VL) via the `KitVisionModel` vision executor (iPhone + Mac)
-- `Examples/AskVLM` — your Qwen3-VL as its own **Visual Intelligence** tab (offline "ask")
-- `Examples/VisualIntel` — your own CLIP / RF-DETR behind the system **Visual Intelligence** search (iOS camera / iPad+Mac screenshot)
-- `Examples/PhotoSearch` — semantic photo search with CLIP (iOS)
-- `Examples/DetectCamera` — real-time object detection with RF-DETR, no NMS (iOS; nano 33–39 FPS end-to-end on iPhone 17 Pro via the zero-copy capture pipeline)
-- `Examples/LiveCamera` — the four live tasks as four tabs: `watch()`, `watchDepth()`, a trigger gating a VLM, and `scan(videoAt:)` over a video file, with the measured stats and thermal governor on screen (iOS; `swift run live-cli` covers the offline half with no device)
-- `Examples/DepthCamera` — live camera depth with Depth Anything 3 (iOS)
-- `Examples/UpscaleDemo` — one-step diffusion super-resolution with AdcSR
-- `Examples/ActionCamera` — video action recognition with V-JEPA 2 (world model)
-- `Examples/ReadDoc` — whole-page document OCR → Markdown (GLM-OCR / MinerU2.5)
-- `Examples/DocSearch` — visual document retrieval, no OCR (ColModernVBERT late interaction)
-
-Audio & speech
-
-- `Examples/Transcribe` — speech→text (Whisper large-v3-turbo, Qwen3-ASR, Parakeet TDT)
-- `Examples/Tidy` — the other half of dictation: raw transcript → written text (S1-mini by Superwhisper — fillers, false starts, spoken numbers and dates)
-- `Examples/Meeting` — who-said-what: Sortformer (4 speakers) or Nemotron-3-Diarization (8)
-  diarization + per-turn ASR in one API
-- `Examples/Speak` — text-to-speech (Kokoro, VoxCPM)
-- `Examples/Music` — text→music with Stable Audio Open Small (~12× realtime on iPhone)
-- `Examples/AudioChat` — audio *understanding* — describe sounds, not just transcripts (Qwen2.5-Omni)
-
-Also in the audio surface, without a dedicated example yet: `KitDialogue` (multi-speaker /
-podcast-style TTS — `perform("Speaker 1: …\nSpeaker 2: …")`, VibeVoice-Realtime-0.5B) and
-`KitSeparator` (song → vocals + instrumental stems, Mel-Band RoFormer).
-
-RAG, agents & system integration
-
-- `Examples/DocChat` — on-device RAG over your notes: embeddings + retrieval tool + local LLM (`swift run`)
-- `Examples/SpotlightChat` — local RAG with Apple's `SpotlightSearchTool` (WWDC26) behind your own model (`swift run`)
-- `Examples/SpotlightApp` — the "ask your notes" RAG chat as a real SwiftUI app (iPhone + Mac), behind your own model
-- `Examples/SiriAsk` — ask your local model from **Siri** (App Intents + onscreen awareness + risk-based confirmation; ≥4B)
-
-Other modalities
-
-- `Examples/Forecast` — time-series forecasting of your own series (paste or CSV) with TimesFM 2.5 (~25 ms/forecast on iPhone) or Timestral 209M (21 quantiles, horizons up to 1,024 steps)
-
-See `docs/GETTING_STARTED.md`.
-
-## How the catalog is verified — and how you re-check it yourself
-
-The models are converted, not vendored, so the question that matters before you depend on
-this is *what was checked, by whom, and can you check it again.* All 80 catalog entries:
-
-- **Pinned to an immutable Hugging Face revision**, so a resolved model is the exact bytes
-  that were gated — never "whatever is on `main` today." CI re-checks every pin
-  (`scripts/pin-catalog.py --check`, run by the nightly gate above).
-- **Gated against the original model before enrollment** — the export is stepped against the
-  fp32/fp16 reference implementation on fixed inputs (token-exact for LLMs, `cos ≥ 0.999`
-  otherwise), then re-gated after compression, then run on real hardware. The gate that
-  produced each row and its proof strength are on that model's card.
-- **Shipped with the recipe that produced them.** `models/<model>/recipe.toml` in the
-  [model zoo](https://github.com/john-rocky/coreai-model-zoo) records the exact script and
-  flags; `zoo_convert.py run <name>` rebuilds the bundle from the same checkpoint.
-
-These gates are run by the maintainer — so don't take them on faith, re-run them. Checking a
-published bundle against the model it claims to come from is one command, no GPU and no
-device needed:
+`CoreAI.decide` takes a text and a question with fixed answers, and returns each answer's probability without generating any text. Programs outside Swift can make the same call over HTTP with `systemone serve`, which speaks the request format of the hosted System One APIs:
 
 ```bash
-python3 conversion/zoo_verify.py mlboydaisuke/Gemma-4-12B-CoreAI   # one repo
-python3 conversion/zoo_verify.py --all                             # the whole catalog, minutes
+brew install john-rocky/tap/systemone && systemone serve     # http://127.0.0.1:8090/v1/systemone
 ```
 
-It compares tokenizer, chat template, context length and declared precision against the
-source model each bundle names in its own `metadata.json`.
+## Documentation
 
-That checks a bundle is *described* correctly, not that it still *computes* correctly — the
-numerical check is `conversion/coreai_gate.py`, which rebuilds the reference model in fp32 and
-compares a greedy decode token for token. It runs outside the maintainer's tree (point it at
-your own `llm-runner` and overlay interpreter) and writes a transcript: pinned revision, exact
-`input_ids`, both sides' tokens, verdict. Re-running the engine side against a published
-transcript needs only the bundle and `llm-runner` — no oracle, no fp32 download.
-
-If you are shipping something you have to support, re-running the recipe yourself is cheap and
-leaves you owning the artifact.
+- [Getting started](docs/GETTING_STARTED.md): a second turn, FoundationModels and download progress
+- [Cookbook](docs/COOKBOOK.md): every task and its snippet
+- [The two layers](docs/two-layers.md): one-line calls, model-level APIs, and what a feature will download
+- [Typed decisions](docs/SYSTEM_ONE.md): the numbers and question shapes
+- [The serve command](docs/system-one-serve.md): the other options
+- [Model downloads and storage](docs/downloads.md): where the files go
 
 ## Requirements
 
@@ -440,22 +124,20 @@ leaves you owning the artifact.
 - Deploys to macOS 26 / iOS 26: APIs that need 27 are `@available(macOS 27, iOS 27, *)`
 - Models run fully on device
 
-## Versioning & stability
+Releases are tagged and follow SemVer. See [`docs/STABILITY.md`](docs/STABILITY.md) and [`CHANGELOG.md`](CHANGELOG.md).
 
-Tagged releases, SemVer, a pinned model catalog (each entry carries the verified
-Hugging Face revision), and CI + a nightly end-to-end gate on macOS 27. See
-[`docs/STABILITY.md`](docs/STABILITY.md) and [`CHANGELOG.md`](CHANGELOG.md).
+## Projects using CoreAIKit
+
+[AnyDecisionModel](https://github.com/mattt/AnyDecisionModel) is a Swift package for typed decisions from language models. Since 0.4.0, its `CoreAIDecisionModel` runs a Core AI language bundle through CoreAIKit's `TypedDecisions` API ([release notes](https://github.com/mattt/AnyDecisionModel/releases/tag/0.4.0)).
 
 ## Maintainer
 
-[**Daisuke Majima (MLBoy)**](https://github.com/john-rocky) — who also ports the
-[coreai-model-zoo](https://github.com/john-rocky/coreai-model-zoo) this kit serves, runs
-[devicemark](https://devicemark.github.io/) (on-device LLM leaderboard), and wrote the
-Japanese textbook [The Art of Core AI](https://zenn.dev/mlboydaisuke/books/coreai-textbook).
-Models: [huggingface.co/mlboydaisuke](https://huggingface.co/mlboydaisuke).
+I'm [Daisuke Majima (MLBoy)](https://github.com/john-rocky). I also port the [coreai-model-zoo](https://github.com/john-rocky/coreai-model-zoo) models this kit serves, run [devicemark](https://devicemark.github.io/), an on-device LLM leaderboard, and wrote the Japanese textbook [The Art of Core AI](https://zenn.dev/mlboydaisuke/books/coreai-textbook). I keep a list of the wider Core AI ecosystem in [awesome-core-ai](https://github.com/john-rocky/awesome-core-ai). My models are on [Hugging Face](https://huggingface.co/mlboydaisuke).
 
 ## License
 
 BSD-3-Clause. See `LICENSE` and `NOTICE.txt` (portions adapted from
 [apple/coreai-models](https://github.com/apple/coreai-models) and
 [john-rocky/coreai-model-zoo](https://github.com/john-rocky/coreai-model-zoo)).
+
+The models have their own licenses. Each model's exact terms are on its card in the zoo, and a catalog entry with a restriction says so in the `license` field of `catalog.json`.

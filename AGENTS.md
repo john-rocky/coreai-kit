@@ -165,7 +165,7 @@ written.
 
 ## More
 
-- [README](README.md) — the ops table, the examples, the FoundationModels provider.
+- [README](README.md) — the first run and the two layers; [`docs/examples.md`](docs/examples.md) has the ops table and the examples, [`docs/foundationmodels.md`](docs/foundationmodels.md) the FoundationModels provider.
 - [`docs/COOKBOOK.md`](docs/COOKBOOK.md) — every "I want to …" mapped to its snippet.
 - [`Examples/`](Examples) — one buildable app per capability; start from the closest one.
 - [model zoo](https://github.com/john-rocky/coreai-model-zoo) — the models, cards, recipes, and
