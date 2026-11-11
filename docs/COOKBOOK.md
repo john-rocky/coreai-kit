@@ -390,9 +390,9 @@ let depth = try await CoreAI.estimateDepth(in: photo).cgImage()      // grayscal
 let big   = try await CoreAI.upscale(photo)                          // ×4, deterministic
 ```
 
-| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/detect-rfdetr.jpg" alt="Object detection" width="240"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/depth-da3.jpg" alt="Depth estimation" width="240"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/sr-adcsr.jpg" alt="Super-resolution" width="240"> |
-|:---:|:---:|:---:|
-| `CoreAI.detect` — RF-DETR | `CoreAI.estimateDepth` — DA3 | `CoreAI.upscale` — AdcSR ×4 |
+| <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/depth-da3.jpg" alt="Depth estimation" width="240"> | <img src="https://raw.githubusercontent.com/john-rocky/coreai-assets/main/kit/sr-adcsr.jpg" alt="Super-resolution" width="240"> |
+|:---:|:---:|
+| `CoreAI.estimateDepth` — DA3 | `CoreAI.upscale` — AdcSR ×4 |
 
 A conversation *about* an image (follow-up questions, one session) is the model-level
 VLM behind the same FoundationModels API — attach the image to the prompt:
