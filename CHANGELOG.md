@@ -290,6 +290,14 @@ policy.
   prompt leaves 2 positions. The en-* voices, the default ones, stay inside the cache. Inputs that
   stay inside the cache give the same output as before.
 
+- **Unlimited-OCR stops at the end of its KV cache.** Its decoder holds a fixed KV cache of 2,048
+  positions and the image prompt takes 115 of them, and the kit did not stop before the end: a
+  `maxTokens` above 1,933 ran decode steps outside the cache, and what came out of them was never
+  checked. `KitDocReader` now reads the cache's length from the decoder's state and stops a read at
+  1,933 tokens, and a decode step at or past the end throws `VisionError.kvCacheFull`. The default
+  `maxTokens` of 1,024 stays inside the cache; a read that stays inside it returns the same text
+  as before.
+
 - **A graph compiled for one iPhone is picked only on that iPhone.** The loaders that pick their
   own graph took an AOT `.aimodelc` over the JIT `.aimodel` on iOS, most of them by the name
   `.h18p.aimodelc`, the iPhone 17 Pro's. The iPhone 18 Pro (`h19p`) refuses that graph

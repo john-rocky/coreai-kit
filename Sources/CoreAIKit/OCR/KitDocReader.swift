@@ -87,12 +87,16 @@ public final class KitDocReader: @unchecked Sendable {
         tokenizer = try await AutoTokenizer.from(modelFolder: tokenizerDir)
     }
 
-    /// OCR an image file (any format) → structured markdown.
+    /// OCR an image file (any format) → structured markdown. Stops where the decoder's KV cache
+    /// ends, as `read(_:maxTokens:)` says.
     public func read(imageAt url: URL, maxTokens: Int = 1024) async throws -> String {
         try await read(ImageFile.load(url).cgImage, maxTokens: maxTokens)
     }
 
     /// OCR one image → structured markdown (special tokens kept so table markup survives).
+    /// The decoder holds a fixed KV cache (2,048 positions in the published bundle) that the image
+    /// prompt (115 positions) and the generated tokens share, so a read stops at 1,933 tokens,
+    /// `maxTokens` or not.
     public func read(_ image: CGImage, maxTokens: Int = 1024) async throws -> String {
         #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
         // 1) preprocess: aspect-fit into 640², gray pad, x/127.5 - 1, CHW fp16
@@ -141,7 +145,9 @@ public final class KitDocReader: @unchecked Sendable {
         var generated = [Int32]()
         var token = pick(logits, generated)
         var position = Int32(Spec.prefixLen)
-        for _ in 0..<maxTokens {
+        let budget = Self.tokenBudget(
+            maxTokens: maxTokens, prefixLength: Spec.prefixLen, capacity: decoder.capacity)
+        for _ in 0..<budget {
             generated.append(token)
             if token == Spec.eos { break }
             let tokenEmbed = Array(embed[Int(token) * hidden ..< (Int(token) + 1) * hidden])
@@ -230,6 +236,13 @@ public final class KitDocReader: @unchecked Sendable {
     }
     #endif
 
+    /// Tokens a read may generate: `maxTokens`, or fewer where its decode steps would run past the
+    /// decoder's KV cache (the prompt fills positions 0..<prefixLength, and the step after the n-th
+    /// token writes prefixLength + n − 1).
+    static func tokenBudget(maxTokens: Int, prefixLength: Int, capacity: Int) -> Int {
+        min(maxTokens, capacity - prefixLength)
+    }
+
     // MARK: - assets
 
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
@@ -259,6 +272,9 @@ private final class DocDecoder: @unchecked Sendable {
     private let decodeDesc: InferenceFunctionDescriptor
     private let keyDescriptor: NDArrayDescriptor
     private let valueDescriptor: NDArrayDescriptor
+    /// Positions the KV cache holds: its sequence axis, the second-to-last dimension (`Int.max`
+    /// when the state does not say). A decode step writes the cache at its `pos`.
+    let capacity: Int
     private var keyCache: NDArray
     private var valueCache: NDArray
     // Stable storage for the output view: `MutableViews` is non-escapable and borrows its
@@ -290,6 +306,9 @@ private final class DocDecoder: @unchecked Sendable {
         }
         keyDescriptor = kd
         valueDescriptor = vd
+        let ks = kd.shape, vs = vd.shape
+        let length = ks.count >= 2 && vs.count >= 2 ? min(ks[ks.count - 2], vs[vs.count - 2]) : 0
+        capacity = length > 0 ? length : .max
         keyCache = NDArray(descriptor: keyDescriptor)
         valueCache = NDArray(descriptor: valueDescriptor)
         guard case .ndArray(let ld) = prefillDesc.outputDescriptor(of: prefillDesc.outputNames[0])
@@ -322,10 +341,14 @@ private final class DocDecoder: @unchecked Sendable {
     #endif
 
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
-    /// One decode step: the current token's embedding at absolute position `pos`.
+    /// One decode step: the current token's embedding at absolute position `pos`. A `pos` at or
+    /// past `capacity` throws `VisionError.kvCacheFull` before the graph runs.
     func decode(
         tokenEmbed: [Float16], pos: Int32, hidden: Int, vocab: Int
     ) async throws -> [Float] {
+        guard Int(pos) < capacity else {
+            throw VisionError.kvCacheFull(position: Int(pos), capacity: capacity)
+        }
         let embeds = try ndArray(decodeDesc, "inputs_embeds", shape: [1, 1, hidden]) {
             var view = $0.mutableView(as: Float16.self)
             view.copyElements(fromContentsOf: tokenEmbed)
