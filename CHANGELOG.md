@@ -276,6 +276,20 @@ policy.
 
 ### Fixed
 
+- **VibeVoice, VoxCPM and VoxCPM2 stop at the end of their KV cache.** Their decode graphs hold a
+  fixed KV cache of 512 positions and write it at each step's position, and the kit did not stop
+  before the end: a VibeVoice voice with a long prompt (de-Spk0_man takes 510 positions, kr-Spk1_man
+  421) or a VoxCPM text whose tokens and frames came to 512 or more ran steps outside the cache, and
+  what came out of them was never checked. `StatefulGraphModel` now reads the cache's length from
+  the graph's state (`capacity`), and `step` throws `VisionError.kvCacheFull` for a `pos` at or past
+  it. VoxCPM and VoxCPM2 end the clip where the cache ends (the text's tokens and the clip's frames
+  take one position each, and the decode after the last frame, which nothing read, no longer runs)
+  and throw `VoxCPMError.textTooLong` for a text of 511 tokens or more; a long text ends early, so
+  pass one sentence at a time. VibeVoice ends a sentence where a cache ends, so with kr-Spk1_man a
+  long sentence ends early, and throws `VibeVoiceError.voiceFillsCache` for de-Spk0_man, whose
+  prompt leaves 2 positions. The en-* voices, the default ones, stay inside the cache. Inputs that
+  stay inside the cache give the same output as before.
+
 - **A graph compiled for one iPhone is picked only on that iPhone.** The loaders that pick their
   own graph took an AOT `.aimodelc` over the JIT `.aimodel` on iOS, most of them by the name
   `.h18p.aimodelc`, the iPhone 17 Pro's. The iPhone 18 Pro (`h19p`) refuses that graph

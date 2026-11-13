@@ -17,6 +17,8 @@ public enum VisionError: Error, LocalizedError, Sendable {
     case imageRenderFailed
     case cameraAccessDenied
     case cameraUnavailable
+    /// A stateful step would write the KV cache at `position`, at or past its end.
+    case kvCacheFull(position: Int, capacity: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -42,6 +44,8 @@ public enum VisionError: Error, LocalizedError, Sendable {
             return "Camera access was denied"
         case .cameraUnavailable:
             return "No usable camera was found"
+        case .kvCacheFull(let position, let capacity):
+            return "A step at KV cache position \(position) is past the end of the \(capacity)-position cache"
         }
     }
 }

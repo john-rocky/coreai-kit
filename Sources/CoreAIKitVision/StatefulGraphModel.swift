@@ -19,6 +19,11 @@ public final class StatefulGraphModel: @unchecked Sendable {
     private let descriptor: InferenceFunctionDescriptor
     public let inputNames: [String]
     public let outputName: String
+    /// Positions the KV cache holds: the length of the state's sequence axis, the second-to-last
+    /// dimension of the `(layers, 1, kvHeads, length, headDim)` layout (read from the graph's state,
+    /// `kvCapacity` filling a dynamic one; `Int.max` for a state of rank below 2). A step writes the
+    /// cache at its `pos` input, so `pos` must stay below this.
+    public let capacity: Int
 
     private let keyName: String
     private let valueName: String
@@ -61,6 +66,8 @@ public final class StatefulGraphModel: @unchecked Sendable {
         else { throw VisionError.unsupportedScalarType("state/output descriptor") }
         self.keyDescriptor = kd.resolvingDynamicDimensions(kd.shape.map { $0 < 0 ? kvCapacity : $0 })
         self.valueDescriptor = vd.resolvingDynamicDimensions(vd.shape.map { $0 < 0 ? kvCapacity : $0 })
+        let ks = keyDescriptor.shape, vs = valueDescriptor.shape
+        self.capacity = ks.count >= 2 && vs.count >= 2 ? min(ks[ks.count - 2], vs[vs.count - 2]) : .max
 
         self.keyCache = NDArray(descriptor: keyDescriptor)
         self.valueCache = NDArray(descriptor: valueDescriptor)
@@ -119,8 +126,10 @@ public final class StatefulGraphModel: @unchecked Sendable {
         fillF16(&valueCache, v)
     }
 
-    /// Runs one step; the KV state carries over to the next call.
+    /// Runs one step; the KV state carries over to the next call. A `pos` at or past `capacity`
+    /// throws `VisionError.kvCacheFull` before the graph runs: it would write outside the cache.
     public func step(_ inputs: [String: TensorValue]) async throws -> [String: TensorValue] {
+        try Self.checkPosition(inputs, capacity: capacity)
         var nd: [String: NDArray] = [:]
         for (name, value) in inputs {
             guard case .ndArray(let d) = descriptor.inputDescriptor(of: name) else {
@@ -137,6 +146,16 @@ public final class StatefulGraphModel: @unchecked Sendable {
         _ = try await function.run(
             inputs: nd, states: consume states, outputViews: consume outputViews)
         return [outputName: try TensorValue(reading: outputArray)]
+    }
+
+    /// Throws `VisionError.kvCacheFull` when the int32 `pos` input names a cache position at or
+    /// past `capacity`. Inputs without `pos` pass (a batched prefill writes from position 0).
+    static func checkPosition(_ inputs: [String: TensorValue], capacity: Int) throws {
+        if case .int32(let positions)? = inputs["pos"]?.storage, let last = positions.max(),
+            Int(last) >= capacity
+        {
+            throw VisionError.kvCacheFull(position: Int(last), capacity: capacity)
+        }
     }
 }
 

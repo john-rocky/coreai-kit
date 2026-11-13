@@ -26,12 +26,19 @@ public enum VoxCPMError: Error, LocalizedError {
     case bundleNotFound(String)
     case glueMissing(String)
     case missingOutput(String)
+    /// The text takes `positions` of the decode graphs' `capacity`-position KV cache (one per
+    /// token, plus one), which leaves no room for a frame.
+    case textTooLong(positions: Int, capacity: Int)
 
     public var errorDescription: String? {
         switch self {
         case .bundleNotFound(let n): return "VoxCPM bundle not found: \(n)"
         case .glueMissing(let n): return "VoxCPM host-glue weight missing: \(n)"
         case .missingOutput(let n): return "VoxCPM bundle produced no '\(n)' output"
+        case .textTooLong(let positions, let capacity):
+            return "The text is too long for VoxCPM: it takes \(positions) of the \(capacity) "
+                + "positions of the model's KV cache, which leaves no room for speech. "
+                + "Pass a shorter text, such as one sentence at a time."
         }
     }
 }
@@ -198,6 +205,9 @@ public final class VoxCPMTTS: @unchecked Sendable {
 
     /// Synthesize speech for `text`. Returns the whole clip as mono Float PCM at 16 kHz
     /// (collects the streaming chunks). Prefer `synthesizeStreaming` for low perceived latency.
+    /// The decode graphs hold a fixed KV cache (512 positions in the published bundles): the text's
+    /// tokens and the clip's frames take one position each, so the clip ends where the cache does,
+    /// `maxFrames` or not, and a text that fills it throws `VoxCPMError.textTooLong`.
     public func synthesize(
         _ text: String, seed: UInt64 = 0, maxFrames: Int = 300, minFrames: Int = 2
     ) async throws -> [Float] {
@@ -237,6 +247,9 @@ public final class VoxCPMTTS: @unchecked Sendable {
         var ids = tokenizer.encode(text: text, addSpecialTokens: false)
         ids.append(Self.audioStart)
         let T = ids.count
+        let frames = try Self.frameBudget(
+            textPositions: T, maxFrames: maxFrames,
+            capacity: min(baseDecode.capacity, resDecode.capacity))
 
         // ---- prefill: batched bundle (one q=T call each) when available + text fits, else decode-loop.
         // Both are causal so they're bit-identical; the bundle reads weights once instead of T times. ----
@@ -297,7 +310,7 @@ public final class VoxCPMTTS: @unchecked Sendable {
             try await emit(wav)
         }
 
-        for i in 0..<maxFrames {
+        for i in 0..<frames {
             let gt = Date()
             let dit = glue.dit(lm: lmH, res: resH)
             let z = rng.normals(Self.feat * Self.patch)
@@ -324,6 +337,9 @@ public final class VoxCPMTTS: @unchecked Sendable {
             if pending.count == framesPerChunk { try await flush() }     // stream the window out
 
             if i > minFrames && glue.stop(lmH) == 1 { break }            // stopping frame is kept (above)
+            // The decode below feeds the next frame: after the last one nothing reads it, and at
+            // the end of the cache it would write past it.
+            if i + 1 == frames { break }
 
             let pos = Int32(T + i)
             let bt = Date()
@@ -345,6 +361,16 @@ public final class VoxCPMTTS: @unchecked Sendable {
         return StreamStats(samples: totalSamples,
                            firstChunkSeconds: firstChunk < 0 ? total : firstChunk,
                            totalSeconds: total)
+    }
+
+    /// Frames a synthesis may take: `maxFrames`, or fewer where the frames would run past the KV
+    /// cache. The text fills positions 0..<T; frame 0 comes from the prefill and frame i + 1 from
+    /// the decode at T + i, so `capacity - T + 1` frames end on the cache's last position (the loop
+    /// skips the decode after its last frame, which nothing reads). Throws
+    /// `VoxCPMError.textTooLong` when the text fills the cache. VoxCPM2 shares it.
+    static func frameBudget(textPositions T: Int, maxFrames: Int, capacity: Int) throws -> Int {
+        guard T < capacity else { throw VoxCPMError.textTooLong(positions: T, capacity: capacity) }
+        return min(maxFrames, capacity - T + 1)
     }
 
     // MARK: - vocoder

@@ -124,6 +124,9 @@ public final class VoxCPM2TTS: @unchecked Sendable {
     }
 
     /// Synthesize the whole clip as mono Float PCM at 48 kHz (collects the streaming chunks).
+    /// As in `VoxCPMTTS`, the clip ends where the decode graphs' fixed KV cache does (512 positions
+    /// in the published bundles, one per text token and one per frame), and a text that fills it
+    /// throws `VoxCPMError.textTooLong`.
     public func synthesize(
         _ text: String, seed: UInt64 = 0, maxFrames: Int = 300, minFrames: Int = 2
     ) async throws -> [Float] {
@@ -160,6 +163,9 @@ public final class VoxCPM2TTS: @unchecked Sendable {
         var ids = tokenizer.encode(text: text, addSpecialTokens: false)
         ids.append(Self.audioStart)
         let T = ids.count
+        let frames = try VoxCPMTTS.frameBudget(
+            textPositions: T, maxFrames: maxFrames,
+            capacity: min(baseDecode.capacity, resDecode.capacity))
 
         // ---- prefill. lm_h = base_out[T-1] (NOT fsq'd, zero-shot text mask); residual input per
         // position = fusion(cat(base_out_t, 0)) (feat_mask 0). ----
@@ -227,7 +233,7 @@ public final class VoxCPM2TTS: @unchecked Sendable {
             try await emit(wav)
         }
 
-        for i in 0..<maxFrames {
+        for i in 0..<frames {
             let gt = Date()
             let mu = glue.dit(lm: lmH, res: resH)                         // [2048]
             let z = rng.normals(Self.feat * Self.patch)
@@ -254,6 +260,9 @@ public final class VoxCPM2TTS: @unchecked Sendable {
             if pending.count == framesPerChunk { try await flush() }
 
             if i > minFrames && glue.stop(lmH) == 1 { break }
+            // As in VoxCPMTTS: no decode after the last frame (nothing reads it, and at the end of
+            // the cache it would write past it).
+            if i + 1 == frames { break }
 
             let pos = Int32(T + i)
             let bt = Date()

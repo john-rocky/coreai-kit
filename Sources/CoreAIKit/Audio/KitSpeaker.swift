@@ -131,7 +131,9 @@ public struct KitSpeaker: Sendable {
     }
 
     /// Synthesizes one utterance (16 kHz mono for VoxCPM, 48 kHz for VoxCPM2, 24 kHz for
-    /// Kokoro, 44.1 kHz for Audio8-TTS).
+    /// Kokoro, 44.1 kHz for Audio8-TTS). VoxCPM and VoxCPM2 speak the whole text in one pass
+    /// through a fixed KV cache of 512 positions, and the clip ends where the cache does: pass a
+    /// long text one sentence at a time.
     public func synthesize(_ text: String) async throws -> SpokenAudio {
         switch engine {
         case .audio8(let tts):

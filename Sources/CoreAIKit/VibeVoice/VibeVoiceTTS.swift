@@ -35,10 +35,23 @@ public struct VibeVoiceVoice: Sendable, Hashable, Codable {
     }
 }
 
-public enum VibeVoiceError: Error, Sendable {
+public enum VibeVoiceError: Error, LocalizedError, Sendable {
     case assetMissing(String)
     case voiceNotFound(String)
     case emptyText
+    /// The voice's prompt takes `promptPositions` of the speech model's `capacity`-position KV
+    /// cache, too few left for one text window and one speech window.
+    case voiceFillsCache(voice: String, promptPositions: Int, capacity: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .voiceFillsCache(let voice, let prompt, let capacity):
+            return "The VibeVoice voice \(voice) takes \(prompt) of the \(capacity) positions of "
+                + "the speech model's KV cache, too few left to speak. Pick another voice."
+        default:
+            return nil
+        }
+    }
 }
 
 struct VibeVoiceGlue: Sendable, Codable {
@@ -177,6 +190,10 @@ public actor VibeVoiceTTS {
     /// Speaks one utterance in `voice`. Long text is split on sentence boundaries and concatenated,
     /// because the acoustic decoder renders a fixed 64-frame (~8.5 s) window per pass.
     ///
+    /// Each language model holds a fixed KV cache (512 positions in the published bundles), and the
+    /// voice's prompt fills its start: a sentence ends early where a cache ends, and a voice that
+    /// leaves less than one text window and one speech window throws `VibeVoiceError.voiceFillsCache`.
+    ///
     /// `noiseFrames` overrides the per-frame DDPM init noise — pass it to reproduce a reference
     /// bit-for-bit (that is how the gates compare against the published golden); leave it nil for
     /// ordinary use, where `seed` drives a deterministic generator.
@@ -188,6 +205,13 @@ public actor VibeVoiceTTS {
         guard !trimmed.isEmpty else { throw VibeVoiceError.emptyText }
         guard let v = voices.first(where: { $0.name == voice }) else {
             throw VibeVoiceError.voiceNotFound(voice)
+        }
+        guard Self.leavesRoom(
+            promptPositions: v.ttsPrefillLen, capacity: ttsLM.capacity,
+            textWindow: glue.text_window, speechWindow: glue.speech_window)
+        else {
+            throw VibeVoiceError.voiceFillsCache(
+                voice: v.name, promptPositions: v.ttsPrefillLen, capacity: ttsLM.capacity)
         }
         var rng = SplitMix64(seed: seed)
         var out: [Float] = []
@@ -232,12 +256,15 @@ public actor VibeVoiceTTS {
         var ttsLast = [Float](repeating: 0, count: H)
         var winIdx = 0, noiseIndex = 0, finished = false
 
-        while !finished {
+        // Each model writes its KV cache at its own position: the sentence ends where a cache ends,
+        // keeping the frames rendered so far (a step at the cache's end would write outside it).
+        generation: while !finished {
             let lo = winIdx * glue.text_window
             let hi = min(lo + glue.text_window, ids.count)
             winIdx += 1
             if lo < hi {
                 for k in lo..<hi {
+                    if mainPos >= mainLM.capacity || ttsPos >= ttsLM.capacity { break generation }
                     let mh = try await step(mainLM, embedding(ids[k]), pos: mainPos)
                     mainPos += 1
                     ttsLast = try await step(ttsLM, add(mh, typeVec(1)), pos: ttsPos)
@@ -250,6 +277,7 @@ public actor VibeVoiceTTS {
                 noiseIndex += 1
                 let lat = try await ddpm(Array(noise[0..<VD]), cond: ttsLast, negCond: negCond)
                 latents.append(lat)
+                if ttsPos >= ttsLM.capacity || negPos >= negLM.capacity { break generation }
                 let emb = try await connect(lat)
                 ttsLast = try await step(ttsLM, add(emb, typeVec(0)), pos: ttsPos)
                 ttsPos += 1
@@ -383,6 +411,14 @@ public actor VibeVoiceTTS {
         #else
         fatalError("Float16 is not supported on this platform")
         #endif
+    }
+
+    /// Whether a voice prompt of `promptPositions` leaves the speech model's cache room for one
+    /// text window and one speech window (de-Spk0_man fills 510 of 512 and does not).
+    static func leavesRoom(
+        promptPositions: Int, capacity: Int, textWindow: Int, speechWindow: Int
+    ) -> Bool {
+        capacity - promptPositions >= textWindow + speechWindow
     }
 
     /// `"Speaker 2: hi there"` → `("Speaker 2: ", "hi there")`; no tag → `("", text)`.
