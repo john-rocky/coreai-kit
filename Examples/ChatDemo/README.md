@@ -17,9 +17,9 @@ let reply = try await chat.respond(to: "What is the capital of Japan?")
 
 ## Run it
 
-Start with the [0.7.3 installation and tested environment](../../README.md#quickstart).
-Run commands below from `Examples/ChatDemo` in the **0.7.3** checkout. Both the
-CLI and Xcode app depend on the public **exact 0.7.3** package. Qwen3 0.6B downloads
+Start with the [0.8.0 installation and tested environment](../../README.md#quickstart).
+Run commands below from `Examples/ChatDemo` in the **0.8.0** checkout. Both the
+CLI and Xcode app depend on the public **exact 0.8.0** package. Qwen3 0.6B downloads
 approximately 352 MB on Mac (456 MB for the iPhone variant).
 
 The initial reply should mention Tokyo. Later requests can vary because sampling is
@@ -71,6 +71,10 @@ Environment Variables, and run. It uses a new cache folder each time and display
 `PASS: first download and two replies` after recalling ORCHID. The result is also
 saved as `Documents/entry-check.txt`. Remove the variable to return to the chat UI.
 This is a short entry check, not a performance benchmark or an all-model sweep.
+On an iPhone 18 Pro with iOS 27.2 (`24B5099f`), the check fails with CoreAIKit 0.8.0 and
+0.7.3: both replies from `qwen3-0.6b` are unreadable text, and it shows
+`FAIL: expected a first reply and ORCHID on turn two`
+([Known issues](../../CHANGELOG.md#known-issues)).
 
 ## The take-home: `Sources/QuickStart.swift`
 

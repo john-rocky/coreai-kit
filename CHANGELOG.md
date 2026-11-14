@@ -7,6 +7,37 @@ policy.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-14
+
+Thirteen catalog models join (67 → 80): six decision models on five new kinds, zero-shot text
+classification, LFM3 1.7B with tool calling, MiniCPM-V 4.7 1B, Fun-ASR-Nano, Audio8-TTS, 8-speaker
+diarization and quantile forecasting. Chats on a hybrid model resume from a checkpoint instead of
+prefilling the whole conversation again. VibeVoice, VoxCPM, VoxCPM2 and Unlimited-OCR stop at the end
+of their KV cache, and a graph compiled for one iPhone is picked only on that iPhone. This is a minor
+release: some code written for 0.7.3 needs an edit, listed under Changed. A package that depends on
+`from: "0.7.3"` gets 0.8.0 the next time its packages are updated (`swift package update`, or Update
+to Latest Package Versions in Xcode); one that depends on `exact: "0.7.3"` stays on 0.7.3 until that
+line changes. Built and gated on macOS 27.0 (26A428) and Xcode 27 (27A266a).
+
+### Changed
+
+- **What code written for 0.7.3 may need.**
+  - `VibeVoicePaths.inBundleDir(_:glueDir:voicesDir:embedTokens:)` now throws when the folder holds
+    only graphs compiled for other devices (under Fixed): call it with `try`.
+  - A `switch` without `default` over `CatalogEntry.Kind`, `Decision.Format`, `VisionError`,
+    `KitBundleError`, `VibeVoiceError` or `VoxCPMError`: each has new cases (the kinds and
+    `jointHead` under Added, the errors under Fixed). Add a `default`.
+  - A reference to one of the five functions below by its 0.7.3 full name, without a call (for
+    example `let make = SpeakerSegment.init(speaker:startFrame:endFrame:)`), no longer compiles: each
+    gained parameters with default values, so its full name changed. Wrap it in a closure instead
+    (`let make = { SpeakerSegment(speaker: $0, startFrame: $1, endFrame: $2) }`). A direct call that
+    leaves the new parameters out builds as before.
+    - `SpeakerSegment.init(speaker:startFrame:endFrame:)` gained `frameSec`.
+    - `KitDiarizer.segments(from:bridgeFrames:)` gained `frameSec`.
+    - `CatalogEntry.init(…)` gained `assets`.
+    - `CatalogEntry.Variant.init(path:sizeMB:)` gained `engine` and `architectures`.
+    - `VLArchitecture.init(…)` gained `ropeShiftFrameTail` and `assistantPrefix`.
+
 ### Added
 
 - **Chats on a hybrid model resume from a checkpoint** — on Qwen3.5, LFM2.5, LFM3 and Granite 4 the
@@ -60,6 +91,15 @@ policy.
   (the empty think block the chat template writes at the start of every assistant turn). The int8hu decoder and the
   int8lin tower are the pair the zoo gated on an iPhone 18 Pro (iOS 27.2): 98.0 tok/s decode and 68.2 ms per image
   in its bench.
+- **Timestral-209M** — catalog id `timestral-209m` (the new `kind: quantileForecasting`), driven by the new
+  `KitTimestralForecaster` and the op `CoreAI.forecastQuantiles(_:horizon:options:)`: a number series in, `horizon`
+  steps of 21 quantiles (0.01 to 0.99) out, as a `QuantileForecast` with `median` and `quantile(_:)`. By default
+  each graph runs where its form computes right: the form that is fp16 throughout (`fp16p7-qkv4-tanh-conv`) on the
+  Neural Engine, the other forms on the GPU. Asking for any other unit for the fp16-throughout form throws
+  `KitTimestralForecasterError.wrongComputeUnits`, and an output at fp16's limit throws `.saturatedOutput`, instead
+  of returning a forecast. Download: 1,214 MB on macOS and on iOS; license `LicenseRef-Timestral-Modified-MIT`. The
+  kind is new: a kit built before it decodes the entry as `unknown` and leaves it out of `available(_:)`. `Examples/Forecast` runs TimesFM
+  2.5 or Timestral-209M on pasted numbers or a CSV file for a horizon you choose, and its CLI takes the same inputs.
 - **Examples/TextClassify** — your own messages, sorted into categories you name. Paste them (one a line, or blocks
   separated by a blank line), import a .txt, .md or .csv file (UTF-8; anything else is refused with the reason), or
   take the sample inbox; at most 2,000 messages. Name 2 to 12 categories in place of the eight support intents.
@@ -258,9 +298,7 @@ policy.
   `Examples/TextClassify` downloads the catalog model when no `--bundle` is given. The
   entry's kind is the new `textClassification` (a kit built before it decodes the entry as
   `unknown` and leaves it out of `available(_:)`; `decision` would list it in `systemone models`,
-  whose `TypedDecisions` cannot load it). Download: 1,756 MB on macOS, 1,958 MB on iOS. At the
-  pinned revision (`7464c91`) `ios/` holds graphs compiled for the iPhone 18 Pro (h19p), which no
-  other iPhone loads; `ios/` is to become the JIT graphs, and the pin moves with it.
+  whose `TypedDecisions` cannot load it). Download: 1,756 MB on macOS and on iOS.
 
 - **`Examples/TextClassify` gains the inbox app.** A support inbox of synthetic messages, sorted on
   one tap: every message gets an intent, an urgency and a sentiment from one forward of
@@ -310,24 +348,24 @@ policy.
   (`KitBundleError.noGraphForDevice`). The Mac follows the same rule; `GraphBundle` used to prefer
   any `.aimodelc` there too. `VibeVoicePaths.inBundleDir` now throws; the `aot(root:arch:)` builders of
   VoxCPM, VoxCPM2, PocketTTS and DotsTTS default to this device's architecture (was `h18p`), and
-  `StableAudioPaths.resolve(root:aot:)` names it. VibeVoice, VoxCPM and VoxCPM2 still hold only the
-  iPhone 17 Pro's graphs in `ios/` at their pins, so another iPhone gets that error until the Hub
-  carries their JIT graphs there.
+  `StableAudioPaths.resolve(root:aot:)` names it. From the catalog, VibeVoice, VoxCPM and VoxCPM2
+  still load on the iPhone 17 Pro only, as in 0.7.3: their pins have not moved, and `ios/` there
+  holds only that phone's graphs. On another iPhone they now throw that error.
 
 - **Four catalog models name their JIT graph on iOS.** `sortformer-diar-v2`,
   `nemotron-3-diarization`, `melband-roformer-vocal` and `timesfm-2.5-200m` pointed iOS at the
   iPhone 17 Pro's AOT graph, which only that phone loads. They now name the `.aimodel` the Mac
   downloads, which an iPhone specializes on its first load (Nemotron-3-Diarization on an iPhone 18
   Pro: 0.78 s the first time, 0.16 s after). `ModelID.sortformerDiarV2` names it on both
-  platforms. Whisper, Nemotron 3.5 ASR and VibeVoice keep `ios` as their path; at their pins it
-  still holds the iPhone 17 Pro's graphs, and the Hub is to replace them with the JIT ones.
+  platforms. Whisper and VibeVoice keep `ios` as their path; at their pins it still holds the
+  iPhone 17 Pro's graphs (Nemotron 3.5 ASR's pin moves to the JIT graphs, below).
 
 - **The Nemotron-3-Diarization graph compiles for x86_64 again.** `N3DGraph` read and wrote
   `Float16` arrays without the guard the other ten files carry
   (`#if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))`), so a Release build of
-  any macOS app linking CoreAIKit failed on the Intel slice (`'Float16' is unavailable in macOS`)
-  since 0.7.3's diarizer (CI's `example-app-release` was red from #56). On an Intel Mac a float16
-  N3D bundle now throws the contract error instead; the float32 bundle is unaffected.
+  any macOS app linking CoreAIKit failed on the Intel slice (`'Float16' is unavailable in macOS`).
+  The diarizer is new in this release, so no released version had this failure. On an Intel Mac a
+  float16 N3D bundle now throws the contract error instead; the float32 bundle is unaffected.
 
 - **Four catalog pins move to the JIT layouts.** `timesfm-2.5-200m`, `vjepa2-vitl-ssv2`,
   `nemotron-3.5-asr-streaming-0.6b` and `gliner2.5-decide` are pinned to the Hub revisions of
@@ -337,8 +375,10 @@ policy.
   with its old rule too. `vibevoice-realtime-0.5b` and `voxcpm-0.5b` stay on their previous
   revisions: the old loaders open `ios/<name>.h18p.aimodelc` by name, and the live `catalog.json`
   reaches every shipped kit, so moving those two pins would stop them on the iPhone 17 Pro. They
-  move once this release is out (the two Hub repos already carry the JIT layout, `b4480f87` and
-  `38fc0aea`).
+  move in a later catalog update (the two Hub repos already carry the JIT layout, `b4480f87` and
+  `38fc0aea`); from then an app built with 0.7.3 or earlier no longer loads these two on the iPhone
+  17 Pro, while 0.8.0's loaders take the JIT graphs on any iPhone. `voxcpm2-2b` also stays on its
+  previous revision (`e03d15d1`).
 
 - **`ModelID.gliner2PII` is pinned.** Its `ios/` carried the iPhone 17 Pro's compiled files beside
   the JIT graph, which the iPhone 18 Pro refuses; since 2026-09-26 it holds the JIT graph alone
@@ -366,6 +406,16 @@ policy.
   `ModelID.gliner2PII`, and an iPhone 18 Pro takes `ios-h19p/` for `gliner2.5-decide`. Every other
   path, and the Mac, is unchanged. On iOS `CoreAIKitCore` now imports Core AI, for the
   architecture's name alone.
+
+### Known issues
+
+- On an iPhone 18 Pro with iOS 27.2 (build 24B5099f), Qwen3 0.6B (`qwen3-0.6b`) answers with
+  unreadable text from its first token, and ChatDemo's entry check fails. 0.7.3 gives the same
+  text, so this is not new in 0.8.0. The cause is not known. Only this phone and OS build were
+  tried. The phone compiles the model's iPhone build (`ios/`) the first time it loads; not checked
+  yet: a build compiled ahead of time for the iPhone 18 Pro, a forced recompile on the phone,
+  other iPhones, other iOS builds, and running on the GPU only. On a Mac with macOS 27.0 the
+  model answers correctly.
 
 ## [0.7.3] — 2026-09-25
 

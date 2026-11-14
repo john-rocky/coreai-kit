@@ -4,10 +4,13 @@
 [![Nightly build + pins](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml/badge.svg)](https://github.com/john-rocky/coreai-kit/actions/workflows/nightly-gate.yml)
 [![Next-SDK models](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjohn-rocky%2Fcoreai-kit%2Fgate-status%2Fnext-sdk.json)](https://github.com/john-rocky/coreai-kit/actions/workflows/next-sdk-gate.yml)
 
-**0.7.3 targets Xcode 27 (`27A266a`) on macOS 27 (`26A428`), the release builds.** See the
+**0.8.0 targets Xcode 27 (`27A266a`) on macOS 27 (`26A428`), the release builds.** See the
 [validation record](GETTING_STARTED.md#release-041-validation) for the tested Mac,
-OS/SDK builds and model revisions of the 0.4.1 train; 0.4.2, 0.5.0, 0.6.0, 0.7.0, 0.7.1, 0.7.2 and 0.7.3 re-ran the same gates on the release
+OS/SDK builds and model revisions of the 0.4.1 train; 0.4.2, 0.5.0, 0.6.0, 0.7.0, 0.7.1, 0.7.2, 0.7.3 and 0.8.0 re-ran the same gates on the release
 toolchain (CHANGELOG). Device rows were measured on the iOS 27 RC (24A435).
+On an iPhone 18 Pro with iOS 27.2 (`24B5099f`), Qwen3 0.6B answers with unreadable text.
+CoreAIKit 0.7.3 and 0.8.0 both do this; the cause is not known
+([Known issues](../CHANGELOG.md#known-issues)).
 
 The models are converted, not vendored, so the question that matters before you depend on
 this is *what was checked, by whom, and can you check it again.* All 80 catalog entries:

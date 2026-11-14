@@ -35,26 +35,26 @@ The first run uses **Qwen3 0.6B** (`qwen3-0.6b`), about 352 MB on a Mac and 456 
 To try it on your Mac without a project, paste this:
 
 ```bash
-git clone --branch 0.7.3 --depth 1 https://github.com/john-rocky/coreai-kit.git
+git clone --branch 0.8.0 --depth 1 https://github.com/john-rocky/coreai-kit.git
 cd coreai-kit
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # Xcode 27 (27A266a)
 swift run -c release --package-path Examples/ChatDemo chat-cli \
   --model qwen3-0.6b --prompt "What is the capital of Japan?"
 ```
 
-You'll see a download, a pause while the model loads, and then a reply that mentions Tokyo. I tested 0.7.3 with the release builds of Xcode 27 (`27A266a`) and macOS 27 (`26A428`). If your Xcode 27 app has another name, set `DEVELOPER_DIR` to its `Contents/Developer` folder.
+You'll see a download, a pause while the model loads, and then a reply that mentions Tokyo. I tested 0.8.0 with the release builds of Xcode 27 (`27A266a`) and macOS 27 (`26A428`). If your Xcode 27 app has another name, set `DEVELOPER_DIR` to its `Contents/Developer` folder.
 
 To add it to your app:
 
 1. In Xcode, use **File → Add Package Dependencies…** and paste `https://github.com/john-rocky/coreai-kit`.
-2. Choose **Exact Version: 0.7.3**.
+2. Choose **Exact Version: 0.8.0**.
 3. Add the **CoreAIOps** product to your target for the one-line calls. It includes **CoreAIKit**, which is enough if you only want `ChatSession`.
 4. If App Sandbox is on for your macOS target, turn on **Signing & Capabilities → App Sandbox → Outgoing Connections (Client)** so the model can download ([network client entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.network.client)).
 
 In a Swift package, the same dependency looks like this:
 
 ```swift
-.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.7.3")
+.package(url: "https://github.com/john-rocky/coreai-kit", exact: "0.8.0")
 // In your target's dependencies:
 .product(name: "CoreAIKit", package: "coreai-kit")
 ```
