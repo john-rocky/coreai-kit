@@ -421,7 +421,7 @@ line changes. Built and gated on macOS 27.0 (26A428) and Xcode 27 (27A266a).
 
 A patch, additive. The package deploys to macOS 26 / iOS 26 (was 27): an app or package with a
 26 floor can depend on the kit and use Core AI behind `#available(macOS 27, iOS 27, *)`; models
-still run on 27 only (#56, Mattt Zmuda). Apple's on-device foundation model is a decision backend
+still run on 27 only (#56, @mattt). Apple's on-device foundation model is a decision backend
 (`FoundationModelDecisions`, `systemone serve --backend fm`). Catalog sizes are measured decimal MB,
 and the MinerU, GLM-OCR and Nemotron loaders download their pinned revision. `exact: "0.7.2"`
 resolvers move to `0.7.3`; `from:` resolvers pick it up. Built and gated on macOS 27.0 (26A428) and
@@ -436,7 +436,7 @@ Xcode 27 (27A266a).
   Foundation Models APIs), is `@available(macOS 27, iOS 27, *)`; `CoreAIKitCore`, the `Decision`
   types, `SystemOneServer` and `CoreAI.Op` stay at 26. `systemone` and `coreai-doctor` exit with
   a message below 27. On x86_64 macOS the Float16 paths are compiled out, the same guard as
-  coreai-models 0.2.8-zoo. Models still run on 27 only. (#56, Mattt Zmuda)
+  coreai-models 0.2.8-zoo. Models still run on 27 only. (#56, @mattt)
 
 - **Apple's on-device foundation model as a decision backend.** `FoundationModelDecisions`
   (`Sources/CoreAIKit/Decide`) answers typed questions on the FoundationModels framework's
