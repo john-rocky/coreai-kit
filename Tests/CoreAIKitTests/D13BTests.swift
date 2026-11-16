@@ -495,7 +495,7 @@ struct D13BTests {
     /// against the Python reference's run of the same bundle (bit for bit), each response against the provider's text;
     /// with the shared prefix and a prepared state the same bits; the pictures (with `KIT_D1_3B_IMAGES`) with the tower's
     /// outputs, from a file and from bytes; the wire; the refusals in the provider's words, before any graph call; and
-    /// FACTS §7's bar against the provider's fp32 oracle.
+    /// The bar against the provider's fp32 oracle.
     @available(macOS 27, iOS 27, *)
     @Test(.enabled(if: gateEnabled, "set KIT_D1_3B_GATE=1, or keep the decoder bundle in the store"))
     func runsMatchThePythonReferenceBitForBit() async throws {

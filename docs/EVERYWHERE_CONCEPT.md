@@ -5,8 +5,8 @@
 One API where every on-device AI task on Apple platforms has an answer: Apple's own framework
 when it wins, an open model when it does not, and something where Apple ships nothing at all.
 
-Concept and structure only. Implementation is a separate session; the measurement it depends on
-is `~/code/coreai/APPLE_STACK_BENCH_KICKOFF.md`.
+Concept and structure only. Implementation is separate work; it depends on the
+`APPLE_STACK_BENCH` measurement described below.
 
 ---
 

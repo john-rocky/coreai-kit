@@ -1,11 +1,11 @@
-# Handoff — `CoreAI.capability(_:)`, so a non-ML engineer can ship
+# Plan — `CoreAI.capability(_:)`, so a non-ML engineer can ship
 
 **Goal**: an iOS engineer who has never trained a model can put an on-device feature into a
 shipping app without learning what a checkpoint, a quantization or a Hugging Face variant is.
 
 The op layer already gets this right — the API is task-shaped, and no call requires naming a
 model. What is missing is everything *around* the call. This document is the plan for closing
-that, and the reasoning behind it, so the implementing session does not have to re-derive it.
+that, and the reasoning behind it.
 
 ---
 

@@ -35,4 +35,4 @@ hijack — the attack the notes-RAG version had to defend against cannot arise h
   harmful depends on the chosen model's own guardrails — ask-anything surfaces the base model's
   behavior directly (no app-side grounding constrains it). That is a model-choice consideration, not
   an agentic-security one.
-- **On-device load + the Siri voice flow are device-verified by the user** (G1/G2).
+- **On-device load + the Siri voice flow are device-verified** (G1/G2).

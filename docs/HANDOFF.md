@@ -1,7 +1,7 @@
-# Handoff — start here
+# Design documents — start here
 
-Everything designed on 2026-07-28/29, in the order it should be read and built. Written for a
-session that will implement it and was not present for the reasoning.
+Everything designed on 2026-07-28/29, in the order it should be read and built, for whoever
+implements it without having been present for the reasoning.
 
 **The goal**: an iOS engineer who has never trained a model can add an on-device feature to a
 shipping app without a vendor, a key, a bill, or a privacy review — an entire job removed, not a
@@ -48,7 +48,7 @@ Ordered by value per unit of work, not by how interesting it is.
 > cloning. The iOS Parakeet/Kokoro ports that step 6 lists as a precondition were
 > **dropped** — they made a free capability 1.3 GB cheaper.
 >
-> **Open, deliberately deferred** (owner decided 2026-08-04): the coordinate contract. Boxes
+> **Open, deliberately deferred** (2026-08-04): the coordinate contract. Boxes
 > are normalised and that is not enough — the preview runs at the session preset's aspect
 > under `.resizeAspectFill` while the model is fed a 3:4 buffer, so drawing needs the
 > aspect-fill correction `Examples/DetectCamera`'s overlay does by hand. `TODO` at

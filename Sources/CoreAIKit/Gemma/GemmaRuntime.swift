@@ -205,7 +205,7 @@ public final class GemmaRuntime: @unchecked Sendable {
     /// `bytesNoCopy` `MTLBuffer` — no owned copy. The tables are read-only (gathered, never
     /// written), so the COW pages stay CLEAN and the kernel can evict them under pressure rather
     /// than counting the full ~2.35 GB against the process's jetsam footprint — this is what lets a
-    /// backgrounded Gemma survive (USER confirmed the background answer worked with this). The file
+    /// backgrounded Gemma survive (the background answer was confirmed on device with this). The file
     /// MUST be in a writable location (ModelHost stages a side-loaded model out of the signed .app
     /// into a writable cache first); COW-mmap of a file inside the read-only signed bundle regressed.
     /// `PROT_WRITE`+`MAP_PRIVATE` is deliberate: a pure `PROT_READ` mapping pays a ~208 ms/encode

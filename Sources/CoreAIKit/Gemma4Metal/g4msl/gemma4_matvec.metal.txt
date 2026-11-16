@@ -1216,8 +1216,8 @@ kernel void matvec_int4aff_nxaa_qkv(
 // shift/xor/sub with one constant-cache byte lookup per 4 codes. Products x*c with
 // c in {-2,-1,0,1} are EXACT in fp16 and the fp32 accumulation order (byte asc, code asc
 // = code order) is unchanged -> bit-exact vs the arithmetic decode. (The BANNED variants
-// were the threadgroup byte-LUT and shl-asr — this is the constant-memory lane from the
-// session-1 Next list, previously unmeasured.)
+// were the threadgroup byte-LUT and shl-asr — this is the constant-memory variant,
+// previously unmeasured.)
 constant half4 LUT2[256] = {
     half4(0.0h, 0.0h, 0.0h, 0.0h),
     half4(1.0h, 0.0h, 0.0h, 0.0h),

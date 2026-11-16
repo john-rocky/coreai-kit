@@ -1,6 +1,6 @@
 // Gemma4 E2B mixed-bit RAW-METAL decode loop — FUSED WIDE PREFILL kernels (M=8).
 //
-// Session-6 prototype pair (GEMMA4_PREFILL_FUSE_KICKOFF.md step 1):
+// Session-6 prototype pair:
 //   gateup_int{2sym,4aff}_m8_nxa : post_attn residual-fold + pre_ffw rmsnorm folded
 //                                  into the wide gateup prologue (removes 2
 //                                  rmsnorm_glue dispatches/layer + the x4/xn4
